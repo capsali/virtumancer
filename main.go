@@ -6,12 +6,12 @@ import (
 	"os"
 	"time"
 
+	"github.com/capsali/virtumancer/internal/api"
+	"github.com/capsali/virtumancer/internal/libvirt"
+	"github.com/capsali/virtumancer/internal/services"
+	"github.com/capsali/virtumancer/internal/storage"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/your-username/virtumancer/internal/api"
-	"github.com/your-username/virtumancer/internal/libvirt"
-	"github.com/your-username/virtumancer/internal/services"
-	"github.com/your-username/virtumancer/internal/storage"
 )
 
 // spaFileSystem is a custom file system that serves the index.html

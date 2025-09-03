@@ -6,7 +6,7 @@ require (
 	github.com/go-chi/chi/v5 v5.0.12
 	gorm.io/driver/sqlite v1.5.5
 	gorm.io/gorm v1.25.10
-	libvirt.org/go/libvirt v1.11.0
+	libvirt.org/go/libvirt v1.11006.0
 )
 
 require (
