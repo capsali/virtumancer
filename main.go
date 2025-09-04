@@ -4,85 +4,78 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"strings"
 
 	"github.com/capsali/virtumancer/internal/api"
 	"github.com/capsali/virtumancer/internal/libvirt"
 	"github.com/capsali/virtumancer/internal/services"
 	"github.com/capsali/virtumancer/internal/storage"
+	"github.com/capsali/virtumancer/internal/ws"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )
 
 func main() {
-	// --- Initialization ---
-	// 1. Initialize the SQLite database connection.
+	// Initialize Database
 	db, err := storage.InitDB("virtumancer.db")
 	if err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
 
-	// 2. Create the libvirt connector which manages all host connections.
+	// Initialize WebSocket Hub
+	hub := ws.NewHub()
+	go hub.Run()
+
+	// Initialize Libvirt Connector
 	connector := libvirt.NewConnector()
 
-	// 3. Create the host service, injecting the database and connector.
-	// This service contains the core business logic.
-	hostService := services.NewHostService(db, connector)
+	// Initialize Host Service, now with WebSocket hub
+	hostService := services.NewHostService(db, connector, hub)
 
-	// 4. On startup, load all hosts from the DB and attempt to connect to them.
-	// This ensures that previously added hosts are available after a restart.
+	// On startup, load all hosts from DB and try to connect
 	hostService.ConnectToAllHosts()
 
-	// 5. Create the API handler, injecting the host service.
-	// This handler exposes the service's functionality via HTTP endpoints.
-	apiHandler := api.NewAPIHandler(hostService)
+	// Initialize API Handler, now with WebSocket hub
+	apiHandler := api.NewAPIHandler(hostService, hub)
 
-	// --- Router Setup ---
-	// Create a new Chi router and add essential middleware.
+	// Setup Router
 	r := chi.NewRouter()
-	r.Use(middleware.Logger)   // Log requests to the console.
-	r.Use(middleware.Recoverer) // Recover from panics without crashing the server.
+	r.Use(middleware.Logger)
+	r.Use(middleware.Recoverer)
 
-	// --- API Routes ---
-	// Group all API endpoints under the /api/v1 prefix.
+	// API routes
 	r.Route("/api/v1", func(r chi.Router) {
-		// Host management endpoints
 		r.Get("/health", apiHandler.HealthCheck)
+
+		// Host routes
 		r.Get("/hosts", apiHandler.GetHosts)
 		r.Post("/hosts", apiHandler.CreateHost)
 		r.Delete("/hosts/{hostID}", apiHandler.DeleteHost)
 
-		// VM management endpoints
+		// VM routes
 		r.Get("/hosts/{hostID}/vms", apiHandler.ListVMs)
 		r.Post("/hosts/{hostID}/vms/{vmName}/start", apiHandler.StartVM)
-		r.Post("/hosts/{hostID}/vms/{vmName}/graceful-shutdown", apiHandler.GracefulShutdownVM)
-		r.Post("/hosts/{hostID}/vms/{vmName}/graceful-reboot", apiHandler.GracefulRebootVM)
-		r.Post("/hosts/{hostID}/vms/{vmName}/force-off", apiHandler.ForceOffVM)
-		r.Post("/hosts/{hostID}/vms/{vmName}/force-reset", apiHandler.ForceResetVM)
+		r.Post("/hosts/{hostID}/vms/{vmName}/shutdown", apiHandler.ShutdownVM)
+		r.Post("/hosts/{hostID}/vms/{vmName}/reboot", apiHandler.RebootVM)
+		r.Post("/hosts/{hostID}/vms/{vmName}/forceoff", apiHandler.ForceOffVM)
+		r.Post("/hosts/{hostID}/vms/{vmName}/forcereset", apiHandler.ForceResetVM)
 	})
 
-	// --- Static File Server ---
-	// This section serves the compiled Vue.js frontend.
-	workDir, _ := os.Getwd()
-	staticFilesPath := workDir + "/web/dist"
-	fileServer := http.FileServer(http.Dir(staticFilesPath))
+	// WebSocket route
+	r.HandleFunc("/ws", apiHandler.HandleWebSocket)
 
-	// Handle all other requests by serving the frontend.
-	// This includes a fallback to index.html for Single-Page Application (SPA) routing.
+	// Static File Server for the Vue App
+	workDir, _ := os.Getwd()
+	fileServer := http.FileServer(http.Dir(workDir + "/web/dist"))
 	r.HandleFunc("/*", func(w http.ResponseWriter, r *http.Request) {
-		filePath := staticFilesPath + r.URL.Path
-		_, err := os.Stat(filePath)
-		// If the file doesn't exist, it's a client-side route; serve index.html.
-		if os.IsNotExist(err) || strings.HasSuffix(r.URL.Path, "/") {
-			http.ServeFile(w, r, staticFilesPath+"/index.html")
+		_, err := os.Stat(workDir + "/web/dist" + r.URL.Path)
+		if os.IsNotExist(err) {
+			http.ServeFile(w, r, workDir+"/web/dist/index.html")
 		} else {
-			// Otherwise, serve the static file (e.g., CSS, JS).
 			fileServer.ServeHTTP(w, r)
 		}
 	})
 
-	// --- Start Server ---
-	log.Println("Starting VirtuMancer server on http://localhost:8888")
+	log.Println("Starting server on :8888")
 	err = http.ListenAndServe(":8888", r)
 	if err != nil {
 		log.Fatalf("Could not start server: %v", err)

@@ -1,15 +1,16 @@
 <script setup>
-import { onMounted } from 'vue';
-import { useMainStore } from '@/stores/mainStore';
 import AddHostForm from '@/components/AddHostForm.vue';
 import HostList from '@/components/HostList.vue';
 import VmList from '@/components/VmList.vue';
+import { onMounted } from 'vue';
+import { useMainStore } from '@/stores/mainStore';
 
-const mainStore = useMainStore();
+const store = useMainStore();
 
-// Fetch initial data when the component is mounted
+// When the main view is mounted, fetch the initial host list and start real-time updates.
 onMounted(() => {
-  mainStore.fetchHosts();
+  store.fetchHosts();
+  store.initializeRealtime();
 });
 </script>
 
@@ -24,17 +25,14 @@ onMounted(() => {
 
       <main class="grid grid-cols-1 lg:grid-cols-3 gap-8">
         
-        <!-- Left Column -->
         <div class="lg:col-span-1 flex flex-col gap-8">
           <AddHostForm />
           <HostList />
         </div>
 
-        <!-- Right Column -->
         <div class="lg:col-span-2">
           <VmList />
         </div>
-
       </main>
 
     </div>

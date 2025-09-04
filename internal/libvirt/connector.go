@@ -45,10 +45,8 @@ func (c *Connector) AddHost(host storage.Host) error {
 	}
 
 	connectURI := host.URI
-
-	// For SSH connections, we modify the URI to bypass host key checking.
 	parsedURI, err := url.Parse(host.URI)
-	if err == nil && (parsedURI.Scheme == "qemu+ssh" || parsedURI.Scheme == "libssh") {
+	if err == nil && parsedURI.Scheme == "qemu+ssh" {
 		q := parsedURI.Query()
 		if q.Get("no_verify") == "" {
 			q.Set("no_verify", "1")
@@ -117,6 +115,7 @@ func (c *Connector) ListAllDomains(hostID string) ([]VMInfo, error) {
 
 		name, err := domains[i].GetName()
 		if err != nil {
+			log.Printf("Warning: could not get name for a domain on host %s: %v", hostID, err)
 			continue
 		}
 		id, err := domains[i].GetID()
@@ -125,18 +124,22 @@ func (c *Connector) ListAllDomains(hostID string) ([]VMInfo, error) {
 		}
 		state, _, err := domains[i].GetState()
 		if err != nil {
+			log.Printf("Warning: could not get state for domain %s: %v", name, err)
 			continue
 		}
 		info, err := domains[i].GetInfo()
 		if err != nil {
+			log.Printf("Warning: could not get info for domain %s: %v", name, err)
 			continue
 		}
 		isPersistent, err := domains[i].IsPersistent()
 		if err != nil {
+			log.Printf("Warning: could not get persistence for domain %s: %v", name, err)
 			continue
 		}
 		autostart, err := domains[i].GetAutostart()
 		if err != nil {
+			log.Printf("Warning: could not get autostart for domain %s: %v", name, err)
 			continue
 		}
 
@@ -157,7 +160,7 @@ func (c *Connector) ListAllDomains(hostID string) ([]VMInfo, error) {
 
 // --- VM Actions ---
 
-// getDomainByName is a helper to find a domain by its name.
+// getDomainByName is a helper function to look up a domain by its name on a host.
 func (c *Connector) getDomainByName(hostID, vmName string) (*libvirt.Domain, error) {
 	conn, err := c.GetConnection(hostID)
 	if err != nil {
@@ -170,79 +173,54 @@ func (c *Connector) getDomainByName(hostID, vmName string) (*libvirt.Domain, err
 	return domain, nil
 }
 
-// StartDomain starts a virtual machine by name.
+// StartDomain starts a managed domain (VM).
 func (c *Connector) StartDomain(hostID, vmName string) error {
 	domain, err := c.getDomainByName(hostID, vmName)
 	if err != nil {
 		return err
 	}
 	defer domain.Free()
-	err = domain.Create() // This is equivalent to 'virsh start'
-	if err != nil {
-		return fmt.Errorf("failed to start VM '%s': %w", vmName, err)
-	}
-	log.Printf("Started VM '%s' on host '%s'", vmName, hostID)
-	return nil
+	return domain.Create()
 }
 
-// GracefulShutdownDomain gracefully shuts down a virtual machine.
-func (c *Connector) GracefulShutdownDomain(hostID, vmName string) error {
+// ShutdownDomain gracefully shuts down a managed domain.
+func (c *Connector) ShutdownDomain(hostID, vmName string) error {
 	domain, err := c.getDomainByName(hostID, vmName)
 	if err != nil {
 		return err
 	}
 	defer domain.Free()
-	err = domain.Shutdown() // This is equivalent to 'virsh shutdown'
-	if err != nil {
-		return fmt.Errorf("failed to gracefully shutdown VM '%s': %w", vmName, err)
-	}
-	log.Printf("Gracefully shut down VM '%s' on host '%s'", vmName, hostID)
-	return nil
+	return domain.Shutdown()
 }
 
-// GracefulRebootDomain gracefully reboots a virtual machine.
-func (c *Connector) GracefulRebootDomain(hostID, vmName string) error {
+// RebootDomain gracefully reboots a managed domain.
+func (c *Connector) RebootDomain(hostID, vmName string) error {
 	domain, err := c.getDomainByName(hostID, vmName)
 	if err != nil {
 		return err
 	}
 	defer domain.Free()
-	err = domain.Reboot(0) // This is equivalent to 'virsh reboot'
-	if err != nil {
-		return fmt.Errorf("failed to gracefully reboot VM '%s': %w", vmName, err)
-	}
-	log.Printf("Gracefully rebooted VM '%s' on host '%s'", vmName, hostID)
-	return nil
+	return domain.Reboot(0) // 0 is the default flag
 }
 
-// ForceOffDomain forces a virtual machine to stop.
-func (c *Connector) ForceOffDomain(hostID, vmName string) error {
+// DestroyDomain forcefully stops a managed domain (the equivalent of pulling the plug).
+func (c *Connector) DestroyDomain(hostID, vmName string) error {
 	domain, err := c.getDomainByName(hostID, vmName)
 	if err != nil {
 		return err
 	}
 	defer domain.Free()
-	err = domain.Destroy() // This is equivalent to 'virsh destroy'
-	if err != nil {
-		return fmt.Errorf("failed to force off VM '%s': %w", vmName, err)
-	}
-	log.Printf("Forced off VM '%s' on host '%s'", vmName, hostID)
-	return nil
+	return domain.Destroy()
 }
 
-// ForceResetDomain forces a virtual machine to reset.
-func (c *Connector) ForceResetDomain(hostID, vmName string) error {
+// ResetDomain forcefully resets a managed domain.
+func (c *Connector) ResetDomain(hostID, vmName string) error {
 	domain, err := c.getDomainByName(hostID, vmName)
 	if err != nil {
 		return err
 	}
 	defer domain.Free()
-	err = domain.Reset(0) // This is equivalent to 'virsh reset'
-	if err != nil {
-		return fmt.Errorf("failed to force reset VM '%s': %w", vmName, err)
-	}
-	log.Printf("Forced reset on VM '%s' on host '%s'", vmName, hostID)
-	return nil
+	return domain.Reset(0) // 0 is the default flag
 }
 
 

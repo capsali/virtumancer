@@ -6,21 +6,31 @@ import (
 
 	"github.com/capsali/virtumancer/internal/libvirt"
 	"github.com/capsali/virtumancer/internal/storage"
+	"github.com/capsali/virtumancer/internal/ws"
 	"gorm.io/gorm"
 )
 
-// HostService provides business logic for host management.
 type HostService struct {
 	db        *gorm.DB
 	connector *libvirt.Connector
+	hub       *ws.Hub // <-- Add Hub
 }
 
-// NewHostService creates a new HostService.
-func NewHostService(db *gorm.DB, connector *libvirt.Connector) *HostService {
-	return &HostService{db: db, connector: connector}
+func NewHostService(db *gorm.DB, connector *libvirt.Connector, hub *ws.Hub) *HostService {
+	return &HostService{
+		db:        db,
+		connector: connector,
+		hub:       hub, // <-- Initialize Hub
+	}
 }
 
-// GetAllHosts retrieves all hosts from the database.
+// broadcastUpdate sends a message to all WebSocket clients to refresh their state.
+func (s *HostService) broadcastUpdate() {
+	s.hub.BroadcastMessage([]byte(`{"type": "refresh"}`))
+}
+
+// --- Host Management ---
+
 func (s *HostService) GetAllHosts() ([]storage.Host, error) {
 	var hosts []storage.Host
 	if err := s.db.Find(&hosts).Error; err != nil {
@@ -29,7 +39,6 @@ func (s *HostService) GetAllHosts() ([]storage.Host, error) {
 	return hosts, nil
 }
 
-// AddHost adds a new host to the database and connects to it.
 func (s *HostService) AddHost(host storage.Host) (*storage.Host, error) {
 	if err := s.db.Create(&host).Error; err != nil {
 		return nil, fmt.Errorf("failed to save host to database: %w", err)
@@ -37,33 +46,28 @@ func (s *HostService) AddHost(host storage.Host) (*storage.Host, error) {
 
 	err := s.connector.AddHost(host)
 	if err != nil {
-		// If connection fails, we should roll back the database change.
 		if delErr := s.db.Delete(&host).Error; delErr != nil {
-			log.Printf("CRITICAL: Failed to rollback host creation for %s after connection failure. Please remove manually. DB Error: %v", host.ID, delErr)
+			log.Printf("CRITICAL: Failed to rollback host creation for %s after connection failure. DB Error: %v", host.ID, delErr)
 		}
 		return nil, fmt.Errorf("failed to connect to host: %w", err)
 	}
 
+	s.broadcastUpdate() // Broadcast update after successful action
 	return &host, nil
 }
 
-// RemoveHost removes a host from the database and disconnects from it.
 func (s *HostService) RemoveHost(hostID string) error {
-	// Disconnect from the host first.
 	if err := s.connector.RemoveHost(hostID); err != nil {
-		// We log a warning but proceed to delete from the DB anyway,
-		// in case the host was just offline.
 		log.Printf("Warning: failed to disconnect from host %s during removal, continuing with DB deletion: %v", hostID, err)
 	}
 
-	// Delete the host from the database.
 	if err := s.db.Where("id = ?", hostID).Delete(&storage.Host{}).Error; err != nil {
 		return fmt.Errorf("failed to delete host from database: %w", err)
 	}
+	s.broadcastUpdate() // Broadcast update after successful action
 	return nil
 }
 
-// ConnectToAllHosts attempts to connect to all hosts stored in the database on startup.
 func (s *HostService) ConnectToAllHosts() {
 	hosts, err := s.GetAllHosts()
 	if err != nil {
@@ -79,7 +83,8 @@ func (s *HostService) ConnectToAllHosts() {
 	}
 }
 
-// ListVMs retrieves the list of VMs for a specific host.
+// --- VM Management ---
+
 func (s *HostService) ListVMs(hostID string) ([]libvirt.VMInfo, error) {
 	vms, err := s.connector.ListAllDomains(hostID)
 	if err != nil {
@@ -88,29 +93,44 @@ func (s *HostService) ListVMs(hostID string) ([]libvirt.VMInfo, error) {
 	return vms, nil
 }
 
-// StartVM starts a virtual machine on a specific host.
 func (s *HostService) StartVM(hostID, vmName string) error {
-	return s.connector.StartDomain(hostID, vmName)
+	if err := s.connector.StartDomain(hostID, vmName); err != nil {
+		return err
+	}
+	s.broadcastUpdate()
+	return nil
 }
 
-// GracefulShutdownVM gracefully shuts down a virtual machine on a specific host.
-func (s *HostService) GracefulShutdownVM(hostID, vmName string) error {
-	return s.connector.GracefulShutdownDomain(hostID, vmName)
+func (s *HostService) ShutdownVM(hostID, vmName string) error {
+	if err := s.connector.ShutdownDomain(hostID, vmName); err != nil {
+		return err
+	}
+	s.broadcastUpdate()
+	return nil
 }
 
-// GracefulRebootVM gracefully reboots a virtual machine on a specific host.
-func (s *HostService) GracefulRebootVM(hostID, vmName string) error {
-	return s.connector.GracefulRebootDomain(hostID, vmName)
+func (s *HostService) RebootVM(hostID, vmName string) error {
+	if err := s.connector.RebootDomain(hostID, vmName); err != nil {
+		return err
+	}
+	s.broadcastUpdate()
+	return nil
 }
 
-// ForceOffVM forces a virtual machine to stop on a specific host.
 func (s *HostService) ForceOffVM(hostID, vmName string) error {
-	return s.connector.ForceOffDomain(hostID, vmName)
+	if err := s.connector.DestroyDomain(hostID, vmName); err != nil {
+		return err
+	}
+	s.broadcastUpdate()
+	return nil
 }
 
-// ForceResetVM forces a virtual machine to reset on a specific host.
 func (s *HostService) ForceResetVM(hostID, vmName string) error {
-	return s.connector.ForceResetDomain(hostID, vmName)
+	if err := s.connector.ResetDomain(hostID, vmName); err != nil {
+		return err
+	}
+	s.broadcastUpdate()
+	return nil
 }
 
 

@@ -2,190 +2,208 @@ import { defineStore } from 'pinia';
 import { ref } from 'vue';
 
 export const useMainStore = defineStore('main', () => {
-  // --- State ---
-  const hosts = ref([]);
-  const selectedHostId = ref(null);
-  const vms = ref([]);
-  const isLoading = ref({
-    hosts: false,
-    vms: false,
-    addHost: false,
-    vmAction: null, // Tracks which VM is performing an action, e.g., 'vm-name-start'
-  });
-  const errorMessage = ref('');
+    // State
+    const hosts = ref([]);
+    const vms = ref([]);
+    const selectedHostId = ref(null);
+    const errorMessage = ref('');
+    const isLoading = ref({
+        hosts: false,
+        vms: false,
+        addHost: false,
+        vmAction: null, // will be string like 'vm-name:action'
+    });
+    
+    let ws = null;
+    let pollInterval = null;
 
-  // --- Host Actions ---
+    // --- WebSocket and Polling Logic ---
 
-  async function fetchHosts() {
-    isLoading.value.hosts = true;
-    errorMessage.value = '';
-    try {
-      const response = await fetch('/api/v1/hosts');
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      const data = await response.json();
-      hosts.value = data || [];
-    } catch (error) {
-      console.error("Error fetching hosts:", error);
-      errorMessage.value = "Failed to fetch hosts. Is the backend running?";
-    } finally {
-      isLoading.value.hosts = false;
-    }
-  }
+    const connectWebSocket = () => {
+        // Construct WebSocket URL
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsURL = `${protocol}//${window.location.host}/ws`;
 
-  async function addHost(newHostId, newHostUri) {
-    if (!newHostId || !newHostUri) {
-      errorMessage.value = "Both Host ID and URI are required.";
-      return;
-    }
-    isLoading.value.addHost = true;
-    errorMessage.value = '';
-    try {
-      const response = await fetch('/api/v1/hosts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: newHostId, uri: newHostUri }),
-      });
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText || `HTTP error! status: ${response.status}`);
-      }
-      await fetchHosts(); // Refresh host list
-    } catch (error) {
-      console.error("Error adding host:", error);
-      errorMessage.value = `Failed to add host: ${error.message}`;
-    } finally {
-      isLoading.value.addHost = false;
-    }
-  }
+        ws = new WebSocket(wsURL);
 
-  async function deleteHost(hostId) {
-    if (!confirm(`Are you sure you want to delete host "${hostId}"?`)) {
-      return;
-    }
-    errorMessage.value = '';
-    try {
-      const response = await fetch(`/api/v1/hosts/${hostId}`, {
-        method: 'DELETE',
-      });
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText || `HTTP error! status: ${response.status}`);
-      }
-      if (selectedHostId.value === hostId) {
-        selectedHostId.value = null;
-        vms.value = [];
-      }
-      await fetchHosts();
-    } catch (error) {
-      console.error("Error deleting host:", error);
-      errorMessage.value = `Failed to delete host: ${error.message}`;
-    }
-  }
+        ws.onopen = () => {
+            console.log('WebSocket connected');
+        };
 
-  async function fetchVmsForHost(hostId) {
-    isLoading.value.vms = true;
-    vms.value = [];
-    errorMessage.value = '';
-    try {
-      const response = await fetch(`/api/v1/hosts/${hostId}/vms`);
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      const data = await response.json();
-      vms.value = data || [];
-    } catch (error) {
-      console.error(`Error fetching VMs for host ${hostId}:`, error);
-      errorMessage.value = `Failed to fetch VMs for host ${hostId}.`;
-    } finally {
-      isLoading.value.vms = false;
-    }
-  }
+        ws.onmessage = (event) => {
+            const message = JSON.parse(event.data);
+            if (message.type === 'refresh') {
+                console.log('WebSocket received refresh message');
+                fetchVmsForSelectedHost();
+            }
+        };
 
-  function selectHost(hostId) {
-    if (selectedHostId.value === hostId) {
-      // Deselect if clicking the same host
-      selectedHostId.value = null;
-      vms.value = [];
-    } else {
-      selectedHostId.value = hostId;
-      fetchVmsForHost(hostId);
-    }
-  }
+        ws.onclose = () => {
+            console.log('WebSocket disconnected. Attempting to reconnect in 5 seconds...');
+            setTimeout(connectWebSocket, 5000);
+        };
+        
+        ws.onerror = (error) => {
+            console.error('WebSocket error:', error);
+            ws.close();
+        };
+    };
 
-  // --- VM Actions ---
-  async function _performVmAction(hostId, vmName, action) {
-    const actionKey = `${vmName}-${action}`;
-    isLoading.value.vmAction = actionKey;
-    errorMessage.value = '';
-    try {
-      const response = await fetch(`/api/v1/hosts/${hostId}/vms/${encodeURIComponent(vmName)}/${action}`, {
-        method: 'POST',
-      });
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText || `HTTP error! status: ${response.status}`);
-      }
-      // Refresh VM list after a short delay to allow state to update
-      setTimeout(() => {
-        if (selectedHostId.value === hostId) {
-          fetchVmsForHost(hostId);
+    const startPolling = () => {
+        stopPolling(); // Ensure no multiple intervals running
+        pollInterval = setInterval(() => {
+            if (selectedHostId.value) {
+                fetchVmsForSelectedHost();
+            }
+        }, 10000); // Poll every 10 seconds
+    };
+
+    const stopPolling = () => {
+        if (pollInterval) {
+            clearInterval(pollInterval);
+            pollInterval = null;
         }
-      }, 2000); // 2 second delay
-    } catch (error) {
-      console.error(`Error performing action ${action} on ${vmName}:`, error);
-      errorMessage.value = `Failed to ${action.replace('-', ' ')} VM: ${error.message}`;
-    } finally {
-      // Clear loading state after a delay as well
-      setTimeout(() => {
-        if (isLoading.value.vmAction === actionKey) {
+    };
+
+    // Call this to initialize real-time features
+    const initializeRealtime = () => {
+        connectWebSocket();
+        startPolling();
+    };
+
+
+    // --- Host Actions ---
+
+    const fetchHosts = async () => {
+        isLoading.value.hosts = true;
+        errorMessage.value = '';
+        try {
+            const response = await fetch('/api/v1/hosts');
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            const data = await response.json();
+            hosts.value = data || [];
+        } catch (error) {
+            console.error("Error fetching hosts:", error);
+            errorMessage.value = "Failed to fetch hosts.";
+        } finally {
+            isLoading.value.hosts = false;
+        }
+    };
+
+    const addHost = async (hostId, hostUri) => {
+        isLoading.value.addHost = true;
+        errorMessage.value = '';
+        try {
+            const response = await fetch('/api/v1/hosts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: hostId, uri: hostUri }),
+            });
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(errorText || `HTTP error! status: ${response.status}`);
+            }
+            await fetchHosts();
+        } catch (error) {
+            errorMessage.value = `Failed to add host: ${error.message}`;
+            console.error(error);
+        } finally {
+            isLoading.value.addHost = false;
+        }
+    };
+    
+    const deleteHost = async (hostId) => {
+        errorMessage.value = '';
+        try {
+            const response = await fetch(`/api/v1/hosts/${hostId}`, { method: 'DELETE' });
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(errorText || `HTTP error! status: ${response.status}`);
+            }
+            if (selectedHostId.value === hostId) {
+                selectedHostId.value = null;
+                vms.value = [];
+            }
+            await fetchHosts();
+        } catch (error) {
+            errorMessage.value = `Failed to delete host: ${error.message}`;
+            console.error(error);
+        }
+    };
+
+    const selectHost = (hostId) => {
+        if (selectedHostId.value === hostId) {
+            // Deselect if clicking the same host again
+            selectedHostId.value = null;
+            vms.value = [];
+        } else {
+            selectedHostId.value = hostId;
+            fetchVmsForSelectedHost();
+        }
+    };
+
+
+    // --- VM Actions ---
+
+    const fetchVmsForSelectedHost = async () => {
+        if (!selectedHostId.value) return;
+        isLoading.value.vms = true;
+        errorMessage.value = '';
+        try {
+            const response = await fetch(`/api/v1/hosts/${selectedHostId.value}/vms`);
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            vms.value = await response.json() || [];
+        } catch (error) {
+            errorMessage.value = `Failed to fetch VMs for ${selectedHostId.value}.`;
+            console.error(error);
+            vms.value = []; // Clear VMs on error
+        } finally {
+            isLoading.value.vms = false;
+        }
+    };
+
+    const performVmAction = async (hostId, vmName, action) => {
+        isLoading.value.vmAction = `${vmName}:${action}`;
+        errorMessage.value = '';
+        try {
+            const response = await fetch(`/api/v1/hosts/${hostId}/vms/${vmName}/${action}`, { method: 'POST' });
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(errorText || `HTTP error! status: ${response.status}`);
+            }
+            // Real-time update will be triggered by WebSocket, but we can force a poll for immediate feedback
+            // await fetchVmsForSelectedHost(); 
+        } catch (error) {
+            errorMessage.value = `Action '${action}' on VM '${vmName}' failed: ${error.message}`;
+            console.error(error);
+        } finally {
             isLoading.value.vmAction = null;
         }
-      }, 2500);
-    }
-  }
+    };
 
-  function startVm(hostId, vmName) {
-    _performVmAction(hostId, vmName, 'start');
-  }
+    const startVm = (hostId, vmName) => performVmAction(hostId, vmName, 'start');
+    const gracefulShutdownVm = (hostId, vmName) => performVmAction(hostId, vmName, 'shutdown');
+    const gracefulRebootVm = (hostId, vmName) => performVmAction(hostId, vmName, 'reboot');
+    const forceOffVm = (hostId, vmName) => performVmAction(hostId, vmName, 'forceoff');
+    const forceResetVm = (hostId, vmName) => performVmAction(hostId, vmName, 'forcereset');
 
-  function gracefulShutdownVm(hostId, vmName) {
-    _performVmAction(hostId, vmName, 'graceful-shutdown');
-  }
-
-  function gracefulRebootVm(hostId, vmName) {
-    _performVmAction(hostId, vmName, 'graceful-reboot');
-  }
-
-  function forceOffVm(hostId, vmName) {
-    if (confirm(`Are you sure you want to FORCE POWER OFF ${vmName}? This is like unplugging the power cord and may cause data loss.`)) {
-        _performVmAction(hostId, vmName, 'force-off');
-    }
-  }
-
-  function forceResetVm(hostId, vmName) {
-     if (confirm(`Are you sure you want to FORCE RESET ${vmName}? This is like pressing the physical reset button and may cause data loss.`)) {
-        _performVmAction(hostId, vmName, 'force-reset');
-    }
-  }
-
-  return {
-    hosts,
-    selectedHostId,
-    vms,
-    isLoading,
-    errorMessage,
-    fetchHosts,
-    addHost,
-    deleteHost,
-    selectHost,
-    startVm,
-    gracefulShutdownVm,
-    gracefulRebootVm,
-    forceOffVm,
-    forceResetVm,
-  };
+    return {
+        hosts,
+        vms,
+        selectedHostId,
+        errorMessage,
+        isLoading,
+        initializeRealtime,
+        fetchHosts,
+        addHost,
+        deleteHost,
+        selectHost,
+        startVm,
+        gracefulShutdownVm,
+        gracefulRebootVm,
+        forceOffVm,
+        forceResetVm,
+    };
 });
 
 
