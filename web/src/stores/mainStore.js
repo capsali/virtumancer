@@ -20,29 +20,29 @@ export const useMainStore = defineStore('main', () => {
     // --- WebSocket and Polling Logic ---
 
     const connectWebSocket = () => {
-        // Construct WebSocket URL
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsURL = `${protocol}//${window.location.host}/ws`;
 
         ws = new WebSocket(wsURL);
-
-        ws.onopen = () => {
-            console.log('WebSocket connected');
-        };
-
+        ws.onopen = () => console.log('WebSocket connected');
         ws.onmessage = (event) => {
-            const message = JSON.parse(event.data);
-            if (message.type === 'refresh') {
-                console.log('WebSocket received refresh message');
-                fetchVmsForSelectedHost();
+            try {
+                const message = JSON.parse(event.data);
+                if (message.type === 'refresh') {
+                    console.log('WebSocket received refresh message');
+                    if (selectedHostId.value) {
+                       fetchVmsForSelectedHost();
+                    }
+                    fetchHosts(); // Also refresh hosts list
+                }
+            } catch (e) {
+                console.error("Failed to parse websocket message", e);
             }
         };
-
         ws.onclose = () => {
-            console.log('WebSocket disconnected. Attempting to reconnect in 5 seconds...');
+            console.log('WebSocket disconnected. Reconnecting in 5s...');
             setTimeout(connectWebSocket, 5000);
         };
-        
         ws.onerror = (error) => {
             console.error('WebSocket error:', error);
             ws.close();
@@ -50,12 +50,12 @@ export const useMainStore = defineStore('main', () => {
     };
 
     const startPolling = () => {
-        stopPolling(); // Ensure no multiple intervals running
+        stopPolling();
         pollInterval = setInterval(() => {
             if (selectedHostId.value) {
                 fetchVmsForSelectedHost();
             }
-        }, 10000); // Poll every 10 seconds
+        }, 10000);
     };
 
     const stopPolling = () => {
@@ -65,7 +65,6 @@ export const useMainStore = defineStore('main', () => {
         }
     };
 
-    // Call this to initialize real-time features
     const initializeRealtime = () => {
         connectWebSocket();
         startPolling();
@@ -90,14 +89,15 @@ export const useMainStore = defineStore('main', () => {
         }
     };
 
-    const addHost = async (hostId, hostUri) => {
+    // CORRECTED: This function now accepts a single host object and stringifies it directly.
+    const addHost = async (hostData) => {
         isLoading.value.addHost = true;
         errorMessage.value = '';
         try {
             const response = await fetch('/api/v1/hosts', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: hostId, uri: hostUri }),
+                body: JSON.stringify(hostData), // The fix is here
             });
             if (!response.ok) {
                 const errorText = await response.text();
@@ -133,7 +133,6 @@ export const useMainStore = defineStore('main', () => {
 
     const selectHost = (hostId) => {
         if (selectedHostId.value === hostId) {
-            // Deselect if clicking the same host again
             selectedHostId.value = null;
             vms.value = [];
         } else {
@@ -148,7 +147,7 @@ export const useMainStore = defineStore('main', () => {
     const fetchVmsForSelectedHost = async () => {
         if (!selectedHostId.value) return;
         isLoading.value.vms = true;
-        errorMessage.value = '';
+        // Don't clear error message here to avoid flicker
         try {
             const response = await fetch(`/api/v1/hosts/${selectedHostId.value}/vms`);
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
@@ -156,7 +155,7 @@ export const useMainStore = defineStore('main', () => {
         } catch (error) {
             errorMessage.value = `Failed to fetch VMs for ${selectedHostId.value}.`;
             console.error(error);
-            vms.value = []; // Clear VMs on error
+            vms.value = [];
         } finally {
             isLoading.value.vms = false;
         }
@@ -171,8 +170,6 @@ export const useMainStore = defineStore('main', () => {
                 const errorText = await response.text();
                 throw new Error(errorText || `HTTP error! status: ${response.status}`);
             }
-            // Real-time update will be triggered by WebSocket, but we can force a poll for immediate feedback
-            // await fetchVmsForSelectedHost(); 
         } catch (error) {
             errorMessage.value = `Action '${action}' on VM '${vmName}' failed: ${error.message}`;
             console.error(error);
