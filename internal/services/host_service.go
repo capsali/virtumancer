@@ -35,7 +35,6 @@ func (s *HostService) AddHost(host storage.Host) (*storage.Host, error) {
 		return nil, fmt.Errorf("failed to save host to database: %w", err)
 	}
 
-	// Corrected the call to pass the entire host struct, not just its fields.
 	err := s.connector.AddHost(host)
 	if err != nil {
 		// If connection fails, we should roll back the database change.
@@ -74,7 +73,6 @@ func (s *HostService) ConnectToAllHosts() {
 
 	for _, host := range hosts {
 		log.Printf("Attempting to connect to stored host: %s", host.ID)
-		// Corrected the call to pass the entire host struct.
 		if err := s.connector.AddHost(host); err != nil {
 			log.Printf("Failed to connect to host %s (%s) on startup: %v", host.ID, host.URI, err)
 		}
@@ -82,13 +80,37 @@ func (s *HostService) ConnectToAllHosts() {
 }
 
 // ListVMs retrieves the list of VMs for a specific host.
-// This properly delegates the call from the API layer to the connector.
 func (s *HostService) ListVMs(hostID string) ([]libvirt.VMInfo, error) {
 	vms, err := s.connector.ListAllDomains(hostID)
 	if err != nil {
 		return nil, fmt.Errorf("service failed to list vms for host %s: %w", hostID, err)
 	}
 	return vms, nil
+}
+
+// StartVM starts a virtual machine on a specific host.
+func (s *HostService) StartVM(hostID, vmName string) error {
+	return s.connector.StartDomain(hostID, vmName)
+}
+
+// GracefulShutdownVM gracefully shuts down a virtual machine on a specific host.
+func (s *HostService) GracefulShutdownVM(hostID, vmName string) error {
+	return s.connector.GracefulShutdownDomain(hostID, vmName)
+}
+
+// GracefulRebootVM gracefully reboots a virtual machine on a specific host.
+func (s *HostService) GracefulRebootVM(hostID, vmName string) error {
+	return s.connector.GracefulRebootDomain(hostID, vmName)
+}
+
+// ForceOffVM forces a virtual machine to stop on a specific host.
+func (s *HostService) ForceOffVM(hostID, vmName string) error {
+	return s.connector.ForceOffDomain(hostID, vmName)
+}
+
+// ForceResetVM forces a virtual machine to reset on a specific host.
+func (s *HostService) ForceResetVM(hostID, vmName string) error {
+	return s.connector.ForceResetDomain(hostID, vmName)
 }
 
 

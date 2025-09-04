@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
 
 	"github.com/capsali/virtumancer/internal/services"
 	"github.com/capsali/virtumancer/internal/storage"
@@ -76,6 +77,90 @@ func (h *APIHandler) ListVMs(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(vms)
+}
+
+// --- VM Action Handlers ---
+
+// StartVM handles the request to start a virtual machine.
+func (h *APIHandler) StartVM(w http.ResponseWriter, r *http.Request) {
+	hostID := chi.URLParam(r, "hostID")
+	vmName, err := url.PathUnescape(chi.URLParam(r, "vmName"))
+	if err != nil {
+		http.Error(w, "Invalid VM name in URL", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.HostService.StartVM(hostID, vmName); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"message": "VM started successfully"})
+}
+
+// GracefulShutdownVM handles the request to gracefully shut down a virtual machine.
+func (h *APIHandler) GracefulShutdownVM(w http.ResponseWriter, r *http.Request) {
+	hostID := chi.URLParam(r, "hostID")
+	vmName, err := url.PathUnescape(chi.URLParam(r, "vmName"))
+	if err != nil {
+		http.Error(w, "Invalid VM name in URL", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.HostService.GracefulShutdownVM(hostID, vmName); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"message": "VM graceful shutdown initiated"})
+}
+
+// GracefulRebootVM handles the request to gracefully reboot a virtual machine.
+func (h *APIHandler) GracefulRebootVM(w http.ResponseWriter, r *http.Request) {
+	hostID := chi.URLParam(r, "hostID")
+	vmName, err := url.PathUnescape(chi.URLParam(r, "vmName"))
+	if err != nil {
+		http.Error(w, "Invalid VM name in URL", http.StatusBadRequest)
+		return
+	}
+	if err := h.HostService.GracefulRebootVM(hostID, vmName); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"message": "VM graceful reboot initiated"})
+}
+
+// ForceOffVM handles the request to forcefully stop a virtual machine.
+func (h *APIHandler) ForceOffVM(w http.ResponseWriter, r *http.Request) {
+	hostID := chi.URLParam(r, "hostID")
+	vmName, err := url.PathUnescape(chi.URLParam(r, "vmName"))
+	if err != nil {
+		http.Error(w, "Invalid VM name in URL", http.StatusBadRequest)
+		return
+	}
+	if err := h.HostService.ForceOffVM(hostID, vmName); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"message": "VM force off successful"})
+}
+
+// ForceResetVM handles the request to forcefully reset a virtual machine.
+func (h *APIHandler) ForceResetVM(w http.ResponseWriter, r *http.Request) {
+	hostID := chi.URLParam(r, "hostID")
+	vmName, err := url.PathUnescape(chi.URLParam(r, "vmName"))
+	if err != nil {
+		http.Error(w, "Invalid VM name in URL", http.StatusBadRequest)
+		return
+	}
+	if err := h.HostService.ForceResetVM(hostID, vmName); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"message": "VM force reset successful"})
 }
 
 

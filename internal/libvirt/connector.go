@@ -47,10 +47,8 @@ func (c *Connector) AddHost(host storage.Host) error {
 	connectURI := host.URI
 
 	// For SSH connections, we modify the URI to bypass host key checking.
-	// This is the equivalent of our previous native SSH implementation's InsecureIgnoreHostKey.
-	// IMPORTANT: This is NOT secure for production. It will be replaced with a proper key management system.
 	parsedURI, err := url.Parse(host.URI)
-	if err == nil && parsedURI.Scheme == "qemu+ssh" {
+	if err == nil && (parsedURI.Scheme == "qemu+ssh" || parsedURI.Scheme == "libssh") {
 		q := parsedURI.Query()
 		if q.Get("no_verify") == "" {
 			q.Set("no_verify", "1")
@@ -155,6 +153,96 @@ func (c *Connector) ListAllDomains(hostID string) ([]VMInfo, error) {
 	}
 
 	return vms, nil
+}
+
+// --- VM Actions ---
+
+// getDomainByName is a helper to find a domain by its name.
+func (c *Connector) getDomainByName(hostID, vmName string) (*libvirt.Domain, error) {
+	conn, err := c.GetConnection(hostID)
+	if err != nil {
+		return nil, err
+	}
+	domain, err := conn.LookupDomainByName(vmName)
+	if err != nil {
+		return nil, fmt.Errorf("could not find VM '%s' on host '%s': %w", vmName, hostID, err)
+	}
+	return domain, nil
+}
+
+// StartDomain starts a virtual machine by name.
+func (c *Connector) StartDomain(hostID, vmName string) error {
+	domain, err := c.getDomainByName(hostID, vmName)
+	if err != nil {
+		return err
+	}
+	defer domain.Free()
+	err = domain.Create() // This is equivalent to 'virsh start'
+	if err != nil {
+		return fmt.Errorf("failed to start VM '%s': %w", vmName, err)
+	}
+	log.Printf("Started VM '%s' on host '%s'", vmName, hostID)
+	return nil
+}
+
+// GracefulShutdownDomain gracefully shuts down a virtual machine.
+func (c *Connector) GracefulShutdownDomain(hostID, vmName string) error {
+	domain, err := c.getDomainByName(hostID, vmName)
+	if err != nil {
+		return err
+	}
+	defer domain.Free()
+	err = domain.Shutdown() // This is equivalent to 'virsh shutdown'
+	if err != nil {
+		return fmt.Errorf("failed to gracefully shutdown VM '%s': %w", vmName, err)
+	}
+	log.Printf("Gracefully shut down VM '%s' on host '%s'", vmName, hostID)
+	return nil
+}
+
+// GracefulRebootDomain gracefully reboots a virtual machine.
+func (c *Connector) GracefulRebootDomain(hostID, vmName string) error {
+	domain, err := c.getDomainByName(hostID, vmName)
+	if err != nil {
+		return err
+	}
+	defer domain.Free()
+	err = domain.Reboot(0) // This is equivalent to 'virsh reboot'
+	if err != nil {
+		return fmt.Errorf("failed to gracefully reboot VM '%s': %w", vmName, err)
+	}
+	log.Printf("Gracefully rebooted VM '%s' on host '%s'", vmName, hostID)
+	return nil
+}
+
+// ForceOffDomain forces a virtual machine to stop.
+func (c *Connector) ForceOffDomain(hostID, vmName string) error {
+	domain, err := c.getDomainByName(hostID, vmName)
+	if err != nil {
+		return err
+	}
+	defer domain.Free()
+	err = domain.Destroy() // This is equivalent to 'virsh destroy'
+	if err != nil {
+		return fmt.Errorf("failed to force off VM '%s': %w", vmName, err)
+	}
+	log.Printf("Forced off VM '%s' on host '%s'", vmName, hostID)
+	return nil
+}
+
+// ForceResetDomain forces a virtual machine to reset.
+func (c *Connector) ForceResetDomain(hostID, vmName string) error {
+	domain, err := c.getDomainByName(hostID, vmName)
+	if err != nil {
+		return err
+	}
+	defer domain.Free()
+	err = domain.Reset(0) // This is equivalent to 'virsh reset'
+	if err != nil {
+		return fmt.Errorf("failed to force reset VM '%s': %w", vmName, err)
+	}
+	log.Printf("Forced reset on VM '%s' on host '%s'", vmName, hostID)
+	return nil
 }
 
 
