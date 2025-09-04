@@ -4,7 +4,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"time"
 
 	"github.com/capsali/virtumancer/internal/api"
 	"github.com/capsali/virtumancer/internal/libvirt"
@@ -14,91 +13,62 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 )
 
-// spaFileSystem is a custom file system that serves the index.html
-// for any path that is not found. This is necessary for single-page applications.
-type spaFileSystem struct {
-	root http.FileSystem
-}
-
-func (fs spaFileSystem) Open(name string) (http.File, error) {
-	f, err := fs.root.Open(name)
-	if os.IsNotExist(err) {
-		return fs.root.Open("index.html")
-	}
-	return f, err
-}
-
 func main() {
-	log.Println("Starting VirtuMancer - The Ultimate Libvirt Web UI")
-
-	// --- Core Application Services ---
-
-	// 1. Initialize Database
-	db, err := storage.NewDB("virtumancer.db")
+	// Initialize Database
+	db, err := storage.InitDB("virtumancer.db")
 	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+		log.Fatalf("Failed to initialize database: %v", err)
 	}
-	log.Println("Database connection established.")
 
-	// 2. Initialize the Libvirt Connection Manager
+	// Initialize Libvirt Connector
 	connector := libvirt.NewConnector()
 
-	// 3. Initialize Host Service (bridges API, DB, and Libvirt)
+	// Initialize Host Service
 	hostService := services.NewHostService(db, connector)
 
-	// 4. Load and connect to all saved hosts on startup
-	if err := hostService.ConnectAllHosts(); err != nil {
-		log.Printf("WARNING: Could not connect to one or more saved hosts: %v", err)
-	}
+	// On startup, load all hosts from DB and try to connect
+	hostService.ConnectToAllHosts() // This function logs its own errors
 
-	// 5. Initialize the API Handler with dependencies
-	apiHandler := &api.APIHandler{
-		LibvirtConnector: connector,
-		HostService:      hostService,
-	}
+	// Initialize API Handler
+	apiHandler := api.NewAPIHandler(hostService)
 
-	// --- Router and Middleware Setup ---
-
+	// Setup Router
 	r := chi.NewRouter()
-	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
-	r.Use(middleware.Timeout(60 * time.Second))
 
-	// --- API Routes ---
-
+	// API routes
 	r.Route("/api/v1", func(r chi.Router) {
-		r.Get("/health", api.HealthCheck)
-
-		// Host management routes
-		r.Get("/hosts", apiHandler.ListHosts)
-		r.Post("/hosts", apiHandler.AddHost)
+		r.Get("/health", apiHandler.HealthCheck)
+		r.Get("/hosts", apiHandler.GetHosts)
+		r.Post("/hosts", apiHandler.CreateHost)
 		r.Delete("/hosts/{hostID}", apiHandler.DeleteHost)
-
-		// VM routes (scoped by host)
 		r.Get("/hosts/{hostID}/vms", apiHandler.ListVMs)
 	})
 
-	// --- Frontend File Server ---
+	// --- Static File Server ---
+	// Get the current working directory
+	workDir, _ := os.Getwd()
+	// Create a file system from the 'web/dist' directory
+	fileServer := http.FileServer(http.Dir(workDir + "/web/dist"))
 
-	webDir := "./web"
-	fs := http.FileServer(spaFileSystem{root: http.Dir(webDir)})
-	r.Handle("/*", fs)
+	// Serve static files, but handle SPA routing
+	r.HandleFunc("/*", func(w http.ResponseWriter, r *http.Request) {
+		// Check if the requested file exists
+		_, err := os.Stat(workDir + "/web/dist" + r.URL.Path)
+		// If it doesn't exist, serve index.html for SPA routing
+		if os.IsNotExist(err) {
+			http.ServeFile(w, r, workDir+"/web/dist/index.html")
+		} else {
+			// Otherwise, serve the static file
+			fileServer.ServeHTTP(w, r)
+		}
+	})
 
-	// --- Server Start ---
-
-	server := &http.Server{
-		Addr:         ":8080",
-		Handler:      r,
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 10 * time.Second,
-		IdleTimeout:  120 * time.Second,
-	}
-
-	log.Println("Server listening on http://localhost:8080")
-	if err := server.ListenAndServe(); err != nil {
-		log.Fatalf("Could not start server: %s\n", err)
+	log.Println("Starting server on :8888")
+	err = http.ListenAndServe(":8888", r)
+	if err != nil {
+		log.Fatalf("Could not start server: %v", err)
 	}
 }
 

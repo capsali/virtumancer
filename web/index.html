@@ -1,81 +1,13 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
+<html lang="">
+  <head>
     <meta charset="UTF-8">
+    <link rel="icon" href="/favicon.ico">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VirtuMancer</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap');
-        body {
-            font-family: 'Inter', sans-serif;
-        }
-    </style>
-</head>
-<body class="bg-gray-900 text-gray-200 antialiased">
-    <div id="root" class="flex flex-col min-h-screen">
-        <header class="bg-gray-900/80 backdrop-blur-sm border-b border-gray-700 shadow-lg sticky top-0 z-10">
-            <nav class="container mx-auto px-4 lg:px-6 py-4">
-                <div class="flex items-center justify-between">
-                    <div class="flex items-center space-x-3">
-                        <svg class="h-8 w-8 text-indigo-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M12 5l7 7-7 7" />
-                        </svg>
-                        <h1 class="text-2xl font-bold tracking-wider text-white">VirtuMancer</h1>
-                    </div>
-                    <div>
-                        <!-- Will be replaced by user profile and logout button -->
-                        <div class="w-8 h-8 bg-gray-700 rounded-full"></div>
-                    </div>
-                </div>
-            </nav>
-        </header>
-
-        <main class="flex-grow container mx-auto p-4 lg:p-6">
-            <div class="flex items-center justify-center h-full">
-                <div class="text-center bg-gray-800 p-12 rounded-xl shadow-2xl border border-gray-700">
-                    <h2 class="text-4xl font-extrabold text-white mb-4">Initializing System...</h2>
-                    <p class="text-indigo-300 text-lg">The VirtuMancer frontend will be initialized here.</p>
-                    <div class="mt-8">
-                        <p class="text-sm text-gray-500">API Health Status:</p>
-                        <p id="api-status" class="text-lg font-semibold text-gray-400">Checking...</p>
-                    </div>
-                </div>
-            </div>
-        </main>
-        
-        <footer class="text-center py-4 border-t border-gray-800 text-gray-500 text-sm">
-            VirtuMancer | Alpha Build 0.0.1
-        </footer>
-    </div>
-    <script>
-        // Simple health check to test the API connection
-        async function checkApiHealth() {
-            const statusEl = document.getElementById('api-status');
-            try {
-                const response = await fetch('/api/v1/health');
-                if (response.ok) {
-                    const data = await response.json();
-                    if (data.status === 'ok') {
-                        statusEl.textContent = 'Online';
-                        statusEl.classList.remove('text-gray-400');
-                        statusEl.classList.add('text-green-400');
-                    } else {
-                        throw new Error('Invalid status');
-                    }
-                } else {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-            } catch (error) {
-                console.error("API health check failed:", error);
-                statusEl.textContent = 'Offline';
-                statusEl.classList.remove('text-gray-400');
-                statusEl.classList.add('text-red-400');
-            }
-        }
-        
-        document.addEventListener('DOMContentLoaded', checkApiHealth);
-    </script>
-</body>
+    <title>Vite App</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
 </html>
-

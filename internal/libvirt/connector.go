@@ -2,49 +2,71 @@ package libvirt
 
 import (
 	"fmt"
+	"log"
+	"net/url"
 	"sync"
 
+	"github.com/capsali/virtumancer/internal/storage"
 	"libvirt.org/go/libvirt"
 )
 
 // VMInfo holds basic information about a virtual machine.
 type VMInfo struct {
-	ID        uint32 `json:"id"`
-	Name      string `json:"name"`
-	State     string `json:"state"`
-	MaxMem    uint64 `json:"maxMem"`
-	IsManaged bool   `json:"isManaged"`
+	ID         uint32              `json:"id"`
+	Name       string              `json:"name"`
+	State      libvirt.DomainState `json:"state"`
+	MaxMem     uint64              `json:"max_mem"`
+	Memory     uint64              `json:"memory"`
+	Vcpu       uint                `json:"vcpu"`
+	Persistent bool                `json:"persistent"`
+	Autostart  bool                `json:"autostart"`
 }
 
-// Connector manages a pool of connections to libvirt hosts.
+// Connector manages active connections to libvirt hosts.
 type Connector struct {
 	connections map[string]*libvirt.Connect
 	mu          sync.RWMutex
 }
 
-// NewConnector creates and initializes a new libvirt connector.
+// NewConnector creates a new libvirt connection manager.
 func NewConnector() *Connector {
 	return &Connector{
 		connections: make(map[string]*libvirt.Connect),
 	}
 }
 
-// AddHost establishes a new connection to a libvirt host and adds it to the pool.
-func (c *Connector) AddHost(hostID, uri string) error {
+// AddHost connects to a given libvirt URI and adds it to the connection pool.
+func (c *Connector) AddHost(host storage.Host) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if _, exists := c.connections[hostID]; exists {
-		return fmt.Errorf("host '%s' already connected", hostID)
+	if _, ok := c.connections[host.ID]; ok {
+		return fmt.Errorf("host '%s' is already connected", host.ID)
 	}
 
-	conn, err := libvirt.NewConnect(uri)
+	connectURI := host.URI
+
+	// For SSH connections, we modify the URI to bypass host key checking.
+	// This is the equivalent of our previous native SSH implementation's InsecureIgnoreHostKey.
+	// IMPORTANT: This is NOT secure for production. It will be replaced with a proper key management system.
+	parsedURI, err := url.Parse(host.URI)
+	if err == nil && parsedURI.Scheme == "qemu+ssh" {
+		q := parsedURI.Query()
+		if q.Get("no_verify") == "" {
+			q.Set("no_verify", "1")
+			parsedURI.RawQuery = q.Encode()
+			connectURI = parsedURI.String()
+			log.Printf("Amended URI for %s to %s for non-interactive connection", host.ID, connectURI)
+		}
+	}
+
+	conn, err := libvirt.NewConnect(connectURI)
 	if err != nil {
-		return fmt.Errorf("failed to connect to host '%s' at %s: %w", hostID, uri, err)
+		return fmt.Errorf("failed to connect to host '%s' using URI %s: %w", host.ID, connectURI, err)
 	}
 
-	c.connections[hostID] = conn
-	fmt.Printf("Successfully connected to host '%s'\n", hostID)
+	c.connections[host.ID] = conn
+	log.Printf("Successfully connected to host: %s", host.ID)
 	return nil
 }
 
@@ -53,102 +75,86 @@ func (c *Connector) RemoveHost(hostID string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	conn, exists := c.connections[hostID]
-	if !exists {
+	conn, ok := c.connections[hostID]
+	if !ok {
 		return fmt.Errorf("host '%s' not found", hostID)
 	}
 
-	if err := conn.Close(); err != nil {
-		// Log the error but don't prevent removal
-		fmt.Printf("Warning: error while closing connection to host '%s': %v\n", hostID, err)
+	if _, err := conn.Close(); err != nil {
+		return fmt.Errorf("failed to close connection to host '%s': %w", hostID, err)
 	}
 
 	delete(c.connections, hostID)
-	fmt.Printf("Disconnected from host '%s'\n", hostID)
+	log.Printf("Disconnected from host: %s", hostID)
 	return nil
 }
 
-// ListAllDomains retrieves a list of all virtual machines from a specific host.
-func (c *Connector) ListAllDomains(hostID string) ([]VMInfo, error) {
+// GetConnection returns the active connection for a given host ID.
+func (c *Connector) GetConnection(hostID string) (*libvirt.Connect, error) {
 	c.mu.RLock()
-	conn, exists := c.connections[hostID]
-	c.mu.RUnlock()
+	defer c.mu.RUnlock()
 
-	if !exists {
-		return nil, fmt.Errorf("host '%s' not connected", hostID)
+	conn, ok := c.connections[hostID]
+	if !ok {
+		return nil, fmt.Errorf("not connected to host '%s'", hostID)
+	}
+	return conn, nil
+}
+
+// ListAllDomains lists all domains (VMs) on a specific host.
+func (c *Connector) ListAllDomains(hostID string) ([]VMInfo, error) {
+	conn, err := c.GetConnection(hostID)
+	if err != nil {
+		return nil, err
 	}
 
-	// Flag includes all domains, active and inactive
 	domains, err := conn.ListAllDomains(libvirt.CONNECT_LIST_DOMAINS_ACTIVE | libvirt.CONNECT_LIST_DOMAINS_INACTIVE)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list domains on host '%s': %w", hostID, err)
+		return nil, fmt.Errorf("failed to list domains: %w", err)
 	}
 
 	var vms []VMInfo
 	for i := range domains {
-		// It's important to free the domain handle after use
 		defer domains[i].Free()
 
 		name, err := domains[i].GetName()
 		if err != nil {
-			fmt.Printf("Warning: failed to get name for a domain on host '%s': %v\n", hostID, err)
 			continue
 		}
-
+		id, err := domains[i].GetID()
+		if err != nil {
+			id = 0 // Not running
+		}
 		state, _, err := domains[i].GetState()
 		if err != nil {
-			fmt.Printf("Warning: failed to get state for domain '%s' on host '%s': %v\n", name, hostID, err)
 			continue
 		}
-
 		info, err := domains[i].GetInfo()
 		if err != nil {
-			fmt.Printf("Warning: failed to get info for domain '%s' on host '%s': %v\n", name, hostID, err)
 			continue
 		}
-
-		id := domains[i].GetID() // Returns -1 for inactive domains, which is fine as it becomes ^uint32(0)
-
-		isManaged, err := domains[i].IsManagedSave()
+		isPersistent, err := domains[i].IsPersistent()
 		if err != nil {
-			fmt.Printf("Warning: failed to check managed save state for domain '%s' on host '%s': %v\n", name, hostID, err)
+			continue
+		}
+		autostart, err := domains[i].GetAutostart()
+		if err != nil {
 			continue
 		}
 
 		vms = append(vms, VMInfo{
-			ID:        id,
-			Name:      name,
-			State:     mapDomainStateToString(state),
-			MaxMem:    info.MaxMem,
-			IsManaged: isManaged,
+			ID:         uint32(id),
+			Name:       name,
+			State:      state,
+			MaxMem:     info.MaxMem,
+			Memory:     info.Memory,
+			Vcpu:       uint(info.NrVirtCpu),
+			Persistent: isPersistent,
+			Autostart:  autostart,
 		})
 	}
 
 	return vms, nil
-}
-
-// mapDomainStateToString converts libvirt domain state enum to a human-readable string.
-func mapDomainStateToString(state libvirt.DomainState) string {
-	switch state {
-	case libvirt.DOMAIN_NOSTATE:
-		return "No State"
-	case libvirt.DOMAIN_RUNNING:
-		return "Running"
-	case libvirt.DOMAIN_BLOCKED:
-		return "Blocked"
-	case libvirt.DOMAIN_PAUSED:
-		return "Paused"
-	case libvirt.DOMAIN_SHUTDOWN:
-		return "Shutdown"
-	case libvirt.DOMAIN_SHUTOFF:
-		return "Shutoff"
-	case libvirt.DOMAIN_CRASHED:
-		return "Crashed"
-	case libvirt.DOMAIN_PMSUSPENDED:
-		return "Suspended"
-	default:
-		return "Unknown"
-	}
 }
 
 
