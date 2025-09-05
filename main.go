@@ -34,8 +34,8 @@ func main() {
 	// On startup, load all hosts from DB and try to connect
 	hostService.ConnectToAllHosts()
 
-	// Initialize API Handler, now with WebSocket hub
-	apiHandler := api.NewAPIHandler(hostService, hub)
+	// Initialize API Handler, now with WebSocket hub, DB, and Connector
+	apiHandler := api.NewAPIHandler(hostService, hub, db, connector)
 
 	// Setup Router
 	r := chi.NewRouter()
@@ -58,9 +58,12 @@ func main() {
 		r.Post("/hosts/{hostID}/vms/{vmName}/reboot", apiHandler.RebootVM)
 		r.Post("/hosts/{hostID}/vms/{vmName}/forceoff", apiHandler.ForceOffVM)
 		r.Post("/hosts/{hostID}/vms/{vmName}/forcereset", apiHandler.ForceResetVM)
+
+		// Console route
+		r.Get("/hosts/{hostID}/vms/{vmName}/console", apiHandler.HandleVMConsole)
 	})
 
-	// WebSocket route
+	// WebSocket route for UI updates
 	r.HandleFunc("/ws", apiHandler.HandleWebSocket)
 
 	// Static File Server for the Vue App
@@ -75,10 +78,16 @@ func main() {
 		}
 	})
 
-	log.Println("Starting server on :8888")
-	err = http.ListenAndServe(":8888", r)
+	certFile := "localhost.crt"
+	keyFile := "localhost.key"
+
+	log.Println("Starting HTTPS server on :8888")
+	// Use ListenAndServeTLS to serve over HTTPS
+	err = http.ListenAndServeTLS(":8888", certFile, keyFile, r)
 	if err != nil {
-		log.Fatalf("Could not start server: %v", err)
+		log.Printf("Could not start HTTPS server: %v", err)
+		log.Println("Please ensure 'localhost.crt' and 'localhost.key' are present in the root directory.")
+		log.Println("You can generate them by running the 'generate-certs.sh' script.")
 	}
 }
 

@@ -114,22 +114,33 @@ const formatMemory = (kb) => {
         </div>
         
         <div class="bg-gray-700/50 p-2 flex justify-end items-center space-x-2">
+            <!-- Show Start button if VM is off -->
             <button v-if="vm.state === 5" @click="store.startVm(store.selectedHostId, vm.name)"
                     class="px-3 py-1 text-xs font-medium text-white bg-green-600 hover:bg-green-700 rounded transition-colors w-full">Start</button>
             
-            <div v-if="vm.state === 1" class="relative w-full" :ref="(el) => { if (el) dropdownContainerRefs[vm.name] = el }">
-                <button @click.prevent.stop="toggleDropdown(vm.name)" class="w-full px-3 py-1 text-xs font-medium text-white bg-gray-600 hover:bg-gray-500 rounded transition-colors flex items-center justify-center">
-                    <span>Actions</span>
-                    <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-                </button>
-                <div v-if="openDropdown === vm.name" class="absolute top-full right-0 mt-2 w-48 bg-gray-900 border border-gray-700 rounded-md shadow-lg z-10 text-sm">
-                    <a @click.prevent="store.gracefulShutdownVm(store.selectedHostId, vm.name); openDropdown = null" class="block px-4 py-2 text-gray-300 hover:bg-orange-600 hover:text-white cursor-pointer">Graceful Shutdown</a>
-                    <a @click.prevent="store.gracefulRebootVm(store.selectedHostId, vm.name); openDropdown = null" class="block px-4 py-2 text-gray-300 hover:bg-blue-600 hover:text-white cursor-pointer">Graceful Reboot</a>
-                    <div class="border-t border-gray-700 my-1"></div>
-                    <a @click.prevent="store.forceOffVm(store.selectedHostId, vm.name); openDropdown = null" class="block px-4 py-2 text-red-400 hover:bg-red-600 hover:text-white cursor-pointer">Force Off</a>
-                    <a @click.prevent="store.forceResetVm(store.selectedHostId, vm.name); openDropdown = null" class="block px-4 py-2 text-red-400 hover:bg-red-600 hover:text-white cursor-pointer">Force Reset</a>
+            <!-- Show Console and Actions if VM is on -->
+            <template v-if="vm.state === 1">
+                <router-link 
+                    :to="{ name: 'console', params: { hostId: store.selectedHostId, vmName: vm.name } }"
+                    target="_blank"
+                    class="flex-1 px-3 py-1 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded transition-colors text-center">
+                    Console
+                </router-link>
+
+                <div class="relative flex-1" :ref="(el) => { if (el) dropdownContainerRefs[vm.name] = el }">
+                    <button @click.prevent.stop="toggleDropdown(vm.name)" class="w-full px-3 py-1 text-xs font-medium text-white bg-gray-600 hover:bg-gray-500 rounded transition-colors flex items-center justify-center">
+                        <span>Actions</span>
+                        <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                    </button>
+                    <div v-if="openDropdown === vm.name" class="absolute bottom-full right-0 mb-2 w-48 bg-gray-900 border border-gray-700 rounded-md shadow-lg z-10 text-sm">
+                        <a @click.prevent="store.gracefulShutdownVm(store.selectedHostId, vm.name); openDropdown = null" class="block px-4 py-2 text-gray-300 hover:bg-orange-600 hover:text-white cursor-pointer">Graceful Shutdown</a>
+                        <a @click.prevent="store.gracefulRebootVm(store.selectedHostId, vm.name); openDropdown = null" class="block px-4 py-2 text-gray-300 hover:bg-blue-600 hover:text-white cursor-pointer">Graceful Reboot</a>
+                        <div class="border-t border-gray-700 my-1"></div>
+                        <a @click.prevent="store.forceOffVm(store.selectedHostId, vm.name); openDropdown = null" class="block px-4 py-2 text-red-400 hover:bg-red-600 hover:text-white cursor-pointer">Force Off</a>
+                        <a @click.prevent="store.forceResetVm(store.selectedHostId, vm.name); openDropdown = null" class="block px-4 py-2 text-red-400 hover:bg-red-600 hover:text-white cursor-pointer">Force Reset</a>
+                    </div>
                 </div>
-            </div>
+            </template>
         </div>
       </div>
     </div>

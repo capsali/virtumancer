@@ -4,27 +4,39 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/capsali/virtumancer/internal/console"
+	"github.com/capsali/virtumancer/internal/libvirt"
 	"github.com/capsali/virtumancer/internal/services"
 	"github.com/capsali/virtumancer/internal/storage"
 	"github.com/capsali/virtumancer/internal/ws"
 	"github.com/go-chi/chi/v5"
+	"gorm.io/gorm"
 )
 
 type APIHandler struct {
 	HostService *services.HostService
 	Hub         *ws.Hub
+	DB          *gorm.DB
+	Connector   *libvirt.Connector
 }
 
-func NewAPIHandler(hostService *services.HostService, hub *ws.Hub) *APIHandler {
+func NewAPIHandler(hostService *services.HostService, hub *ws.Hub, db *gorm.DB, connector *libvirt.Connector) *APIHandler {
 	return &APIHandler{
 		HostService: hostService,
 		Hub:         hub,
+		DB:          db,
+		Connector:   connector,
 	}
 }
 
-// HandleWebSocket handles websocket requests from the peer.
+// HandleWebSocket handles websocket requests for UI updates from the peer.
 func (h *APIHandler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	ws.ServeWs(h.Hub, w, r)
+}
+
+// HandleVMConsole proxies the WebSocket connection to the VM's console.
+func (h *APIHandler) HandleVMConsole(w http.ResponseWriter, r *http.Request) {
+	console.HandleConsole(h.DB, h.Connector, w, r)
 }
 
 // HealthCheck confirms the server is running.

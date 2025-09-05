@@ -20,11 +20,13 @@ export const useMainStore = defineStore('main', () => {
     // --- WebSocket and Polling Logic ---
 
     const connectWebSocket = () => {
+        // Use the secure protocol 'wss' if the page is loaded via https, otherwise 'ws'.
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        // Construct the full WebSocket URL, pointing to the '/ws' endpoint for UI updates.
         const wsURL = `${protocol}//${window.location.host}/ws`;
 
         ws = new WebSocket(wsURL);
-        ws.onopen = () => console.log('WebSocket connected');
+        ws.onopen = () => console.log('WebSocket for UI updates connected');
         ws.onmessage = (event) => {
             try {
                 const message = JSON.parse(event.data);
@@ -202,5 +204,4 @@ export const useMainStore = defineStore('main', () => {
         forceResetVm,
     };
 });
-
 
