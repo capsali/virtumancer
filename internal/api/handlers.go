@@ -34,9 +34,14 @@ func (h *APIHandler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	ws.ServeWs(h.Hub, w, r)
 }
 
-// HandleVMConsole proxies the WebSocket connection to the VM's console.
+// HandleVMConsole proxies the WebSocket connection to the VM's VNC console.
 func (h *APIHandler) HandleVMConsole(w http.ResponseWriter, r *http.Request) {
 	console.HandleConsole(h.DB, h.Connector, w, r)
+}
+
+// HandleSpiceConsole proxies the WebSocket connection to the VM's SPICE console.
+func (h *APIHandler) HandleSpiceConsole(w http.ResponseWriter, r *http.Request) {
+	console.HandleSpiceConsole(h.DB, h.Connector, w, r)
 }
 
 // HealthCheck confirms the server is running.

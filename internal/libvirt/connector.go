@@ -1,9 +1,11 @@
 package libvirt
 
 import (
+	"encoding/xml"
 	"fmt"
 	"log"
 	"net/url"
+	"strings"
 	"sync"
 
 	"github.com/capsali/virtumancer/internal/storage"
@@ -20,6 +22,16 @@ type VMInfo struct {
 	Vcpu       uint                `json:"vcpu"`
 	Persistent bool                `json:"persistent"`
 	Autostart  bool                `json:"autostart"`
+	Graphics   []GraphicsInfo      `json:"graphics"` // Changed to a slice to support multiple graphics devices
+}
+
+// GraphicsInfo holds details about a VM's graphics device.
+type GraphicsInfo struct {
+	Type     string `json:"type"` // "vnc" or "spice"
+	Port     string `json:"port"`
+	TlsPort  string `json:"tlsPort"`
+	Listen   string `json:"listen"`
+	Password string `json:"password"` // For SPICE password
 }
 
 // Connector manages active connections to libvirt hosts.
@@ -111,36 +123,45 @@ func (c *Connector) ListAllDomains(hostID string) ([]VMInfo, error) {
 
 	var vms []VMInfo
 	for i := range domains {
-		defer domains[i].Free()
+		// It's important to copy the loop variable in this scope for the defer to work correctly.
+		domain := domains[i]
+		defer domain.Free()
 
-		name, err := domains[i].GetName()
+		name, err := domain.GetName()
 		if err != nil {
 			log.Printf("Warning: could not get name for a domain on host %s: %v", hostID, err)
 			continue
 		}
-		id, err := domains[i].GetID()
+		id, err := domain.GetID()
 		if err != nil {
 			id = 0 // Not running
 		}
-		state, _, err := domains[i].GetState()
+		state, _, err := domain.GetState()
 		if err != nil {
 			log.Printf("Warning: could not get state for domain %s: %v", name, err)
 			continue
 		}
-		info, err := domains[i].GetInfo()
+		info, err := domain.GetInfo()
 		if err != nil {
 			log.Printf("Warning: could not get info for domain %s: %v", name, err)
 			continue
 		}
-		isPersistent, err := domains[i].IsPersistent()
+		isPersistent, err := domain.IsPersistent()
 		if err != nil {
 			log.Printf("Warning: could not get persistence for domain %s: %v", name, err)
 			continue
 		}
-		autostart, err := domains[i].GetAutostart()
+		autostart, err := domain.GetAutostart()
 		if err != nil {
 			log.Printf("Warning: could not get autostart for domain %s: %v", name, err)
 			continue
+		}
+
+		// Get graphics info
+		graphics, err := c.getDomainGraphicsInfo(&domain)
+		if err != nil {
+			log.Printf("Warning: could not get graphics info for domain %s: %v", name, err)
+			// Continue without graphics info
 		}
 
 		vms = append(vms, VMInfo{
@@ -152,6 +173,7 @@ func (c *Connector) ListAllDomains(hostID string) ([]VMInfo, error) {
 			Vcpu:       uint(info.NrVirtCpu),
 			Persistent: isPersistent,
 			Autostart:  autostart,
+			Graphics:   graphics,
 		})
 	}
 
@@ -221,6 +243,43 @@ func (c *Connector) ResetDomain(hostID, vmName string) error {
 	}
 	defer domain.Free()
 	return domain.Reset(0) // 0 is the default flag
+}
+
+// getDomainGraphicsInfo extracts graphics information from a domain's XML.
+func (c *Connector) getDomainGraphicsInfo(domain *libvirt.Domain) ([]GraphicsInfo, error) {
+	xmlDesc, err := domain.GetXMLDesc(0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get XML for domain: %w", err)
+	}
+
+	type graphicsDef struct {
+		Type     string `xml:"type,attr"`
+		Port     string `xml:"port,attr"`
+		TlsPort  string `xml:"tlsPort,attr"`
+		Listen   string `xml:"listen,attr"`
+		Password string `xml:"passwd,attr"`
+	}
+	type domainDef struct {
+		Graphics []graphicsDef `xml:"devices>graphics"`
+	}
+
+	var def domainDef
+	if err := xml.Unmarshal([]byte(xmlDesc), &def); err != nil {
+		return nil, fmt.Errorf("failed to parse domain XML: %w", err)
+	}
+
+	var graphicsList []GraphicsInfo
+	for _, g := range def.Graphics {
+		graphicsList = append(graphicsList, GraphicsInfo{
+			Type:     strings.ToLower(g.Type),
+			Port:     g.Port,
+			TlsPort:  g.TlsPort,
+			Listen:   g.Listen,
+			Password: g.Password,
+		})
+	}
+
+	return graphicsList, nil
 }
 
 

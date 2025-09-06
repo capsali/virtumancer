@@ -12,13 +12,18 @@ const router = createRouter({
     {
       path: '/hosts/:hostId/vms/:vmName/console',
       name: 'console',
-      // Route level code-splitting
-      // this generates a separate chunk (ConsoleView.[hash].js) for this route
-      // which is lazy-loaded when the route is visited.
+      // Route level code-splitting for VNC console
       component: () => import('../views/ConsoleView.vue')
+    },
+    {
+      path: '/hosts/:hostId/vms/:vmName/spice',
+      name: 'spice',
+      // Route level code-splitting for SPICE console
+      component: () => import('../views/SpiceView.vue')
     }
   ]
 })
 
 export default router
+
 

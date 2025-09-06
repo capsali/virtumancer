@@ -59,8 +59,9 @@ func main() {
 		r.Post("/hosts/{hostID}/vms/{vmName}/forceoff", apiHandler.ForceOffVM)
 		r.Post("/hosts/{hostID}/vms/{vmName}/forcereset", apiHandler.ForceResetVM)
 
-		// Console route
+		// Console routes
 		r.Get("/hosts/{hostID}/vms/{vmName}/console", apiHandler.HandleVMConsole)
+		r.Get("/hosts/{hostID}/vms/{vmName}/spice", apiHandler.HandleSpiceConsole)
 	})
 
 	// WebSocket route for UI updates
@@ -68,6 +69,11 @@ func main() {
 
 	// Static File Server for the Vue App
 	workDir, _ := os.Getwd()
+
+	// Serve SPICE assets from the new location
+	spiceDir := http.Dir(workDir + "/web/public/spice")
+	r.Handle("/spice/*", http.StripPrefix("/spice/", http.FileServer(spiceDir)))
+
 	fileServer := http.FileServer(http.Dir(workDir + "/web/dist"))
 	r.HandleFunc("/*", func(w http.ResponseWriter, r *http.Request) {
 		_, err := os.Stat(workDir + "/web/dist" + r.URL.Path)

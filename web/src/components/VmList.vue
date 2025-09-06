@@ -1,11 +1,17 @@
-<!-- VIRTUMANCER: Force Reload v1.2 -->
+<!-- VIRTUMANCER: Force Reload v1.3 -->
 <script setup>
 import { useMainStore } from '@/stores/mainStore';
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, onMounted, onUnmounted, computed } from 'vue';
 
 const store = useMainStore();
 const openDropdown = ref(null); // Tracks which VM's dropdown is open
 const dropdownContainerRefs = ref({}); // Holds refs to the dropdown containers
+
+// Computed property to find VNC graphics info
+const findGraphics = (vm, type) => {
+  if (!vm.graphics) return null;
+  return vm.graphics.find(g => g.type === type);
+};
 
 const toggleDropdown = (vmName) => {
   if (openDropdown.value === vmName) {
@@ -16,12 +22,8 @@ const toggleDropdown = (vmName) => {
 };
 
 const handleClickOutside = (event) => {
-  // If no dropdown is open, do nothing
   if (!openDropdown.value) return;
-
   const container = dropdownContainerRefs.value[openDropdown.value];
-  
-  // If the click is outside the open dropdown's container, close it
   if (container && !container.contains(event.target)) {
     openDropdown.value = null;
   }
@@ -121,10 +123,18 @@ const formatMemory = (kb) => {
             <!-- Show Console and Actions if VM is on -->
             <template v-if="vm.state === 1">
                 <router-link 
+                    v-if="findGraphics(vm, 'vnc')"
                     :to="{ name: 'console', params: { hostId: store.selectedHostId, vmName: vm.name } }"
                     target="_blank"
                     class="flex-1 px-3 py-1 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded transition-colors text-center">
-                    Console
+                    VNC Console
+                </router-link>
+                 <router-link 
+                    v-if="findGraphics(vm, 'spice')"
+                    :to="{ name: 'spice', params: { hostId: store.selectedHostId, vmName: vm.name } }"
+                    target="_blank"
+                    class="flex-1 px-3 py-1 text-xs font-medium text-white bg-purple-600 hover:bg-purple-700 rounded transition-colors text-center">
+                    SPICE Console
                 </router-link>
 
                 <div class="relative flex-1" :ref="(el) => { if (el) dropdownContainerRefs[vm.name] = el }">
