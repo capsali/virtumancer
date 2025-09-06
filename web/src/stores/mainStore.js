@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { ref, watch } from 'vue';
+import { ref, computed } from 'vue';
 
 export const useMainStore = defineStore('main', () => {
     // State
@@ -13,6 +13,10 @@ export const useMainStore = defineStore('main', () => {
         vmAction: null,
     });
     
+    const totalVms = computed(() => {
+      return hosts.value.reduce((total, host) => total + (host.vms ? host.vms.length : 0), 0);
+    });
+
     let ws = null;
 
     // --- WebSocket and Polling Logic ---
@@ -165,6 +169,7 @@ export const useMainStore = defineStore('main', () => {
         selectedHostId,
         errorMessage,
         isLoading,
+        totalVms,
         initializeRealtime,
         fetchHosts,
         addHost,
@@ -177,5 +182,4 @@ export const useMainStore = defineStore('main', () => {
         forceResetVm,
     };
 });
-
 

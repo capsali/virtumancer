@@ -43,7 +43,6 @@ function selectVm(vm) {
 function toggleHost(hostId) {
     expandedHosts.value[hostId] = !expandedHosts.value[hostId];
 }
-
 </script>
 
 <template>
@@ -106,6 +105,21 @@ function toggleHost(hostId) {
         </li>
       </ul>
     </nav>
+    <div class="flex-shrink-0 p-4 border-t border-gray-800">
+        <div v-show="uiStore.isSidebarOpen">
+            <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Status</h3>
+            <div class="mt-2 text-sm text-gray-300">
+                <span>{{ mainStore.hosts.length }} Host(s)</span>
+                <span class="mx-2">|</span>
+                <span>{{ mainStore.totalVms }} VM(s)</span>
+            </div>
+        </div>
+        <div v-show="!uiStore.isSidebarOpen" class="text-center">
+             <div class="text-xl font-bold">{{ mainStore.hosts.length }}</div>
+             <div class="text-xs text-gray-400">Hosts</div>
+        </div>
+    </div>
   </aside>
 </template>
+
 

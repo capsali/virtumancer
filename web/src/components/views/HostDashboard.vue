@@ -1,4 +1,3 @@
-<!-- ... existing code ... -->
 <script setup>
 import { useMainStore } from '@/stores/mainStore';
 import { computed } from 'vue';
@@ -57,7 +56,7 @@ const formatMemory = (kb) => {
     </div>
     
     <div class="bg-gray-900 rounded-lg">
-      <h2 class="text-xl font-semibold mb-4 text-white">Virtual Machines</h2>
+      <h2 class="text-xl font-semibold text-white p-4">Virtual Machines</h2>
       
       <div v-if="mainStore.isLoading.vms && vms.length === 0" class="flex items-center justify-center h-48 text-gray-400">
         <svg class="animate-spin mr-3 h-8 w-8 text-indigo-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -67,37 +66,41 @@ const formatMemory = (kb) => {
         <span>Loading VMs...</span>
       </div>
 
-      <div v-else-if="vms.length === 0" class="flex items-center justify-center h-48 text-gray-500 bg-gray-800/50 rounded-lg">
+      <div v-else-if="vms.length === 0" class="flex items-center justify-center h-48 text-gray-500 bg-gray-800/50 rounded-lg m-4">
         <p>No Virtual Machines found on this host.</p>
       </div>
 
-      <div v-else class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-        <div v-for="vm in vms" :key="vm.name" 
-            @click="selectVm(vm.name)"
-            class="bg-gray-800 rounded-lg flex flex-col justify-between shadow-md hover:shadow-indigo-500/20 hover:ring-1 hover:ring-indigo-500 transition-all duration-200 cursor-pointer">
-          
-          <div class="p-4">
-            <div class="flex items-center justify-between">
-              <h3 class="font-bold text-lg truncate text-white" :title="vm.name">{{ vm.name }}</h3>
-              <span 
-                class="text-xs font-semibold px-3 py-1 rounded-full"
-                :class="stateColor(vm.state)"
-              >
-                {{ stateText(vm.state) }}
-              </span>
-            </div>
-          </div>
-          <div class="p-4 border-t border-gray-700/50 text-sm text-gray-300 grid grid-cols-2 gap-4">
-              <div class="flex items-center">
-                  <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M12 6V4m0 16v-2M8 12a4 4 0 118 0 4 4 0 01-8 0z" /></svg>
-                  <span class="font-semibold">{{ vm.vcpu }} vCPU</span>
-              </div>
-              <div class="flex items-center">
-                  <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v4m0 0h-4m4 0l-5-5" /></svg>
-                  <span class="font-semibold">{{ formatMemory(vm.max_mem) }}</span>
-              </div>
-          </div>
-        </div>
+      <div v-else class="overflow-x-auto">
+        <table class="min-w-full divide-y divide-gray-700">
+          <thead class="bg-gray-800">
+            <tr>
+              <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Name</th>
+              <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">State</th>
+              <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">vCPUs</th>
+              <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Memory</th>
+            </tr>
+          </thead>
+          <tbody class="bg-gray-900 divide-y divide-gray-800">
+            <tr v-for="vm in vms" :key="vm.name" @click="selectVm(vm.name)" class="hover:bg-gray-800 cursor-pointer transition-colors duration-150">
+              <td class="px-6 py-4 whitespace-nowrap">
+                <div class="flex items-center">
+                  <div class="h-2.5 w-2.5 rounded-full mr-3 flex-shrink-0" :class="{
+                    'bg-green-500': vm.state === 1, 'bg-red-500': vm.state === 5,
+                    'bg-yellow-500': vm.state === 3, 'bg-gray-500': ![1,3,5].includes(vm.state)
+                  }"></div>
+                  <div class="text-sm font-medium text-white">{{ vm.name }}</div>
+                </div>
+              </td>
+              <td class="px-6 py-4 whitespace-nowrap">
+                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full" :class="stateColor(vm.state)">
+                  {{ stateText(vm.state) }}
+                </span>
+              </td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ vm.vcpu }}</td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ formatMemory(vm.max_mem) }}</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
   </div>
