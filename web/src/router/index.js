@@ -1,26 +1,36 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import HomeView from '../views/HomeView.vue'
+import HostDashboard from '@/components/views/HostDashboard.vue'
+import VmView from '@/components/views/VmView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
     {
       path: '/',
-      name: 'home',
-      component: HomeView
+      component: HomeView,
+      children: [
+        {
+          path: '',
+          name: 'home',
+          component: HostDashboard, // Default view
+        },
+        {
+          path: 'hosts/:hostId',
+          name: 'host-dashboard',
+          component: HostDashboard,
+          props: true,
+        },
+        {
+          path: 'vms/:vmName',
+          name: 'vm-view',
+          component: VmView,
+          props: true,
+        },
+      ],
     },
-    {
-      path: '/hosts/:hostId/vms/:vmName/console',
-      name: 'console',
-      // Route level code-splitting for VNC console
-      component: () => import('../views/ConsoleView.vue')
-    },
-    {
-      path: '/hosts/:hostId/vms/:vmName/spice',
-      name: 'spice',
-      // Route level code-splitting for SPICE console
-      component: () => import('../views/SpiceView.vue')
-    }
+    // The old full-page console routes are no longer needed.
+    // They are replaced by the embedded console components in VmView.
   ]
 })
 

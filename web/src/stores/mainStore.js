@@ -1,28 +1,24 @@
 import { defineStore } from 'pinia';
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 
 export const useMainStore = defineStore('main', () => {
     // State
     const hosts = ref([]);
-    const vms = ref([]);
     const selectedHostId = ref(null);
     const errorMessage = ref('');
     const isLoading = ref({
         hosts: false,
         vms: false,
         addHost: false,
-        vmAction: null, // will be string like 'vm-name:action'
+        vmAction: null,
     });
     
     let ws = null;
-    let pollInterval = null;
 
     // --- WebSocket and Polling Logic ---
 
     const connectWebSocket = () => {
-        // Use the secure protocol 'wss' if the page is loaded via https, otherwise 'ws'.
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        // Construct the full WebSocket URL, pointing to the '/ws' endpoint for UI updates.
         const wsURL = `${protocol}//${window.location.host}/ws`;
 
         ws = new WebSocket(wsURL);
@@ -32,10 +28,7 @@ export const useMainStore = defineStore('main', () => {
                 const message = JSON.parse(event.data);
                 if (message.type === 'refresh') {
                     console.log('WebSocket received refresh message');
-                    if (selectedHostId.value) {
-                       fetchVmsForSelectedHost();
-                    }
-                    fetchHosts(); // Also refresh hosts list
+                    fetchHosts();
                 }
             } catch (e) {
                 console.error("Failed to parse websocket message", e);
@@ -50,28 +43,10 @@ export const useMainStore = defineStore('main', () => {
             ws.close();
         };
     };
-
-    const startPolling = () => {
-        stopPolling();
-        pollInterval = setInterval(() => {
-            if (selectedHostId.value) {
-                fetchVmsForSelectedHost();
-            }
-        }, 10000);
-    };
-
-    const stopPolling = () => {
-        if (pollInterval) {
-            clearInterval(pollInterval);
-            pollInterval = null;
-        }
-    };
-
+    
     const initializeRealtime = () => {
         connectWebSocket();
-        startPolling();
     };
-
 
     // --- Host Actions ---
 
@@ -82,7 +57,14 @@ export const useMainStore = defineStore('main', () => {
             const response = await fetch('/api/v1/hosts');
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             const data = await response.json();
-            hosts.value = data || [];
+            
+            const hostPromises = (data || []).map(async host => {
+                host.vms = await fetchVmsForHost(host.id);
+                return host;
+            });
+
+            hosts.value = await Promise.all(hostPromises);
+
         } catch (error) {
             console.error("Error fetching hosts:", error);
             errorMessage.value = "Failed to fetch hosts.";
@@ -91,7 +73,6 @@ export const useMainStore = defineStore('main', () => {
         }
     };
 
-    // CORRECTED: This function now accepts a single host object and stringifies it directly.
     const addHost = async (hostData) => {
         isLoading.value.addHost = true;
         errorMessage.value = '';
@@ -99,7 +80,7 @@ export const useMainStore = defineStore('main', () => {
             const response = await fetch('/api/v1/hosts', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(hostData), // The fix is here
+                body: JSON.stringify(hostData),
             });
             if (!response.ok) {
                 const errorText = await response.text();
@@ -124,7 +105,6 @@ export const useMainStore = defineStore('main', () => {
             }
             if (selectedHostId.value === hostId) {
                 selectedHostId.value = null;
-                vms.value = [];
             }
             await fetchHosts();
         } catch (error) {
@@ -134,30 +114,24 @@ export const useMainStore = defineStore('main', () => {
     };
 
     const selectHost = (hostId) => {
-        if (selectedHostId.value === hostId) {
-            selectedHostId.value = null;
-            vms.value = [];
-        } else {
+        if (selectedHostId.value !== hostId) {
             selectedHostId.value = hostId;
-            fetchVmsForSelectedHost();
         }
     };
 
-
     // --- VM Actions ---
 
-    const fetchVmsForSelectedHost = async () => {
-        if (!selectedHostId.value) return;
+    const fetchVmsForHost = async (hostId) => {
+        if (!hostId) return [];
         isLoading.value.vms = true;
-        // Don't clear error message here to avoid flicker
         try {
-            const response = await fetch(`/api/v1/hosts/${selectedHostId.value}/vms`);
+            const response = await fetch(`/api/v1/hosts/${hostId}/vms`);
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-            vms.value = await response.json() || [];
+            return await response.json() || [];
         } catch (error) {
-            errorMessage.value = `Failed to fetch VMs for ${selectedHostId.value}.`;
+            errorMessage.value = `Failed to fetch VMs for ${hostId}.`;
             console.error(error);
-            vms.value = [];
+            return [];
         } finally {
             isLoading.value.vms = false;
         }
@@ -188,7 +162,6 @@ export const useMainStore = defineStore('main', () => {
 
     return {
         hosts,
-        vms,
         selectedHostId,
         errorMessage,
         isLoading,
@@ -204,4 +177,5 @@ export const useMainStore = defineStore('main', () => {
         forceResetVm,
     };
 });
+
 

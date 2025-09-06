@@ -12,6 +12,12 @@ import (
 	"libvirt.org/go/libvirt"
 )
 
+// GraphicsInfo holds details about available graphics consoles.
+type GraphicsInfo struct {
+	VNC   bool `json:"vnc"`
+	SPICE bool `json:"spice"`
+}
+
 // VMInfo holds basic information about a virtual machine.
 type VMInfo struct {
 	ID         uint32              `json:"id"`
@@ -22,16 +28,7 @@ type VMInfo struct {
 	Vcpu       uint                `json:"vcpu"`
 	Persistent bool                `json:"persistent"`
 	Autostart  bool                `json:"autostart"`
-	Graphics   []GraphicsInfo      `json:"graphics"` // Changed to a slice to support multiple graphics devices
-}
-
-// GraphicsInfo holds details about a VM's graphics device.
-type GraphicsInfo struct {
-	Type     string `json:"type"` // "vnc" or "spice"
-	Port     string `json:"port"`
-	TlsPort  string `json:"tlsPort"`
-	Listen   string `json:"listen"`
-	Password string `json:"password"` // For SPICE password
+	Graphics   GraphicsInfo        `json:"graphics"`
 }
 
 // Connector manages active connections to libvirt hosts.
@@ -109,6 +106,38 @@ func (c *Connector) GetConnection(hostID string) (*libvirt.Connect, error) {
 	return conn, nil
 }
 
+// parseGraphicsFromXML extracts VNC and SPICE availability from a domain's XML definition.
+func parseGraphicsFromXML(xmlDesc string) (GraphicsInfo, error) {
+	type GraphicsXML struct {
+		Type string `xml:"type,attr"`
+		Port string `xml:"port,attr"`
+	}
+	type DomainDef struct {
+		Graphics []GraphicsXML `xml:"devices>graphics"`
+	}
+
+	var def DomainDef
+	var graphics GraphicsInfo
+
+	if err := xml.Unmarshal([]byte(xmlDesc), &def); err != nil {
+		return graphics, fmt.Errorf("failed to parse domain XML: %w", err)
+	}
+
+	for _, g := range def.Graphics {
+		// A valid port will be > 0 or -1 (for auto-port)
+		if g.Port != "" && g.Port != "0" {
+			switch strings.ToLower(g.Type) {
+			case "vnc":
+				graphics.VNC = true
+			case "spice":
+				graphics.SPICE = true
+			}
+		}
+	}
+
+	return graphics, nil
+}
+
 // ListAllDomains lists all domains (VMs) on a specific host.
 func (c *Connector) ListAllDomains(hostID string) ([]VMInfo, error) {
 	conn, err := c.GetConnection(hostID)
@@ -123,8 +152,7 @@ func (c *Connector) ListAllDomains(hostID string) ([]VMInfo, error) {
 
 	var vms []VMInfo
 	for i := range domains {
-		// It's important to copy the loop variable in this scope for the defer to work correctly.
-		domain := domains[i]
+		domain := &domains[i]
 		defer domain.Free()
 
 		name, err := domain.GetName()
@@ -157,11 +185,16 @@ func (c *Connector) ListAllDomains(hostID string) ([]VMInfo, error) {
 			continue
 		}
 
-		// Get graphics info
-		graphics, err := c.getDomainGraphicsInfo(&domain)
+		// Get the VM's XML definition to find graphics details
+		xmlDesc, err := domain.GetXMLDesc(0)
 		if err != nil {
-			log.Printf("Warning: could not get graphics info for domain %s: %v", name, err)
-			// Continue without graphics info
+			log.Printf("Warning: failed to get XML for %s: %v", name, err)
+		}
+
+		// Parse graphics info from XML
+		graphics, err := parseGraphicsFromXML(xmlDesc)
+		if err != nil {
+			log.Printf("Warning: failed to parse graphics info for %s: %v", name, err)
 		}
 
 		vms = append(vms, VMInfo{
@@ -243,43 +276,6 @@ func (c *Connector) ResetDomain(hostID, vmName string) error {
 	}
 	defer domain.Free()
 	return domain.Reset(0) // 0 is the default flag
-}
-
-// getDomainGraphicsInfo extracts graphics information from a domain's XML.
-func (c *Connector) getDomainGraphicsInfo(domain *libvirt.Domain) ([]GraphicsInfo, error) {
-	xmlDesc, err := domain.GetXMLDesc(0)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get XML for domain: %w", err)
-	}
-
-	type graphicsDef struct {
-		Type     string `xml:"type,attr"`
-		Port     string `xml:"port,attr"`
-		TlsPort  string `xml:"tlsPort,attr"`
-		Listen   string `xml:"listen,attr"`
-		Password string `xml:"passwd,attr"`
-	}
-	type domainDef struct {
-		Graphics []graphicsDef `xml:"devices>graphics"`
-	}
-
-	var def domainDef
-	if err := xml.Unmarshal([]byte(xmlDesc), &def); err != nil {
-		return nil, fmt.Errorf("failed to parse domain XML: %w", err)
-	}
-
-	var graphicsList []GraphicsInfo
-	for _, g := range def.Graphics {
-		graphicsList = append(graphicsList, GraphicsInfo{
-			Type:     strings.ToLower(g.Type),
-			Port:     g.Port,
-			TlsPort:  g.TlsPort,
-			Listen:   g.Listen,
-			Password: g.Password,
-		})
-	}
-
-	return graphicsList, nil
 }
 
 
