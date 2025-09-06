@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import HomeView from '../views/HomeView.vue'
 import HostDashboard from '@/components/views/HostDashboard.vue'
 import VmView from '@/components/views/VmView.vue'
+import Datacenter from '@/components/views/Datacenter.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -12,8 +13,8 @@ const router = createRouter({
       children: [
         {
           path: '',
-          name: 'home',
-          component: HostDashboard, // Default view
+          name: 'datacenter',
+          component: Datacenter, // Default view is now the datacenter
         },
         {
           path: 'hosts/:hostId',
@@ -29,11 +30,8 @@ const router = createRouter({
         },
       ],
     },
-    // The old full-page console routes are no longer needed.
-    // They are replaced by the embedded console components in VmView.
   ]
 })
 
 export default router
-
 
