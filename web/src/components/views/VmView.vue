@@ -148,4 +148,3 @@ watch(() => route.params.vmName, () => {
   </div>
 </template>
 
-
