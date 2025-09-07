@@ -17,6 +17,33 @@ const vms = computed(() => {
     return selectedHost.value?.vms || [];
 });
 
+const totalMemory = computed(() => {
+    return selectedHost.value?.info?.memory * 1024 || 0;
+});
+
+const usedMemory = computed(() => {
+    return vms.value.reduce((total, vm) => total + (vm.state === 1 ? vm.memory * 1024 : 0), 0);
+});
+
+const memoryUsagePercent = computed(() => {
+    if (!totalMemory.value) return 0;
+    return (usedMemory.value / totalMemory.value) * 100;
+});
+
+const totalCpu = computed(() => {
+    return selectedHost.value?.info?.cpu || 0;
+});
+
+const usedCpu = computed(() => {
+    return vms.value.reduce((total, vm) => total + (vm.state === 1 ? vm.vcpu : 0), 0);
+});
+
+const cpuUsagePercent = computed(() => {
+    if (!totalCpu.value) return 0;
+    return (usedCpu.value / totalCpu.value) * 100;
+});
+
+
 const selectVm = (vmName) => {
     router.push({ name: 'vm-view', params: { vmName } });
 }
@@ -45,16 +72,60 @@ const formatMemory = (kb) => {
     if (mb < 1024) return `${mb.toFixed(0)} MB`;
     const gb = mb / 1024;
     return `${gb.toFixed(2)} GB`;
-}
+};
+
+const formatBytes = (bytes, decimals = 2) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const dm = decimals < 0 ? 0 : decimals;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+};
+
 </script>
 
 <template>
   <div v-if="selectedHost">
+    <!-- Header -->
     <div class="mb-6">
       <h1 class="text-3xl font-bold text-white">Host: {{ selectedHost.id }}</h1>
       <p class="text-gray-400 font-mono mt-1">{{ selectedHost.uri }}</p>
     </div>
     
+    <!-- Summary Section -->
+    <div class="mb-6">
+        <h2 class="text-xl font-semibold text-white mb-4">Summary</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <!-- CPU Usage -->
+            <div class="bg-gray-800 p-4 rounded-lg">
+                <h3 class="text-sm font-medium text-gray-400">CPU Usage</h3>
+                <p class="text-2xl font-semibold text-white mt-1">{{ usedCpu }} / {{ totalCpu }} Cores</p>
+                <div class="w-full bg-gray-700 rounded-full h-2.5 mt-2">
+                    <div class="bg-indigo-500 h-2.5 rounded-full" :style="{ width: cpuUsagePercent + '%' }"></div>
+                </div>
+            </div>
+            <!-- Memory Usage -->
+            <div class="bg-gray-800 p-4 rounded-lg">
+                <h3 class="text-sm font-medium text-gray-400">Memory Usage</h3>
+                <p class="text-2xl font-semibold text-white mt-1">{{ formatBytes(usedMemory) }} / {{ formatBytes(totalMemory) }}</p>
+                <div class="w-full bg-gray-700 rounded-full h-2.5 mt-2">
+                    <div class="bg-teal-500 h-2.5 rounded-full" :style="{ width: memoryUsagePercent + '%' }"></div>
+                </div>
+            </div>
+            <!-- Other Host Info -->
+             <div class="bg-gray-800 p-4 rounded-lg">
+                <h3 class="text-sm font-medium text-gray-400">Hostname</h3>
+                <p class="text-2xl font-semibold text-white mt-1 truncate">{{ selectedHost.info?.hostname || 'Loading...' }}</p>
+            </div>
+             <div class="bg-gray-800 p-4 rounded-lg">
+                <h3 class="text-sm font-medium text-gray-400">Cores / Threads</h3>
+                <p class="text-2xl font-semibold text-white mt-1">{{ selectedHost.info?.cores || 'N/A' }} / {{ selectedHost.info?.threads || 'N/A' }}</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- VM List Section -->
     <div class="bg-gray-900 rounded-lg">
       <h2 class="text-xl font-semibold text-white p-4">Virtual Machines</h2>
       
