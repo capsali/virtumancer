@@ -53,14 +53,15 @@ func main() {
 		r.Delete("/hosts/{hostID}", apiHandler.DeleteHost)
 
 		// VM routes
-		r.Get("/hosts/{hostID}/vms", apiHandler.ListVMs)
+		r.Get("/hosts/{hostID}/vms", apiHandler.ListVMsFromLibvirt)
+		r.Get("/hosts/{hostID}/vms/db", apiHandler.ListVMsFromDB) // New DB route
 		r.Post("/hosts/{hostID}/vms/{vmName}/start", apiHandler.StartVM)
 		r.Post("/hosts/{hostID}/vms/{vmName}/shutdown", apiHandler.ShutdownVM)
 		r.Post("/hosts/{hostID}/vms/{vmName}/reboot", apiHandler.RebootVM)
 		r.Post("/hosts/{hostID}/vms/{vmName}/forceoff", apiHandler.ForceOffVM)
 		r.Post("/hosts/{hostID}/vms/{vmName}/forcereset", apiHandler.ForceResetVM)
 		r.Get("/hosts/{hostID}/vms/{vmName}/stats", apiHandler.GetVMStats)
-		r.Get("/hosts/{hostID}/vms/{vmName}/hardware", apiHandler.GetVMHardware) // New hardware route
+		r.Get("/hosts/{hostID}/vms/{vmName}/hardware", apiHandler.GetVMHardware)
 
 		// Console routes
 		r.Get("/hosts/{hostID}/vms/{vmName}/console", apiHandler.HandleVMConsole)

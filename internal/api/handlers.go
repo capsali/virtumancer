@@ -93,9 +93,22 @@ func (h *APIHandler) DeleteHost(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *APIHandler) ListVMs(w http.ResponseWriter, r *http.Request) {
+// ListVMsFromLibvirt gets the real-time list of VMs from libvirt.
+func (h *APIHandler) ListVMsFromLibvirt(w http.ResponseWriter, r *http.Request) {
 	hostID := chi.URLParam(r, "hostID")
-	vms, err := h.HostService.ListVMs(hostID)
+	vms, err := h.HostService.ListVMsFromLibvirt(hostID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(vms)
+}
+
+// ListVMsFromDB gets the list of VMs from the local database.
+func (h *APIHandler) ListVMsFromDB(w http.ResponseWriter, r *http.Request) {
+	hostID := chi.URLParam(r, "hostID")
+	vms, err := h.HostService.ListVMsFromDB(hostID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -116,7 +129,6 @@ func (h *APIHandler) GetVMStats(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(stats)
 }
 
-// GetVMHardware returns the hardware configuration for a specific VM.
 func (h *APIHandler) GetVMHardware(w http.ResponseWriter, r *http.Request) {
 	hostID := chi.URLParam(r, "hostID")
 	vmName := chi.URLParam(r, "vmName")

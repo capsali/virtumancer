@@ -67,7 +67,22 @@ export const useMainStore = defineStore('main', () => {
             const data = await response.json();
             
             const hostPromises = (data || []).map(async host => {
-                host.vms = await fetchVmsForHost(host.id);
+                // Fetch both live data and DB data, then merge them
+                const liveVms = await fetchVmsFromLibvirt(host.id);
+                const dbVms = await fetchVmsFromDb(host.id);
+
+                // Create a map of live VMs by name for efficient lookup
+                const liveVmMap = new Map(liveVms.map(vm => [vm.name, vm]));
+
+                // Merge live data into the DB data
+                host.vms = dbVms.map(dbVm => {
+                    const liveData = liveVmMap.get(dbVm.name);
+                    return {
+                        ...dbVm, // Local DB config
+                        ...(liveData || {}), // Live status from libvirt
+                    };
+                });
+
                 host.info = await fetchHostInfo(host.id);
                 return host;
             });
@@ -142,19 +157,27 @@ export const useMainStore = defineStore('main', () => {
 
     // --- VM Actions ---
 
-    const fetchVmsForHost = async (hostId) => {
+    const fetchVmsFromLibvirt = async (hostId) => {
         if (!hostId) return [];
-        isLoading.value.vms = true;
         try {
             const response = await fetch(`/api/v1/hosts/${hostId}/vms`);
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             return await response.json() || [];
         } catch (error) {
-            errorMessage.value = `Failed to fetch VMs for ${hostId}.`;
-            console.error(error);
+            console.error(`Failed to fetch live VMs for ${hostId}:`, error);
             return [];
-        } finally {
-            isLoading.value.vms = false;
+        }
+    };
+
+    const fetchVmsFromDb = async (hostId) => {
+         if (!hostId) return [];
+        try {
+            const response = await fetch(`/api/v1/hosts/${hostId}/vms/db`);
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            return await response.json() || [];
+        } catch (error) {
+             console.error(`Failed to fetch DB VMs for ${hostId}:`, error);
+            return [];
         }
     };
 
