@@ -20,15 +20,26 @@ type GraphicsInfo struct {
 
 // VMInfo holds basic information about a virtual machine.
 type VMInfo struct {
-	ID         uint32              `json:"id"`
-	Name       string              `json:"name"`
-	State      libvirt.DomainState `json:"state"`
-	MaxMem     uint64              `json:"max_mem"`
-	Memory     uint64              `json:"memory"`
-	Vcpu       uint                `json:"vcpu"`
-	Persistent bool                `json:"persistent"`
-	Autostart  bool                `json:"autostart"`
-	Graphics   GraphicsInfo        `json:"graphics"`
+	ID         uint32                 `json:"id"`
+	Name       string                 `json:"name"`
+	State      libvirt.DomainState    `json:"state"`
+	MaxMem     uint64                 `json:"max_mem"`
+	Memory     uint64                 `json:"memory"`
+	Vcpu       uint                   `json:"vcpu"`
+	CpuTime    uint64                 `json:"cpu_time"`
+	Uptime     int64                  `json:"uptime"`
+	Persistent bool                   `json:"persistent"`
+	Autostart  bool                   `json:"autostart"`
+	Graphics   GraphicsInfo           `json:"graphics"`
+}
+
+// HostInfo holds basic information and statistics about a hypervisor host.
+type HostInfo struct {
+	Hostname string `json:"hostname"`
+	CPU      uint   `json:"cpu"`
+	Memory   uint64 `json:"memory"`
+	Cores    uint   `json:"cores"`
+	Threads  uint   `json:"threads"`
 }
 
 // Connector manages active connections to libvirt hosts.
@@ -106,6 +117,32 @@ func (c *Connector) GetConnection(hostID string) (*libvirt.Connect, error) {
 	return conn, nil
 }
 
+// GetHostInfo retrieves statistics about the host itself.
+func (c *Connector) GetHostInfo(hostID string) (*HostInfo, error) {
+	conn, err := c.GetConnection(hostID)
+	if err != nil {
+		return nil, err
+	}
+
+	nodeInfo, err := conn.GetNodeInfo()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get node info for host %s: %w", hostID, err)
+	}
+
+	hostname, err := conn.GetHostname()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get hostname for host %s: %w", hostID, err)
+	}
+
+	return &HostInfo{
+		Hostname: hostname,
+		CPU:      nodeInfo.Cpus,
+		Memory:   nodeInfo.Memory,
+		Cores:    uint(nodeInfo.Cores),
+		Threads:  uint(nodeInfo.Threads),
+	}, nil
+}
+
 // parseGraphicsFromXML extracts VNC and SPICE availability from a domain's XML definition.
 func parseGraphicsFromXML(xmlDesc string) (GraphicsInfo, error) {
 	type GraphicsXML struct {
@@ -174,6 +211,16 @@ func (c *Connector) ListAllDomains(hostID string) ([]VMInfo, error) {
 			log.Printf("Warning: could not get info for domain %s: %v", name, err)
 			continue
 		}
+
+		var uptime int64 = -1
+		if state == libvirt.DOMAIN_RUNNING {
+			// libvirt.org/go/libvirt returns seconds directly as int64
+			timeVal, _, err := domain.GetTime(0)
+			if err == nil {
+				uptime = timeVal
+			}
+		}
+
 		isPersistent, err := domain.IsPersistent()
 		if err != nil {
 			log.Printf("Warning: could not get persistence for domain %s: %v", name, err)
@@ -204,6 +251,8 @@ func (c *Connector) ListAllDomains(hostID string) ([]VMInfo, error) {
 			MaxMem:     info.MaxMem,
 			Memory:     info.Memory,
 			Vcpu:       uint(info.NrVirtCpu),
+			CpuTime:    info.CpuTime,
+			Uptime:     uptime,
 			Persistent: isPersistent,
 			Autostart:  autostart,
 			Graphics:   graphics,

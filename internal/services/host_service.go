@@ -46,6 +46,7 @@ func (s *HostService) AddHost(host storage.Host) (*storage.Host, error) {
 
 	err := s.connector.AddHost(host)
 	if err != nil {
+		// Rollback DB entry if connection fails
 		if delErr := s.db.Delete(&host).Error; delErr != nil {
 			log.Printf("CRITICAL: Failed to rollback host creation for %s after connection failure. DB Error: %v", host.ID, delErr)
 		}
@@ -81,6 +82,14 @@ func (s *HostService) ConnectToAllHosts() {
 			log.Printf("Failed to connect to host %s (%s) on startup: %v", host.ID, host.URI, err)
 		}
 	}
+}
+
+func (s *HostService) GetHostInfo(hostID string) (*libvirt.HostInfo, error) {
+	info, err := s.connector.GetHostInfo(hostID)
+	if err != nil {
+		return nil, fmt.Errorf("service failed to get info for host %s: %w", hostID, err)
+	}
+	return info, nil
 }
 
 // --- VM Management ---
@@ -132,5 +141,4 @@ func (s *HostService) ForceResetVM(hostID, vmName string) error {
 	s.broadcastUpdate()
 	return nil
 }
-
 

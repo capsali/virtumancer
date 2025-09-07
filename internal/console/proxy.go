@@ -347,4 +347,3 @@ func HandleSpiceConsole(db *gorm.DB, connector *libvirt.Connector, w http.Respon
 	log.Printf("SPICE console proxy session ended for %s", vmName)
 }
 
-

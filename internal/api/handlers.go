@@ -89,6 +89,18 @@ func (h *APIHandler) DeleteHost(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// GetHostInfo returns statistics for a specific host.
+func (h *APIHandler) GetHostInfo(w http.ResponseWriter, r *http.Request) {
+	hostID := chi.URLParam(r, "hostID")
+	info, err := h.HostService.GetHostInfo(hostID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(info)
+}
+
 // ListVMs lists all virtual machines on a specific host.
 func (h *APIHandler) ListVMs(w http.ResponseWriter, r *http.Request) {
 	hostID := chi.URLParam(r, "hostID")
@@ -152,5 +164,4 @@ func (h *APIHandler) ForceResetVM(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
-
 

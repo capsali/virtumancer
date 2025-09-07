@@ -64,6 +64,7 @@ export const useMainStore = defineStore('main', () => {
             
             const hostPromises = (data || []).map(async host => {
                 host.vms = await fetchVmsForHost(host.id);
+                host.info = await fetchHostInfo(host.id);
                 return host;
             });
 
@@ -90,7 +91,7 @@ export const useMainStore = defineStore('main', () => {
                 const errorText = await response.text();
                 throw new Error(errorText || `HTTP error! status: ${response.status}`);
             }
-            await fetchHosts();
+            await fetchHosts(); // This will broadcast a refresh, but we fetch immediately for responsiveness
         } catch (error) {
             errorMessage.value = `Failed to add host: ${error.message}`;
             console.error(error);
@@ -110,7 +111,7 @@ export const useMainStore = defineStore('main', () => {
             if (selectedHostId.value === hostId) {
                 selectedHostId.value = null;
             }
-            await fetchHosts();
+            await fetchHosts(); // This will broadcast a refresh
         } catch (error) {
             errorMessage.value = `Failed to delete host: ${error.message}`;
             console.error(error);
@@ -122,6 +123,19 @@ export const useMainStore = defineStore('main', () => {
             selectedHostId.value = hostId;
         }
     };
+
+    const fetchHostInfo = async (hostId) => {
+        if (!hostId) return null;
+        try {
+            const response = await fetch(`/api/v1/hosts/${hostId}/info`);
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            return await response.json() || null;
+        } catch (error) {
+            errorMessage.value = `Failed to fetch info for ${hostId}.`;
+            console.error(error);
+            return null;
+        }
+    }
 
     // --- VM Actions ---
 
@@ -150,6 +164,7 @@ export const useMainStore = defineStore('main', () => {
                 const errorText = await response.text();
                 throw new Error(errorText || `HTTP error! status: ${response.status}`);
             }
+            // A refresh will be broadcast by the server
         } catch (error) {
             errorMessage.value = `Action '${action}' on VM '${vmName}' failed: ${error.message}`;
             console.error(error);

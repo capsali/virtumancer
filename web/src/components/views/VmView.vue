@@ -88,6 +88,12 @@ watch(() => route.params.vmName, () => {
         <button @click="activeTab = 'console'" :class="[activeTab === 'console' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-500', 'whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm']">
           Console
         </button>
+        <button @click="activeTab = 'hardware'" :class="[activeTab === 'hardware' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-500', 'whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm']">
+          Hardware
+        </button>
+        <button @click="activeTab = 'snapshots'" :class="[activeTab === 'snapshots' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-500', 'whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm']">
+          Snapshots
+        </button>
       </nav>
     </div>
 
@@ -140,6 +146,16 @@ watch(() => route.params.vmName, () => {
             </div>
          </div>
       </div>
+
+       <!-- Hardware Tab -->
+      <div v-if="activeTab === 'hardware'" class="flex items-center justify-center h-full text-gray-500 bg-gray-900 rounded-lg">
+          <p>Hardware management coming soon.</p>
+      </div>
+
+        <!-- Snapshots Tab -->
+      <div v-if="activeTab === 'snapshots'" class="flex items-center justify-center h-full text-gray-500 bg-gray-900 rounded-lg">
+          <p>Snapshot management coming soon.</p>
+      </div>
     </div>
   </div>
 
@@ -147,4 +163,5 @@ watch(() => route.params.vmName, () => {
     <p>Select a VM from the sidebar to view details, or the VM is still loading.</p>
   </div>
 </template>
+
 

@@ -50,6 +50,7 @@ func main() {
 		r.Get("/hosts", apiHandler.GetHosts)
 		r.Post("/hosts", apiHandler.CreateHost)
 		r.Delete("/hosts/{hostID}", apiHandler.DeleteHost)
+		r.Get("/hosts/{hostID}/info", apiHandler.GetHostInfo)
 
 		// VM routes
 		r.Get("/hosts/{hostID}/vms", apiHandler.ListVMs)
@@ -96,5 +97,4 @@ func main() {
 		log.Println("You can generate them by running the 'generate-certs.sh' script.")
 	}
 }
-
 
