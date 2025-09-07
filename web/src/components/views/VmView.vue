@@ -27,30 +27,71 @@ const host = computed(() => {
 
 const stats = computed(() => mainStore.activeVmStats);
 
-// --- CPU Usage Calculation ---
+// --- Real-time Stat Calculation ---
 const lastCpuTime = ref(0);
 const lastCpuTimeTimestamp = ref(0);
 const cpuUsagePercent = ref(0);
+const lastIoStats = ref(null);
+const lastIoStatsTimestamp = ref(0);
+const diskRates = ref({});
+const netRates = ref({});
 
 watch(stats, (newStats) => {
     if (!newStats || newStats.state !== 1) {
         cpuUsagePercent.value = 0;
+        diskRates.value = {};
+        netRates.value = {};
         return;
     }
-    if (lastCpuTime.value > 0 && lastCpuTimeTimestamp.value > 0) {
-        const timeDelta = Date.now() - lastCpuTimeTimestamp.value; // in ms
-        const cpuTimeDelta = newStats.cpu_time - lastCpuTime.value; // in ns
+    
+    const now = Date.now();
 
+    // CPU Usage
+    if (lastCpuTime.value > 0 && lastCpuTimeTimestamp.value > 0) {
+        const timeDelta = now - lastCpuTimeTimestamp.value; // ms
+        const cpuTimeDelta = newStats.cpu_time - lastCpuTime.value; // ns
         if (timeDelta > 0) {
-            // Convert timeDelta to nanoseconds
             const timeDeltaNs = timeDelta * 1_000_000;
-            // Calculate usage percentage
             const usage = (cpuTimeDelta / (timeDeltaNs * newStats.vcpu)) * 100;
             cpuUsagePercent.value = Math.min(Math.max(usage, 0), 100);
         }
     }
     lastCpuTime.value = newStats.cpu_time;
-    lastCpuTimeTimestamp.value = Date.now();
+    lastCpuTimeTimestamp.value = now;
+
+    // I/O Usage
+    if (lastIoStats.value && lastIoStatsTimestamp.value > 0) {
+        const timeDeltaSeconds = (now - lastIoStatsTimestamp.value) / 1000;
+        if (timeDeltaSeconds > 0) {
+            // Disk Rates
+            const newDiskRates = {};
+            (newStats.disk_stats || []).forEach(current => {
+                const previous = (lastIoStats.value.disk_stats || []).find(p => p.device === current.device);
+                if (previous) {
+                    newDiskRates[current.device] = {
+                        read: (current.read_bytes - previous.read_bytes) / timeDeltaSeconds,
+                        write: (current.write_bytes - previous.write_bytes) / timeDeltaSeconds,
+                    };
+                }
+            });
+            diskRates.value = newDiskRates;
+
+            // Network Rates
+            const newNetRates = {};
+             (newStats.net_stats || []).forEach(current => {
+                const previous = (lastIoStats.value.net_stats || []).find(p => p.device === current.device);
+                if (previous) {
+                    newNetRates[current.device] = {
+                        read: (current.read_bytes - previous.read_bytes) / timeDeltaSeconds,
+                        write: (current.write_bytes - previous.write_bytes) / timeDeltaSeconds,
+                    };
+                }
+            });
+            netRates.value = newNetRates;
+        }
+    }
+    lastIoStats.value = JSON.parse(JSON.stringify(newStats)); // Deep copy for next calculation
+    lastIoStatsTimestamp.value = now;
 });
 
 
@@ -96,33 +137,41 @@ const formatUptime = (seconds) => {
     return sDisplay;
 }
 
-// --- Lifecycle hooks for polling ---
+const formatBps = (bytes) => {
+    if (!bytes || bytes < 0) bytes = 0;
+    if (bytes === 0) return '0 B/s';
+    const k = 1024;
+    const sizes = ['B/s', 'KB/s', 'MB/s', 'GB/s', 'TB/s'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+};
 
-// Watch for the active VM to change. This handles both initial load and navigation between VMs.
+// --- Lifecycle hooks for polling ---
 watch(vm, (newVm) => {
-    // Clear any existing interval
     clearInterval(pollInterval);
     pollInterval = null;
 
-    // Reset local component state
     activeTab.value = 'summary';
     lastCpuTime.value = 0;
     lastCpuTimeTimestamp.value = 0;
     cpuUsagePercent.value = 0;
+    lastIoStats.value = null;
+    lastIoStatsTimestamp.value = 0;
+    diskRates.value = {};
+    netRates.value = {};
     mainStore.activeVmStats = null;
 
-    // If we have a new valid VM, start polling for its stats
     if (newVm && host.value) {
         mainStore.fetchVmStats(host.value.id, newVm.name);
         pollInterval = setInterval(() => {
             mainStore.fetchVmStats(host.value.id, newVm.name);
-        }, 2000); // Poll every 2 seconds
+        }, 2000);
     }
-}, { immediate: true }); // immediate: true ensures this runs on component mount
+}, { immediate: true });
 
 onUnmounted(() => {
     clearInterval(pollInterval);
-    mainStore.activeVmStats = null; // Clear stats when leaving view entirely
+    mainStore.activeVmStats = null;
 });
 
 </script>
@@ -165,8 +214,8 @@ onUnmounted(() => {
       <!-- Summary Tab -->
       <div v-if="activeTab === 'summary'" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <!-- Performance Section -->
-        <div class="bg-gray-900 p-6 rounded-lg shadow-lg lg:col-span-2">
-            <h3 class="text-xl font-semibold mb-4 text-white">Performance</h3>
+        <div class="bg-gray-900 p-6 rounded-lg shadow-lg">
+            <h3 class="text-xl font-semibold mb-4 text-white">Core Performance</h3>
             <div class="space-y-6">
                 <!-- CPU Usage -->
                 <div>
@@ -187,6 +236,38 @@ onUnmounted(() => {
                     <div class="w-full bg-gray-700 rounded-full h-2.5 mt-2">
                         <div class="bg-teal-500 h-2.5 rounded-full" :style="{ width: memoryUsagePercent + '%' }"></div>
                     </div>
+                </div>
+            </div>
+        </div>
+         <!-- I/O Performance Section -->
+        <div class="bg-gray-900 p-6 rounded-lg shadow-lg">
+            <h3 class="text-xl font-semibold mb-4 text-white">I/O Performance</h3>
+            <div class="space-y-4">
+                <div>
+                    <h4 class="text-sm font-medium text-gray-400 mb-2">Disks</h4>
+                    <div v-if="stats?.disk_stats?.length" class="space-y-2">
+                        <div v-for="disk in stats.disk_stats" :key="disk.device">
+                            <p class="text-xs font-mono text-gray-300">{{ disk.device }}</p>
+                            <div class="text-sm flex justify-between">
+                                <span>Read: {{ formatBps(diskRates[disk.device]?.read) }}</span>
+                                <span>Write: {{ formatBps(diskRates[disk.device]?.write) }}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <p v-else class="text-sm text-gray-500">No disk devices found.</p>
+                </div>
+                 <div>
+                    <h4 class="text-sm font-medium text-gray-400 mb-2">Network</h4>
+                     <div v-if="stats?.net_stats?.length" class="space-y-2">
+                        <div v-for="net in stats.net_stats" :key="net.device">
+                            <p class="text-xs font-mono text-gray-300">{{ net.device }}</p>
+                            <div class="text-sm flex justify-between">
+                                <span>Rx: {{ formatBps(netRates[net.device]?.read) }}</span>
+                                <span>Tx: {{ formatBps(netRates[net.device]?.write) }}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <p v-else class="text-sm text-gray-500">No network interfaces found.</p>
                 </div>
             </div>
         </div>

@@ -33,13 +33,29 @@ type VMInfo struct {
 	Graphics   GraphicsInfo           `json:"graphics"`
 }
 
+// DomainDiskStats holds I/O statistics for a single disk device.
+type DomainDiskStats struct {
+	Device     string `json:"device"`
+	ReadBytes  int64  `json:"read_bytes"`
+	WriteBytes int64  `json:"write_bytes"`
+}
+
+// DomainNetworkStats holds I/O statistics for a single network interface.
+type DomainNetworkStats struct {
+	Device     string `json:"device"`
+	ReadBytes  int64  `json:"read_bytes"`
+	WriteBytes int64  `json:"write_bytes"`
+}
+
 // VMStats holds real-time statistics for a single VM.
 type VMStats struct {
-	State   libvirt.DomainState `json:"state"`
-	Memory  uint64              `json:"memory"`
-	MaxMem  uint64              `json:"max_mem"`
-	Vcpu    uint                `json:"vcpu"`
-	CpuTime uint64              `json:"cpu_time"`
+	State      libvirt.DomainState  `json:"state"`
+	Memory     uint64               `json:"memory"`
+	MaxMem     uint64               `json:"max_mem"`
+	Vcpu       uint                 `json:"vcpu"`
+	CpuTime    uint64               `json:"cpu_time"`
+	DiskStats  []DomainDiskStats    `json:"disk_stats"`
+	NetStats   []DomainNetworkStats `json:"net_stats"`
 }
 
 // HostInfo holds basic information and statistics about a hypervisor host.
@@ -281,17 +297,87 @@ func (c *Connector) GetDomainStats(hostID, vmName string) (*VMStats, error) {
 		return nil, fmt.Errorf("could not get state for domain %s: %w", vmName, err)
 	}
 
+	// Return minimal stats if not running
+	if state != libvirt.DOMAIN_RUNNING {
+		info, _ := domain.GetInfo() // Get basic info even if not running
+		return &VMStats{
+			State:     state,
+			Memory:    0,
+			MaxMem:    info.MaxMem,
+			Vcpu:      uint(info.NrVirtCpu),
+			CpuTime:   0,
+			DiskStats: []DomainDiskStats{},
+			NetStats:  []DomainNetworkStats{},
+		}, nil
+	}
+
 	info, err := domain.GetInfo()
 	if err != nil {
 		return nil, fmt.Errorf("could not get info for domain %s: %w", vmName, err)
 	}
 
+	// --- Get I/O Stats ---
+	xmlDesc, err := domain.GetXMLDesc(0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get XML for %s to find devices: %w", vmName, err)
+	}
+
+	type DomainXML struct {
+		Devices struct {
+			Disks []struct {
+				Target struct {
+					Dev string `xml:"dev,attr"`
+				} `xml:"target"`
+			} `xml:"disk"`
+			Interfaces []struct {
+				Target struct {
+					Dev string `xml:"dev,attr"`
+				} `xml:"target"`
+			} `xml:"interface"`
+		} `xml:"devices"`
+	}
+
+	var def DomainXML
+	if err := xml.Unmarshal([]byte(xmlDesc), &def); err != nil {
+		return nil, fmt.Errorf("failed to parse domain XML for devices: %w", err)
+	}
+
+	var diskStats []DomainDiskStats
+	for _, disk := range def.Devices.Disks {
+		stats, err := domain.BlockStats(disk.Target.Dev)
+		if err != nil {
+			log.Printf("Warning: could not get block stats for device %s on VM %s: %v", disk.Target.Dev, vmName, err)
+			continue
+		}
+		diskStats = append(diskStats, DomainDiskStats{
+			Device:     disk.Target.Dev,
+			ReadBytes:  stats.RdBytes,
+			WriteBytes: stats.WrBytes,
+		})
+	}
+
+	var netStats []DomainNetworkStats
+	for _, iface := range def.Devices.Interfaces {
+		stats, err := domain.InterfaceStats(iface.Target.Dev)
+		if err != nil {
+			log.Printf("Warning: could not get interface stats for device %s on VM %s: %v", iface.Target.Dev, vmName, err)
+			continue
+		}
+		netStats = append(netStats, DomainNetworkStats{
+			Device:     iface.Target.Dev,
+			ReadBytes:  stats.RxBytes,
+			WriteBytes: stats.TxBytes,
+		})
+	}
+
 	stats := &VMStats{
-		State:   state,
-		Memory:  info.Memory,
-		MaxMem:  info.MaxMem,
-		Vcpu:    uint(info.NrVirtCpu),
-		CpuTime: info.CpuTime,
+		State:      state,
+		Memory:     info.Memory,
+		MaxMem:     info.MaxMem,
+		Vcpu:       uint(info.NrVirtCpu),
+		CpuTime:    info.CpuTime,
+		DiskStats:  diskStats,
+		NetStats:   netStats,
 	}
 
 	return stats, nil
