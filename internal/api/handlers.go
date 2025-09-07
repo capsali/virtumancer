@@ -29,29 +29,24 @@ func NewAPIHandler(hostService *services.HostService, hub *ws.Hub, db *gorm.DB, 
 	}
 }
 
-// HandleWebSocket handles websocket requests for UI updates from the peer.
 func (h *APIHandler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	ws.ServeWs(h.Hub, w, r)
 }
 
-// HandleVMConsole proxies the WebSocket connection to the VM's VNC console.
 func (h *APIHandler) HandleVMConsole(w http.ResponseWriter, r *http.Request) {
 	console.HandleConsole(h.DB, h.Connector, w, r)
 }
 
-// HandleSpiceConsole proxies the WebSocket connection to the VM's SPICE console.
 func (h *APIHandler) HandleSpiceConsole(w http.ResponseWriter, r *http.Request) {
 	console.HandleSpiceConsole(h.DB, h.Connector, w, r)
 }
 
-// HealthCheck confirms the server is running.
 func (h *APIHandler) HealthCheck(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 }
 
-// CreateHost handles adding a new host.
 func (h *APIHandler) CreateHost(w http.ResponseWriter, r *http.Request) {
 	var host storage.Host
 	if err := json.NewDecoder(r.Body).Decode(&host); err != nil {
@@ -68,7 +63,6 @@ func (h *APIHandler) CreateHost(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(newHost)
 }
 
-// GetHosts returns a list of all configured hosts.
 func (h *APIHandler) GetHosts(w http.ResponseWriter, r *http.Request) {
 	hosts, err := h.HostService.GetAllHosts()
 	if err != nil {
@@ -79,7 +73,6 @@ func (h *APIHandler) GetHosts(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(hosts)
 }
 
-// GetHostInfo returns statistics for a specific host.
 func (h *APIHandler) GetHostInfo(w http.ResponseWriter, r *http.Request) {
 	hostID := chi.URLParam(r, "hostID")
 	info, err := h.HostService.GetHostInfo(hostID)
@@ -91,7 +84,6 @@ func (h *APIHandler) GetHostInfo(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(info)
 }
 
-// DeleteHost handles removing a host.
 func (h *APIHandler) DeleteHost(w http.ResponseWriter, r *http.Request) {
 	hostID := chi.URLParam(r, "hostID")
 	if err := h.HostService.RemoveHost(hostID); err != nil {
@@ -101,7 +93,6 @@ func (h *APIHandler) DeleteHost(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// ListVMs lists all virtual machines on a specific host.
 func (h *APIHandler) ListVMs(w http.ResponseWriter, r *http.Request) {
 	hostID := chi.URLParam(r, "hostID")
 	vms, err := h.HostService.ListVMs(hostID)
@@ -113,7 +104,6 @@ func (h *APIHandler) ListVMs(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(vms)
 }
 
-// GetVMStats returns real-time stats for a specific VM.
 func (h *APIHandler) GetVMStats(w http.ResponseWriter, r *http.Request) {
 	hostID := chi.URLParam(r, "hostID")
 	vmName := chi.URLParam(r, "vmName")
@@ -124,6 +114,19 @@ func (h *APIHandler) GetVMStats(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(stats)
+}
+
+// GetVMHardware returns the hardware configuration for a specific VM.
+func (h *APIHandler) GetVMHardware(w http.ResponseWriter, r *http.Request) {
+	hostID := chi.URLParam(r, "hostID")
+	vmName := chi.URLParam(r, "vmName")
+	hardware, err := h.HostService.GetVMHardware(hostID, vmName)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(hardware)
 }
 
 // --- VM Actions ---

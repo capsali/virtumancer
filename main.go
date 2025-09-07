@@ -28,13 +28,13 @@ func main() {
 	// Initialize Libvirt Connector
 	connector := libvirt.NewConnector()
 
-	// Initialize Host Service, now with WebSocket hub
+	// Initialize Host Service
 	hostService := services.NewHostService(db, connector, hub)
 
 	// On startup, load all hosts from DB and try to connect
 	hostService.ConnectToAllHosts()
 
-	// Initialize API Handler, now with WebSocket hub, DB, and Connector
+	// Initialize API Handler
 	apiHandler := api.NewAPIHandler(hostService, hub, db, connector)
 
 	// Setup Router
@@ -59,7 +59,8 @@ func main() {
 		r.Post("/hosts/{hostID}/vms/{vmName}/reboot", apiHandler.RebootVM)
 		r.Post("/hosts/{hostID}/vms/{vmName}/forceoff", apiHandler.ForceOffVM)
 		r.Post("/hosts/{hostID}/vms/{vmName}/forcereset", apiHandler.ForceResetVM)
-		r.Get("/hosts/{hostID}/vms/{vmName}/stats", apiHandler.GetVMStats) // New stats route
+		r.Get("/hosts/{hostID}/vms/{vmName}/stats", apiHandler.GetVMStats)
+		r.Get("/hosts/{hostID}/vms/{vmName}/hardware", apiHandler.GetVMHardware) // New hardware route
 
 		// Console routes
 		r.Get("/hosts/{hostID}/vms/{vmName}/console", apiHandler.HandleVMConsole)
@@ -72,7 +73,6 @@ func main() {
 	// Static File Server for the Vue App
 	workDir, _ := os.Getwd()
 
-	// Serve SPICE assets from the new location
 	spiceDir := http.Dir(workDir + "/web/public/spice")
 	r.Handle("/spice/*", http.StripPrefix("/spice/", http.FileServer(spiceDir)))
 
@@ -90,7 +90,6 @@ func main() {
 	keyFile := "localhost.key"
 
 	log.Println("Starting HTTPS server on :8888")
-	// Use ListenAndServeTLS to serve over HTTPS
 	err = http.ListenAndServeTLS(":8888", certFile, keyFile, r)
 	if err != nil {
 		log.Printf("Could not start HTTPS server: %v", err)

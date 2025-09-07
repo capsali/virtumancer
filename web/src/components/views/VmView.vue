@@ -26,6 +26,7 @@ const host = computed(() => {
 });
 
 const stats = computed(() => mainStore.activeVmStats);
+const hardware = computed(() => mainStore.activeVmHardware);
 
 // --- Real-time Stat Calculation ---
 const lastCpuTime = ref(0);
@@ -146,7 +147,13 @@ const formatBps = (bytes) => {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 };
 
-// --- Lifecycle hooks for polling ---
+// --- Lifecycle & Data Fetching ---
+watch(activeTab, (newTab) => {
+    if (newTab === 'hardware' && vm.value && host.value) {
+        mainStore.fetchVmHardware(host.value.id, vm.value.name);
+    }
+});
+
 watch(vm, (newVm) => {
     clearInterval(pollInterval);
     pollInterval = null;
@@ -160,18 +167,24 @@ watch(vm, (newVm) => {
     diskRates.value = {};
     netRates.value = {};
     mainStore.activeVmStats = null;
+    mainStore.activeVmHardware = null;
 
     if (newVm && host.value) {
         mainStore.fetchVmStats(host.value.id, newVm.name);
         pollInterval = setInterval(() => {
             mainStore.fetchVmStats(host.value.id, newVm.name);
         }, 2000);
+
+        if (activeTab.value === 'hardware') {
+             mainStore.fetchVmHardware(host.value.id, newVm.name);
+        }
     }
 }, { immediate: true });
 
 onUnmounted(() => {
     clearInterval(pollInterval);
     mainStore.activeVmStats = null;
+    mainStore.activeVmHardware = null;
 });
 
 </script>
@@ -213,11 +226,9 @@ onUnmounted(() => {
     <div class="flex-grow pt-6 overflow-y-auto">
       <!-- Summary Tab -->
       <div v-if="activeTab === 'summary'" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <!-- Performance Section -->
         <div class="bg-gray-900 p-6 rounded-lg shadow-lg">
             <h3 class="text-xl font-semibold mb-4 text-white">Core Performance</h3>
             <div class="space-y-6">
-                <!-- CPU Usage -->
                 <div>
                     <div class="flex justify-between items-baseline">
                         <label class="text-sm font-medium text-gray-400">CPU Usage</label>
@@ -227,7 +238,6 @@ onUnmounted(() => {
                         <div class="bg-indigo-500 h-2.5 rounded-full" :style="{ width: cpuUsagePercent + '%' }"></div>
                     </div>
                 </div>
-                <!-- Memory Usage -->
                 <div>
                      <div class="flex justify-between items-baseline">
                         <label class="text-sm font-medium text-gray-400">Memory Usage</label>
@@ -239,7 +249,6 @@ onUnmounted(() => {
                 </div>
             </div>
         </div>
-         <!-- I/O Performance Section -->
         <div class="bg-gray-900 p-6 rounded-lg shadow-lg">
             <h3 class="text-xl font-semibold mb-4 text-white">I/O Performance</h3>
             <div class="space-y-4">
@@ -271,26 +280,13 @@ onUnmounted(() => {
                 </div>
             </div>
         </div>
-        <!-- Details Section -->
         <div class="bg-gray-900 p-6 rounded-lg shadow-lg">
           <h3 class="text-xl font-semibold mb-4 text-white">Details</h3>
           <dl class="space-y-4">
-            <div>
-              <dt class="text-sm font-medium text-gray-400">Host</dt>
-              <dd class="mt-1 text-lg text-gray-200">{{ host.id }}</dd>
-            </div>
-            <div>
-              <dt class="text-sm font-medium text-gray-400">Uptime</dt>
-              <dd class="mt-1 text-lg text-gray-200">{{ formatUptime(vm.uptime) }}</dd>
-            </div>
-             <div>
-              <dt class="text-sm font-medium text-gray-400">vCPUs</dt>
-              <dd class="mt-1 text-lg text-gray-200">{{ vm.vcpu }}</dd>
-            </div>
-            <div>
-              <dt class="text-sm font-medium text-gray-400">Memory</dt>
-              <dd class="mt-1 text-lg text-gray-200">{{ formatMemory(vm.max_mem) }}</dd>
-            </div>
+            <div> <dt class="text-sm font-medium text-gray-400">Host</dt> <dd class="mt-1 text-lg text-gray-200">{{ host.id }}</dd> </div>
+            <div> <dt class="text-sm font-medium text-gray-400">Uptime</dt> <dd class="mt-1 text-lg text-gray-200">{{ formatUptime(vm.uptime) }}</dd> </div>
+             <div> <dt class="text-sm font-medium text-gray-400">vCPUs</dt> <dd class="mt-1 text-lg text-gray-200">{{ vm.vcpu }}</dd> </div>
+            <div> <dt class="text-sm font-medium text-gray-400">Memory</dt> <dd class="mt-1 text-lg text-gray-200">{{ formatMemory(vm.max_mem) }}</dd> </div>
           </dl>
         </div>
       </div>
@@ -309,9 +305,69 @@ onUnmounted(() => {
          </div>
       </div>
       
-      <!-- Hardware Tab Placeholder -->
-       <div v-if="activeTab === 'hardware'" class="flex items-center justify-center h-full text-gray-500 bg-gray-900 rounded-lg">
-            <p>Hardware management will be implemented here.</p>
+      <!-- Hardware Tab -->
+       <div v-if="activeTab === 'hardware'" class="space-y-8">
+            <div v-if="mainStore.isLoading.vmHardware" class="flex items-center justify-center h-48 text-gray-400">
+                <svg class="animate-spin mr-3 h-8 w-8 text-indigo-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span>Loading Hardware...</span>
+            </div>
+            <div v-else-if="hardware">
+                <!-- Storage Devices -->
+                <div class="bg-gray-900 rounded-lg shadow-lg">
+                    <h3 class="text-xl font-semibold text-white p-4">Storage</h3>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-700">
+                            <thead class="bg-gray-800">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Device</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Bus</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Source</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Format</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-gray-900 divide-y divide-gray-800">
+                                <tr v-for="disk in hardware.disks" :key="disk.target.dev">
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">{{ disk.target.dev }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ disk.target.bus }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300 font-mono break-all">{{ disk.source.file }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ disk.driver.type }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Network Adapters -->
+                <div class="bg-gray-900 rounded-lg shadow-lg">
+                    <h3 class="text-xl font-semibold text-white p-4">Network Adapters</h3>
+                     <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-700">
+                            <thead class="bg-gray-800">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Device</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">MAC Address</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Source Bridge</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Model</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-gray-900 divide-y divide-gray-800">
+                                <tr v-for="net in hardware.networks" :key="net.mac.address">
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">{{ net.target.dev }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300 font-mono">{{ net.mac.address }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ net.source.bridge }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ net.model.type }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+             <div v-else class="flex items-center justify-center h-48 text-gray-500 bg-gray-900 rounded-lg">
+                <p>Could not load hardware information.</p>
+            </div>
        </div>
        
        <!-- Snapshots Tab Placeholder -->

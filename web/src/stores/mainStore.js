@@ -11,9 +11,11 @@ export const useMainStore = defineStore('main', () => {
         vms: false,
         addHost: false,
         vmAction: null,
+        vmHardware: false,
     });
     
     const activeVmStats = ref(null);
+    const activeVmHardware = ref(null);
 
     const totalVms = computed(() => {
       return hosts.value.reduce((total, host) => total + (host.vms ? host.vms.length : 0), 0);
@@ -167,10 +169,27 @@ export const useMainStore = defineStore('main', () => {
             activeVmStats.value = await response.json();
         } catch (error) {
             console.error(`Failed to fetch stats for VM ${vmName}:`, error);
-            activeVmStats.value = null; // Clear stats on error
+            activeVmStats.value = null;
         }
     };
 
+    const fetchVmHardware = async (hostId, vmName) => {
+        if (!hostId || !vmName) {
+            activeVmHardware.value = null;
+            return;
+        }
+        isLoading.value.vmHardware = true;
+        try {
+            const response = await fetch(`/api/v1/hosts/${hostId}/vms/${vmName}/hardware`);
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            activeVmHardware.value = await response.json();
+        } catch (error) {
+            console.error(`Failed to fetch hardware for VM ${vmName}:`, error);
+            activeVmHardware.value = null;
+        } finally {
+            isLoading.value.vmHardware = false;
+        }
+    };
 
     const performVmAction = async (hostId, vmName, action) => {
         isLoading.value.vmAction = `${vmName}:${action}`;
@@ -201,6 +220,7 @@ export const useMainStore = defineStore('main', () => {
         errorMessage,
         isLoading,
         activeVmStats,
+        activeVmHardware,
         totalVms,
         initializeRealtime,
         fetchHosts,
@@ -208,6 +228,7 @@ export const useMainStore = defineStore('main', () => {
         deleteHost,
         selectHost,
         fetchVmStats,
+        fetchVmHardware,
         startVm,
         gracefulShutdownVm,
         gracefulRebootVm,

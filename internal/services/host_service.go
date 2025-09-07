@@ -24,7 +24,6 @@ func NewHostService(db *gorm.DB, connector *libvirt.Connector, hub *ws.Hub) *Hos
 	}
 }
 
-// broadcastUpdate sends a message to all WebSocket clients to refresh their state.
 func (s *HostService) broadcastUpdate() {
 	s.hub.BroadcastMessage([]byte(`{"type": "refresh"}`))
 }
@@ -103,6 +102,14 @@ func (s *HostService) GetVMStats(hostID, vmName string) (*libvirt.VMStats, error
 		return nil, fmt.Errorf("service failed to get stats for vm %s on host %s: %w", vmName, hostID, err)
 	}
 	return stats, nil
+}
+
+func (s *HostService) GetVMHardware(hostID, vmName string) (*libvirt.HardwareInfo, error) {
+	hardware, err := s.connector.GetDomainHardware(hostID, vmName)
+	if err != nil {
+		return nil, fmt.Errorf("service failed to get hardware for vm %s on host %s: %w", vmName, hostID, err)
+	}
+	return hardware, nil
 }
 
 func (s *HostService) StartVM(hostID, vmName string) error {

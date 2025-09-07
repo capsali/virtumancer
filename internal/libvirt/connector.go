@@ -58,6 +58,54 @@ type VMStats struct {
 	NetStats   []DomainNetworkStats `json:"net_stats"`
 }
 
+// HardwareInfo holds the hardware configuration of a VM.
+type HardwareInfo struct {
+	Disks    []DiskInfo    `json:"disks"`
+	Networks []NetworkInfo `json:"networks"`
+}
+
+// DiskInfo represents a virtual disk.
+type DiskInfo struct {
+	Type   string `xml:"type,attr" json:"type"`
+	Device string `xml:"device,attr" json:"device"`
+	Driver struct {
+		Name string `xml:"name,attr" json:"driver_name"`
+		Type string `xml:"type,attr" json:"driver_type"`
+	} `xml:"driver" json:"driver"`
+	Source struct {
+		File string `xml:"file,attr" json:"file"`
+	} `xml:"source" json:"source"`
+	Target struct {
+		Dev string `xml:"dev,attr" json:"dev"`
+		Bus string `xml:"bus,attr" json:"bus"`
+	} `xml:"target" json:"target"`
+}
+
+// NetworkInfo represents a virtual network interface.
+type NetworkInfo struct {
+	Type   string `xml:"type,attr" json:"type"`
+	Mac    struct {
+		Address string `xml:"address,attr" json:"address"`
+	} `xml:"mac" json:"mac"`
+	Source struct {
+		Bridge string `xml:"bridge,attr" json:"bridge"`
+	} `xml:"source" json:"source"`
+	Model struct {
+		Type string `xml:"type,attr" json:"model_type"`
+	} `xml:"model" json:"model"`
+	Target struct {
+		Dev string `xml:"dev,attr" json:"dev"`
+	} `xml:"target" json:"target"`
+}
+
+// DomainHardwareXML is used for unmarshalling hardware info from the domain XML.
+type DomainHardwareXML struct {
+	Devices struct {
+		Disks      []DiskInfo    `xml:"disk"`
+		Interfaces []NetworkInfo `xml:"interface"`
+	} `xml:"devices"`
+}
+
 // HostInfo holds basic information and statistics about a hypervisor host.
 type HostInfo struct {
 	Hostname string `json:"hostname"`
@@ -186,7 +234,6 @@ func parseGraphicsFromXML(xmlDesc string) (GraphicsInfo, error) {
 	}
 
 	for _, g := range def.Graphics {
-		// A valid port will be > 0 or -1 (for auto-port)
 		if g.Port != "" && g.Port != "0" {
 			switch strings.ToLower(g.Type) {
 			case "vnc":
@@ -297,9 +344,13 @@ func (c *Connector) GetDomainStats(hostID, vmName string) (*VMStats, error) {
 		return nil, fmt.Errorf("could not get state for domain %s: %w", vmName, err)
 	}
 
-	// Return minimal stats if not running
+	info, err := domain.GetInfo()
+	if err != nil {
+		return nil, fmt.Errorf("could not get info for domain %s: %w", vmName, err)
+	}
+
+	// If not running, return basic info without I/O stats
 	if state != libvirt.DOMAIN_RUNNING {
-		info, _ := domain.GetInfo() // Get basic info even if not running
 		return &VMStats{
 			State:     state,
 			Memory:    0,
@@ -311,39 +362,21 @@ func (c *Connector) GetDomainStats(hostID, vmName string) (*VMStats, error) {
 		}, nil
 	}
 
-	info, err := domain.GetInfo()
-	if err != nil {
-		return nil, fmt.Errorf("could not get info for domain %s: %w", vmName, err)
-	}
-
-	// --- Get I/O Stats ---
 	xmlDesc, err := domain.GetXMLDesc(0)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get XML for %s to find devices: %w", vmName, err)
 	}
 
-	type DomainXML struct {
-		Devices struct {
-			Disks []struct {
-				Target struct {
-					Dev string `xml:"dev,attr"`
-				} `xml:"target"`
-			} `xml:"disk"`
-			Interfaces []struct {
-				Target struct {
-					Dev string `xml:"dev,attr"`
-				} `xml:"target"`
-			} `xml:"interface"`
-		} `xml:"devices"`
-	}
-
-	var def DomainXML
+	var def DomainHardwareXML
 	if err := xml.Unmarshal([]byte(xmlDesc), &def); err != nil {
 		return nil, fmt.Errorf("failed to parse domain XML for devices: %w", err)
 	}
 
 	var diskStats []DomainDiskStats
 	for _, disk := range def.Devices.Disks {
+		if disk.Target.Dev == "" {
+			continue
+		}
 		stats, err := domain.BlockStats(disk.Target.Dev)
 		if err != nil {
 			log.Printf("Warning: could not get block stats for device %s on VM %s: %v", disk.Target.Dev, vmName, err)
@@ -358,6 +391,9 @@ func (c *Connector) GetDomainStats(hostID, vmName string) (*VMStats, error) {
 
 	var netStats []DomainNetworkStats
 	for _, iface := range def.Devices.Interfaces {
+		if iface.Target.Dev == "" {
+			continue
+		}
 		stats, err := domain.InterfaceStats(iface.Target.Dev)
 		if err != nil {
 			log.Printf("Warning: could not get interface stats for device %s on VM %s: %v", iface.Target.Dev, vmName, err)
@@ -383,9 +419,34 @@ func (c *Connector) GetDomainStats(hostID, vmName string) (*VMStats, error) {
 	return stats, nil
 }
 
+// GetDomainHardware retrieves the hardware configuration for a single domain (VM).
+func (c *Connector) GetDomainHardware(hostID, vmName string) (*HardwareInfo, error) {
+	domain, err := c.getDomainByName(hostID, vmName)
+	if err != nil {
+		return nil, err
+	}
+	defer domain.Free()
+
+	xmlDesc, err := domain.GetXMLDesc(0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get XML for %s to read hardware: %w", vmName, err)
+	}
+
+	var def DomainHardwareXML
+	if err := xml.Unmarshal([]byte(xmlDesc), &def); err != nil {
+		return nil, fmt.Errorf("failed to parse domain XML for hardware: %w", err)
+	}
+
+	hardware := &HardwareInfo{
+		Disks:    def.Devices.Disks,
+		Networks: def.Devices.Interfaces,
+	}
+
+	return hardware, nil
+}
+
 // --- VM Actions ---
 
-// getDomainByName is a helper function to look up a domain by its name on a host.
 func (c *Connector) getDomainByName(hostID, vmName string) (*libvirt.Domain, error) {
 	conn, err := c.GetConnection(hostID)
 	if err != nil {
@@ -398,7 +459,6 @@ func (c *Connector) getDomainByName(hostID, vmName string) (*libvirt.Domain, err
 	return domain, nil
 }
 
-// StartDomain starts a managed domain (VM).
 func (c *Connector) StartDomain(hostID, vmName string) error {
 	domain, err := c.getDomainByName(hostID, vmName)
 	if err != nil {
@@ -408,7 +468,6 @@ func (c *Connector) StartDomain(hostID, vmName string) error {
 	return domain.Create()
 }
 
-// ShutdownDomain gracefully shuts down a managed domain.
 func (c *Connector) ShutdownDomain(hostID, vmName string) error {
 	domain, err := c.getDomainByName(hostID, vmName)
 	if err != nil {
@@ -418,17 +477,15 @@ func (c *Connector) ShutdownDomain(hostID, vmName string) error {
 	return domain.Shutdown()
 }
 
-// RebootDomain gracefully reboots a managed domain.
 func (c *Connector) RebootDomain(hostID, vmName string) error {
 	domain, err := c.getDomainByName(hostID, vmName)
 	if err != nil {
 		return err
 	}
 	defer domain.Free()
-	return domain.Reboot(0) // 0 is the default flag
+	return domain.Reboot(0)
 }
 
-// DestroyDomain forcefully stops a managed domain (the equivalent of pulling the plug).
 func (c *Connector) DestroyDomain(hostID, vmName string) error {
 	domain, err := c.getDomainByName(hostID, vmName)
 	if err != nil {
@@ -438,14 +495,13 @@ func (c *Connector) DestroyDomain(hostID, vmName string) error {
 	return domain.Destroy()
 }
 
-// ResetDomain forcefully resets a managed domain.
 func (c *Connector) ResetDomain(hostID, vmName string) error {
 	domain, err := c.getDomainByName(hostID, vmName)
 	if err != nil {
 		return err
 	}
 	defer domain.Free()
-	return domain.Reset(0) // 0 is the default flag
+	return domain.Reset(0)
 }
 
 
