@@ -33,6 +33,15 @@ type VMInfo struct {
 	Graphics   GraphicsInfo           `json:"graphics"`
 }
 
+// VMStats holds real-time statistics for a single VM.
+type VMStats struct {
+	State   libvirt.DomainState `json:"state"`
+	Memory  uint64              `json:"memory"`
+	MaxMem  uint64              `json:"max_mem"`
+	Vcpu    uint                `json:"vcpu"`
+	CpuTime uint64              `json:"cpu_time"`
+}
+
 // HostInfo holds basic information and statistics about a hypervisor host.
 type HostInfo struct {
 	Hostname string `json:"hostname"`
@@ -214,7 +223,6 @@ func (c *Connector) ListAllDomains(hostID string) ([]VMInfo, error) {
 
 		var uptime int64 = -1
 		if state == libvirt.DOMAIN_RUNNING {
-			// libvirt.org/go/libvirt returns seconds directly as int64
 			timeVal, _, err := domain.GetTime(0)
 			if err == nil {
 				uptime = timeVal
@@ -232,13 +240,11 @@ func (c *Connector) ListAllDomains(hostID string) ([]VMInfo, error) {
 			continue
 		}
 
-		// Get the VM's XML definition to find graphics details
 		xmlDesc, err := domain.GetXMLDesc(0)
 		if err != nil {
 			log.Printf("Warning: failed to get XML for %s: %v", name, err)
 		}
 
-		// Parse graphics info from XML
 		graphics, err := parseGraphicsFromXML(xmlDesc)
 		if err != nil {
 			log.Printf("Warning: failed to parse graphics info for %s: %v", name, err)
@@ -260,6 +266,35 @@ func (c *Connector) ListAllDomains(hostID string) ([]VMInfo, error) {
 	}
 
 	return vms, nil
+}
+
+// GetDomainStats retrieves real-time statistics for a single domain (VM).
+func (c *Connector) GetDomainStats(hostID, vmName string) (*VMStats, error) {
+	domain, err := c.getDomainByName(hostID, vmName)
+	if err != nil {
+		return nil, err
+	}
+	defer domain.Free()
+
+	state, _, err := domain.GetState()
+	if err != nil {
+		return nil, fmt.Errorf("could not get state for domain %s: %w", vmName, err)
+	}
+
+	info, err := domain.GetInfo()
+	if err != nil {
+		return nil, fmt.Errorf("could not get info for domain %s: %w", vmName, err)
+	}
+
+	stats := &VMStats{
+		State:   state,
+		Memory:  info.Memory,
+		MaxMem:  info.MaxMem,
+		Vcpu:    uint(info.NrVirtCpu),
+		CpuTime: info.CpuTime,
+	}
+
+	return stats, nil
 }
 
 // --- VM Actions ---

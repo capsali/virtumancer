@@ -79,16 +79,6 @@ func (h *APIHandler) GetHosts(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(hosts)
 }
 
-// DeleteHost handles removing a host.
-func (h *APIHandler) DeleteHost(w http.ResponseWriter, r *http.Request) {
-	hostID := chi.URLParam(r, "hostID")
-	if err := h.HostService.RemoveHost(hostID); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
 // GetHostInfo returns statistics for a specific host.
 func (h *APIHandler) GetHostInfo(w http.ResponseWriter, r *http.Request) {
 	hostID := chi.URLParam(r, "hostID")
@@ -101,6 +91,16 @@ func (h *APIHandler) GetHostInfo(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(info)
 }
 
+// DeleteHost handles removing a host.
+func (h *APIHandler) DeleteHost(w http.ResponseWriter, r *http.Request) {
+	hostID := chi.URLParam(r, "hostID")
+	if err := h.HostService.RemoveHost(hostID); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // ListVMs lists all virtual machines on a specific host.
 func (h *APIHandler) ListVMs(w http.ResponseWriter, r *http.Request) {
 	hostID := chi.URLParam(r, "hostID")
@@ -111,6 +111,19 @@ func (h *APIHandler) ListVMs(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(vms)
+}
+
+// GetVMStats returns real-time stats for a specific VM.
+func (h *APIHandler) GetVMStats(w http.ResponseWriter, r *http.Request) {
+	hostID := chi.URLParam(r, "hostID")
+	vmName := chi.URLParam(r, "vmName")
+	stats, err := h.HostService.GetVMStats(hostID, vmName)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(stats)
 }
 
 // --- VM Actions ---
@@ -164,4 +177,5 @@ func (h *APIHandler) ForceResetVM(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
 

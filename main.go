@@ -49,8 +49,8 @@ func main() {
 		// Host routes
 		r.Get("/hosts", apiHandler.GetHosts)
 		r.Post("/hosts", apiHandler.CreateHost)
-		r.Delete("/hosts/{hostID}", apiHandler.DeleteHost)
 		r.Get("/hosts/{hostID}/info", apiHandler.GetHostInfo)
+		r.Delete("/hosts/{hostID}", apiHandler.DeleteHost)
 
 		// VM routes
 		r.Get("/hosts/{hostID}/vms", apiHandler.ListVMs)
@@ -59,6 +59,7 @@ func main() {
 		r.Post("/hosts/{hostID}/vms/{vmName}/reboot", apiHandler.RebootVM)
 		r.Post("/hosts/{hostID}/vms/{vmName}/forceoff", apiHandler.ForceOffVM)
 		r.Post("/hosts/{hostID}/vms/{vmName}/forcereset", apiHandler.ForceResetVM)
+		r.Get("/hosts/{hostID}/vms/{vmName}/stats", apiHandler.GetVMStats) // New stats route
 
 		// Console routes
 		r.Get("/hosts/{hostID}/vms/{vmName}/console", apiHandler.HandleVMConsole)
@@ -97,4 +98,5 @@ func main() {
 		log.Println("You can generate them by running the 'generate-certs.sh' script.")
 	}
 }
+
 

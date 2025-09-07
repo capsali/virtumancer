@@ -13,6 +13,8 @@ export const useMainStore = defineStore('main', () => {
         vmAction: null,
     });
     
+    const activeVmStats = ref(null);
+
     const totalVms = computed(() => {
       return hosts.value.reduce((total, host) => total + (host.vms ? host.vms.length : 0), 0);
     });
@@ -31,7 +33,7 @@ export const useMainStore = defineStore('main', () => {
             try {
                 const message = JSON.parse(event.data);
                 if (message.type === 'refresh') {
-                    console.log('WebSocket received refresh message');
+                    console.log('WebSocket received refresh message, refetching hosts.');
                     fetchHosts();
                 }
             } catch (e) {
@@ -78,6 +80,18 @@ export const useMainStore = defineStore('main', () => {
         }
     };
 
+    const fetchHostInfo = async (hostId) => {
+        if (!hostId) return null;
+        try {
+            const response = await fetch(`/api/v1/hosts/${hostId}/info`);
+             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            return await response.json();
+        } catch (error) {
+            console.error(`Error fetching info for host ${hostId}:`, error);
+            return null;
+        }
+    };
+
     const addHost = async (hostData) => {
         isLoading.value.addHost = true;
         errorMessage.value = '';
@@ -91,7 +105,7 @@ export const useMainStore = defineStore('main', () => {
                 const errorText = await response.text();
                 throw new Error(errorText || `HTTP error! status: ${response.status}`);
             }
-            await fetchHosts(); // This will broadcast a refresh, but we fetch immediately for responsiveness
+            await fetchHosts();
         } catch (error) {
             errorMessage.value = `Failed to add host: ${error.message}`;
             console.error(error);
@@ -111,7 +125,7 @@ export const useMainStore = defineStore('main', () => {
             if (selectedHostId.value === hostId) {
                 selectedHostId.value = null;
             }
-            await fetchHosts(); // This will broadcast a refresh
+            await fetchHosts();
         } catch (error) {
             errorMessage.value = `Failed to delete host: ${error.message}`;
             console.error(error);
@@ -123,19 +137,6 @@ export const useMainStore = defineStore('main', () => {
             selectedHostId.value = hostId;
         }
     };
-
-    const fetchHostInfo = async (hostId) => {
-        if (!hostId) return null;
-        try {
-            const response = await fetch(`/api/v1/hosts/${hostId}/info`);
-            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-            return await response.json() || null;
-        } catch (error) {
-            errorMessage.value = `Failed to fetch info for ${hostId}.`;
-            console.error(error);
-            return null;
-        }
-    }
 
     // --- VM Actions ---
 
@@ -155,6 +156,22 @@ export const useMainStore = defineStore('main', () => {
         }
     };
 
+    const fetchVmStats = async (hostId, vmName) => {
+        if (!hostId || !vmName) {
+            activeVmStats.value = null;
+            return;
+        }
+        try {
+            const response = await fetch(`/api/v1/hosts/${hostId}/vms/${vmName}/stats`);
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            activeVmStats.value = await response.json();
+        } catch (error) {
+            console.error(`Failed to fetch stats for VM ${vmName}:`, error);
+            activeVmStats.value = null; // Clear stats on error
+        }
+    };
+
+
     const performVmAction = async (hostId, vmName, action) => {
         isLoading.value.vmAction = `${vmName}:${action}`;
         errorMessage.value = '';
@@ -164,7 +181,6 @@ export const useMainStore = defineStore('main', () => {
                 const errorText = await response.text();
                 throw new Error(errorText || `HTTP error! status: ${response.status}`);
             }
-            // A refresh will be broadcast by the server
         } catch (error) {
             errorMessage.value = `Action '${action}' on VM '${vmName}' failed: ${error.message}`;
             console.error(error);
@@ -184,12 +200,14 @@ export const useMainStore = defineStore('main', () => {
         selectedHostId,
         errorMessage,
         isLoading,
+        activeVmStats,
         totalVms,
         initializeRealtime,
         fetchHosts,
         addHost,
         deleteHost,
         selectHost,
+        fetchVmStats,
         startVm,
         gracefulShutdownVm,
         gracefulRebootVm,
@@ -197,4 +215,5 @@ export const useMainStore = defineStore('main', () => {
         forceResetVm,
     };
 });
+
 
