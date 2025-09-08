@@ -93,10 +93,10 @@ func (h *APIHandler) DeleteHost(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// ListVMsFromLibvirt gets the real-time list of VMs from libvirt.
+// ListVMsFromLibvirt gets the unified view of VMs for a host.
 func (h *APIHandler) ListVMsFromLibvirt(w http.ResponseWriter, r *http.Request) {
 	hostID := chi.URLParam(r, "hostID")
-	vms, err := h.HostService.ListVMsFromLibvirt(hostID)
+	vms, err := h.HostService.GetVMsForHost(hostID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

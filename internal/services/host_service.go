@@ -1,7 +1,6 @@
 package services
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 
@@ -9,7 +8,28 @@ import (
 	"github.com/capsali/virtumancer/internal/storage"
 	"github.com/capsali/virtumancer/internal/ws"
 	"gorm.io/gorm"
+	lv "libvirt.org/go/libvirt"
 )
+
+// VMView is a combination of DB data and live libvirt data for the frontend.
+type VMView struct {
+	// From DB
+	ID          uint   `json:"db_id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	VCPUCount   uint   `json:"vcpu_count"`
+	MemoryBytes uint64 `json:"memory_bytes"`
+	IsTemplate  bool   `json:"is_template"`
+
+	// From Libvirt
+	State    lv.DomainState       `json:"state"`
+	MaxMem   uint64               `json:"max_mem"`
+	Memory   uint64               `json:"memory"`
+	Vcpu     uint                 `json:"vcpu"`
+	CpuTime  uint64               `json:"cpu_time"`
+	Uptime   int64                `json:"uptime"`
+	Graphics libvirt.GraphicsInfo `json:"graphics"`
+}
 
 type HostService struct {
 	db        *gorm.DB
@@ -54,6 +74,11 @@ func (s *HostService) AddHost(host storage.Host) (*storage.Host, error) {
 			log.Printf("CRITICAL: Failed to rollback host creation for %s after connection failure. DB Error: %v", host.ID, delErr)
 		}
 		return nil, fmt.Errorf("failed to connect to host: %w", err)
+	}
+
+	// Initial sync after adding a host
+	if _, err := s.syncAndListVMs(host.ID); err != nil {
+		log.Printf("Warning: failed to sync VMs on initial add for host %s: %v", host.ID, err)
 	}
 
 	s.broadcastUpdate()
@@ -101,6 +126,56 @@ func (s *HostService) ConnectToAllHosts() {
 
 // --- VM Management ---
 
+// GetVMsForHost retrieves a merged list of VMs for the frontend.
+func (s *HostService) GetVMsForHost(hostID string) ([]VMView, error) {
+	// 1. Get live data from libvirt and sync DB in the process
+	liveVMs, err := s.syncAndListVMs(hostID)
+	if err != nil {
+		return nil, fmt.Errorf("could not get live VM data for host %s: %w", hostID, err)
+	}
+	liveVMMap := make(map[string]libvirt.VMInfo)
+	for _, vm := range liveVMs {
+		liveVMMap[vm.UUID] = vm
+	}
+
+	// 2. Get DB records for the host
+	var dbVMs []storage.VirtualMachine
+	if err := s.db.Where("host_id = ?", hostID).Find(&dbVMs).Error; err != nil {
+		return nil, fmt.Errorf("could not get DB VM records for host %s: %w", hostID, err)
+	}
+
+	// 3. Create the unified view
+	var vmViews []VMView
+	for _, dbVM := range dbVMs {
+		view := VMView{
+			ID:          dbVM.ID,
+			Name:        dbVM.Name,
+			Description: dbVM.Description,
+			VCPUCount:   dbVM.VCPUCount,
+			MemoryBytes: dbVM.MemoryBytes,
+			IsTemplate:  dbVM.IsTemplate,
+		}
+
+		// Merge live data if the VM is found
+		if liveVM, ok := liveVMMap[dbVM.UUID]; ok {
+			view.State = liveVM.State
+			view.MaxMem = liveVM.MaxMem
+			view.Memory = liveVM.Memory
+			view.Vcpu = liveVM.Vcpu
+			view.CpuTime = liveVM.CpuTime
+			view.Uptime = liveVM.Uptime
+			view.Graphics = liveVM.Graphics
+		} else {
+			// VM exists in DB but not in libvirt
+			view.State = -1 // Using -1 as a custom state for "Not Found" or "Undefined"
+		}
+		vmViews = append(vmViews, view)
+	}
+
+	return vmViews, nil
+}
+
+
 // syncAndListVMs is the core function to get VMs from libvirt and sync with the local DB.
 func (s *HostService) syncAndListVMs(hostID string) ([]libvirt.VMInfo, error) {
 	liveVMs, err := s.connector.ListAllDomains(hostID)
@@ -110,40 +185,31 @@ func (s *HostService) syncAndListVMs(hostID string) ([]libvirt.VMInfo, error) {
 
 	// Sync with DB
 	for _, vmInfo := range liveVMs {
-		configBytes, err := json.Marshal(vmInfo)
-		if err != nil {
-			log.Printf("Warning: could not marshal VM info for %s: %v", vmInfo.Name, err)
-			continue
+		vmRecord := storage.VirtualMachine{
+			HostID:      hostID,
+			Name:        vmInfo.Name,
+			UUID:        vmInfo.UUID,
+			VCPUCount:   vmInfo.Vcpu,
+			MemoryBytes: vmInfo.MaxMem * 1024, // libvirt reports MaxMem in KiB
 		}
 
-		vm := storage.VirtualMachine{
-			Name:       vmInfo.Name,
-			HostID:     hostID,
-			ConfigJSON: string(configBytes),
-		}
-
-		// Use FirstOrCreate to either find the existing VM or create a new one.
-		// Then update its config.
-		if err := s.db.Where(storage.VirtualMachine{Name: vmInfo.Name, HostID: hostID}).Assign(storage.VirtualMachine{ConfigJSON: string(configBytes)}).FirstOrCreate(&vm).Error; err != nil {
+		// Use FirstOrCreate to find the existing VM by UUID or create a new one.
+		// Then, update its configuration details.
+		if err := s.db.Where(storage.VirtualMachine{UUID: vmInfo.UUID}).Assign(vmRecord).FirstOrCreate(&vmRecord).Error; err != nil {
 			log.Printf("Warning: could not sync VM %s to database: %v", vmInfo.Name, err)
 		}
 	}
 
 	// Optional: Prune DB entries for VMs that no longer exist on the host
-	var liveVMNames []string
+	var liveVMUUIDs []string
 	for _, vm := range liveVMs {
-		liveVMNames = append(liveVMNames, vm.Name)
+		liveVMUUIDs = append(liveVMUUIDs, vm.UUID)
 	}
-	if err := s.db.Where("host_id = ? AND name NOT IN ?", hostID, liveVMNames).Delete(&storage.VirtualMachine{}).Error; err != nil {
+	if err := s.db.Where("host_id = ? AND uuid NOT IN ?", hostID, liveVMUUIDs).Delete(&storage.VirtualMachine{}).Error; err != nil {
 		log.Printf("Warning: failed to prune old VMs for host %s: %v", hostID, err)
 	}
 
 	return liveVMs, nil
-}
-
-// ListVMsFromLibvirt gets the real-time list of VMs directly from libvirt.
-func (s *HostService) ListVMsFromLibvirt(hostID string) ([]libvirt.VMInfo, error) {
-	return s.syncAndListVMs(hostID)
 }
 
 // ListVMsFromDB gets the list of VMs for a host from the local database.
@@ -154,7 +220,6 @@ func (s *HostService) ListVMsFromDB(hostID string) ([]storage.VirtualMachine, er
 	}
 	return vms, nil
 }
-
 
 func (s *HostService) GetVMStats(hostID, vmName string) (*libvirt.VMStats, error) {
 	stats, err := s.connector.GetDomainStats(hostID, vmName)

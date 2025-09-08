@@ -20,17 +20,18 @@ type GraphicsInfo struct {
 
 // VMInfo holds basic information about a virtual machine.
 type VMInfo struct {
-	ID         uint32                 `json:"id"`
-	Name       string                 `json:"name"`
-	State      libvirt.DomainState    `json:"state"`
-	MaxMem     uint64                 `json:"max_mem"`
-	Memory     uint64                 `json:"memory"`
-	Vcpu       uint                   `json:"vcpu"`
-	CpuTime    uint64                 `json:"cpu_time"`
-	Uptime     int64                  `json:"uptime"`
-	Persistent bool                   `json:"persistent"`
-	Autostart  bool                   `json:"autostart"`
-	Graphics   GraphicsInfo           `json:"graphics"`
+	ID         uint32              `json:"id"`
+	UUID       string              `json:"uuid"`
+	Name       string              `json:"name"`
+	State      libvirt.DomainState `json:"state"`
+	MaxMem     uint64              `json:"max_mem"`
+	Memory     uint64              `json:"memory"`
+	Vcpu       uint                `json:"vcpu"`
+	CpuTime    uint64              `json:"cpu_time"`
+	Uptime     int64               `json:"uptime"`
+	Persistent bool                `json:"persistent"`
+	Autostart  bool                `json:"autostart"`
+	Graphics   GraphicsInfo        `json:"graphics"`
 }
 
 // DomainDiskStats holds I/O statistics for a single disk device.
@@ -70,11 +71,13 @@ type DiskInfo struct {
 	Device string `xml:"device,attr" json:"device"`
 	Driver struct {
 		Name string `xml:"name,attr" json:"driver_name"`
-		Type string `xml:"type,attr" json:"driver_type"`
+		Type string `xml:"type,attr" json:"type"`
 	} `xml:"driver" json:"driver"`
 	Source struct {
-		File string `xml:"file,attr" json:"file"`
-	} `xml:"source" json:"source"`
+		File string `xml:"file,attr"`
+		Dev  string `xml:"dev,attr"`
+	} `xml:"source"`
+	Path   string `json:"path"`
 	Target struct {
 		Dev string `xml:"dev,attr" json:"dev"`
 		Bus string `xml:"bus,attr" json:"bus"`
@@ -234,7 +237,7 @@ func parseGraphicsFromXML(xmlDesc string) (GraphicsInfo, error) {
 	}
 
 	for _, g := range def.Graphics {
-		if g.Port != "" && g.Port != "0" {
+		if g.Port != "" && g.Port != "-1" {
 			switch strings.ToLower(g.Type) {
 			case "vnc":
 				graphics.VNC = true
@@ -262,11 +265,17 @@ func (c *Connector) ListAllDomains(hostID string) ([]VMInfo, error) {
 	var vms []VMInfo
 	for i := range domains {
 		domain := &domains[i]
-		defer domain.Free()
 
 		name, err := domain.GetName()
 		if err != nil {
 			log.Printf("Warning: could not get name for a domain on host %s: %v", hostID, err)
+			domain.Free()
+			continue
+		}
+		uuid, err := domain.GetUUIDString()
+		if err != nil {
+			log.Printf("Warning: could not get UUID for a domain on host %s: %v", hostID, err)
+			domain.Free()
 			continue
 		}
 		id, err := domain.GetID()
@@ -276,11 +285,13 @@ func (c *Connector) ListAllDomains(hostID string) ([]VMInfo, error) {
 		state, _, err := domain.GetState()
 		if err != nil {
 			log.Printf("Warning: could not get state for domain %s: %v", name, err)
+			domain.Free()
 			continue
 		}
 		info, err := domain.GetInfo()
 		if err != nil {
 			log.Printf("Warning: could not get info for domain %s: %v", name, err)
+			domain.Free()
 			continue
 		}
 
@@ -295,12 +306,12 @@ func (c *Connector) ListAllDomains(hostID string) ([]VMInfo, error) {
 		isPersistent, err := domain.IsPersistent()
 		if err != nil {
 			log.Printf("Warning: could not get persistence for domain %s: %v", name, err)
-			continue
+			isPersistent = false
 		}
 		autostart, err := domain.GetAutostart()
 		if err != nil {
 			log.Printf("Warning: could not get autostart for domain %s: %v", name, err)
-			continue
+			autostart = false
 		}
 
 		xmlDesc, err := domain.GetXMLDesc(0)
@@ -315,6 +326,7 @@ func (c *Connector) ListAllDomains(hostID string) ([]VMInfo, error) {
 
 		vms = append(vms, VMInfo{
 			ID:         uint32(id),
+			UUID:       uuid,
 			Name:       name,
 			State:      state,
 			MaxMem:     info.MaxMem,
@@ -326,6 +338,7 @@ func (c *Connector) ListAllDomains(hostID string) ([]VMInfo, error) {
 			Autostart:  autostart,
 			Graphics:   graphics,
 		})
+		domain.Free()
 	}
 
 	return vms, nil
@@ -440,6 +453,15 @@ func (c *Connector) GetDomainHardware(hostID, vmName string) (*HardwareInfo, err
 	hardware := &HardwareInfo{
 		Disks:    def.Devices.Disks,
 		Networks: def.Devices.Interfaces,
+	}
+
+	// Post-process disks to populate the unified 'Path' field.
+	for i := range hardware.Disks {
+		if hardware.Disks[i].Source.File != "" {
+			hardware.Disks[i].Path = hardware.Disks[i].Source.File
+		} else if hardware.Disks[i].Source.Dev != "" {
+			hardware.Disks[i].Path = hardware.Disks[i].Source.Dev
+		}
 	}
 
 	return hardware, nil

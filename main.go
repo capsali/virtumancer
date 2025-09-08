@@ -54,7 +54,6 @@ func main() {
 
 		// VM routes
 		r.Get("/hosts/{hostID}/vms", apiHandler.ListVMsFromLibvirt)
-		r.Get("/hosts/{hostID}/vms/db", apiHandler.ListVMsFromDB) // New DB route
 		r.Post("/hosts/{hostID}/vms/{vmName}/start", apiHandler.StartVM)
 		r.Post("/hosts/{hostID}/vms/{vmName}/shutdown", apiHandler.ShutdownVM)
 		r.Post("/hosts/{hostID}/vms/{vmName}/reboot", apiHandler.RebootVM)

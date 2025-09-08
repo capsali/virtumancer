@@ -332,7 +332,7 @@ onUnmounted(() => {
                                 <tr v-for="disk in hardware.disks" :key="disk.target.dev">
                                     <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">{{ disk.target.dev }}</td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ disk.target.bus }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300 font-mono break-all">{{ disk.source.file }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300 font-mono break-all">{{ disk.path }}</td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ disk.driver.type }}</td>
                                 </tr>
                             </tbody>
@@ -382,5 +382,4 @@ onUnmounted(() => {
     <p>Select a VM from the sidebar to view details, or the VM is still loading.</p>
   </div>
 </template>
-
 

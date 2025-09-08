@@ -13,12 +13,12 @@ export const useMainStore = defineStore('main', () => {
         vmAction: null,
         vmHardware: false,
     });
-    
+
     const activeVmStats = ref(null);
     const activeVmHardware = ref(null);
 
     const totalVms = computed(() => {
-      return hosts.value.reduce((total, host) => total + (host.vms ? host.vms.length : 0), 0);
+        return hosts.value.reduce((total, host) => total + (host.vms ? host.vms.length : 0), 0);
     });
 
     let ws = null;
@@ -51,7 +51,7 @@ export const useMainStore = defineStore('main', () => {
             ws.close();
         };
     };
-    
+
     const initializeRealtime = () => {
         connectWebSocket();
     };
@@ -65,24 +65,9 @@ export const useMainStore = defineStore('main', () => {
             const response = await fetch('/api/v1/hosts');
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             const data = await response.json();
-            
+
             const hostPromises = (data || []).map(async host => {
-                // Fetch both live data and DB data, then merge them
-                const liveVms = await fetchVmsFromLibvirt(host.id);
-                const dbVms = await fetchVmsFromDb(host.id);
-
-                // Create a map of live VMs by name for efficient lookup
-                const liveVmMap = new Map(liveVms.map(vm => [vm.name, vm]));
-
-                // Merge live data into the DB data
-                host.vms = dbVms.map(dbVm => {
-                    const liveData = liveVmMap.get(dbVm.name);
-                    return {
-                        ...dbVm, // Local DB config
-                        ...(liveData || {}), // Live status from libvirt
-                    };
-                });
-
+                host.vms = await fetchVmsForHost(host.id);
                 host.info = await fetchHostInfo(host.id);
                 return host;
             });
@@ -101,7 +86,7 @@ export const useMainStore = defineStore('main', () => {
         if (!hostId) return null;
         try {
             const response = await fetch(`/api/v1/hosts/${hostId}/info`);
-             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             return await response.json();
         } catch (error) {
             console.error(`Error fetching info for host ${hostId}:`, error);
@@ -122,7 +107,7 @@ export const useMainStore = defineStore('main', () => {
                 const errorText = await response.text();
                 throw new Error(errorText || `HTTP error! status: ${response.status}`);
             }
-            await fetchHosts();
+            // No need to call fetchHosts here, the websocket will trigger it
         } catch (error) {
             errorMessage.value = `Failed to add host: ${error.message}`;
             console.error(error);
@@ -130,7 +115,7 @@ export const useMainStore = defineStore('main', () => {
             isLoading.value.addHost = false;
         }
     };
-    
+
     const deleteHost = async (hostId) => {
         errorMessage.value = '';
         try {
@@ -142,7 +127,7 @@ export const useMainStore = defineStore('main', () => {
             if (selectedHostId.value === hostId) {
                 selectedHostId.value = null;
             }
-            await fetchHosts();
+            // No need to call fetchHosts here, the websocket will trigger it
         } catch (error) {
             errorMessage.value = `Failed to delete host: ${error.message}`;
             console.error(error);
@@ -156,27 +141,14 @@ export const useMainStore = defineStore('main', () => {
     };
 
     // --- VM Actions ---
-
-    const fetchVmsFromLibvirt = async (hostId) => {
+    const fetchVmsForHost = async (hostId) => {
         if (!hostId) return [];
         try {
             const response = await fetch(`/api/v1/hosts/${hostId}/vms`);
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             return await response.json() || [];
         } catch (error) {
-            console.error(`Failed to fetch live VMs for ${hostId}:`, error);
-            return [];
-        }
-    };
-
-    const fetchVmsFromDb = async (hostId) => {
-         if (!hostId) return [];
-        try {
-            const response = await fetch(`/api/v1/hosts/${hostId}/vms/db`);
-            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-            return await response.json() || [];
-        } catch (error) {
-             console.error(`Failed to fetch DB VMs for ${hostId}:`, error);
+            console.error(`Failed to fetch VMs for ${hostId}:`, error);
             return [];
         }
     };
@@ -223,6 +195,7 @@ export const useMainStore = defineStore('main', () => {
                 const errorText = await response.text();
                 throw new Error(errorText || `HTTP error! status: ${response.status}`);
             }
+            // The websocket will handle the UI update
         } catch (error) {
             errorMessage.value = `Action '${action}' on VM '${vmName}' failed: ${error.message}`;
             console.error(error);
