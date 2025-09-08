@@ -96,23 +96,18 @@ func (h *APIHandler) DeleteHost(w http.ResponseWriter, r *http.Request) {
 // ListVMsFromLibvirt gets the unified view of VMs for a host.
 func (h *APIHandler) ListVMsFromLibvirt(w http.ResponseWriter, r *http.Request) {
 	hostID := chi.URLParam(r, "hostID")
-	vms, err := h.HostService.GetVMsForHost(hostID)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(vms)
-}
 
-// ListVMsFromDB gets the list of VMs from the local database.
-func (h *APIHandler) ListVMsFromDB(w http.ResponseWriter, r *http.Request) {
-	hostID := chi.URLParam(r, "hostID")
-	vms, err := h.HostService.ListVMsFromDB(hostID)
+	// Immediately get VMs from the DB for a fast response.
+	vms, err := h.HostService.GetVMsForHostFromDB(hostID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	// In the background, trigger a sync from libvirt.
+	// The service will broadcast a websocket update when it's done.
+	go h.HostService.SyncVMsForHost(hostID)
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(vms)
 }
@@ -132,9 +127,12 @@ func (h *APIHandler) GetVMStats(w http.ResponseWriter, r *http.Request) {
 func (h *APIHandler) GetVMHardware(w http.ResponseWriter, r *http.Request) {
 	hostID := chi.URLParam(r, "hostID")
 	vmName := chi.URLParam(r, "vmName")
-	hardware, err := h.HostService.GetVMHardware(hostID, vmName)
+	hardware, err := h.HostService.GetVMHardwareAndTriggerSync(hostID, vmName)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		// Even if there's an error (e.g., no cache yet), we might still proceed
+		// if we want to allow the background sync to populate it.
+		// For now, we'll return an error if the initial fetch fails.
+		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -192,5 +190,8 @@ func (h *APIHandler) ForceResetVM(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+
+
 
 

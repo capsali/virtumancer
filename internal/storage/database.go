@@ -16,14 +16,19 @@ type Host struct {
 // VirtualMachine is Virtumancer's canonical definition of a VM's intended state.
 type VirtualMachine struct {
 	gorm.Model
-	HostID      string `gorm:"uniqueIndex:idx_vm_host_name"`
-	Name        string `gorm:"uniqueIndex:idx_vm_host_name"`
-	UUID        string `gorm:"uniqueIndex"`
-	Description string
-	VCPUCount   uint
-	MemoryBytes uint64
-	OSType      string
-	IsTemplate  bool
+	HostID          string `gorm:"uniqueIndex:idx_vm_host_name"`
+	Name            string `gorm:"uniqueIndex:idx_vm_host_name"`
+	UUID            string `gorm:"uniqueIndex"`
+	Description     string
+	State           int    `gorm:"default:-1"` // Caches the last known libvirt.DomainState
+	GraphicsJSON    string // Caches the JSON representation of libvirt.GraphicsInfo
+	HardwareJSON    string // Caches the JSON representation of libvirt.HardwareInfo
+	VCPUCount       uint
+	CPUModel        string
+	CPUTopologyJSON string
+	MemoryBytes     uint64
+	OSType          string
+	IsTemplate      bool
 }
 
 // --- Storage Management ---
@@ -76,10 +81,10 @@ type Network struct {
 // Port represents a virtual Network Interface Card (vNIC) belonging to a VM.
 type Port struct {
 	gorm.Model
-	VMID        uint
-	MACAddress  string `gorm:"uniqueIndex"`
-	ModelName   string // e.g., 'virtio', 'e1000'
-	IPAddress   string
+	VMID       uint
+	MACAddress string `gorm:"uniqueIndex"`
+	ModelName  string // e.g., 'virtio', 'e1000'
+	IPAddress  string
 }
 
 // PortBinding links a Port to a Network.
@@ -224,6 +229,131 @@ type ChannelDeviceAttachment struct {
 	ChannelDeviceID uint
 }
 
+// Filesystem represents a shared filesystem for a VM.
+type Filesystem struct {
+	gorm.Model
+	DriverType  string
+	SourcePath  string
+	TargetPath  string
+}
+
+// FilesystemAttachment links a Filesystem to a VM.
+type FilesystemAttachment struct {
+	gorm.Model
+	VMID         uint
+	FilesystemID uint
+}
+
+// Smartcard represents a smartcard device for a VM.
+type Smartcard struct {
+	gorm.Model
+	Type       string
+	ConfigJSON string
+}
+
+// SmartcardAttachment links a Smartcard to a VM.
+type SmartcardAttachment struct {
+	gorm.Model
+	VMID        uint
+	SmartcardID uint
+}
+
+// USBRedirector represents a USB redirection device.
+type USBRedirector struct {
+	gorm.Model
+	Type       string
+	FilterRule string
+}
+
+// USBRedirectorAttachment links a USBRedirector to a VM.
+type USBRedirectorAttachment struct {
+	gorm.Model
+	VMID            uint
+	USBRedirectorID uint
+}
+
+// RngDevice represents a Random Number Generator device.
+type RngDevice struct {
+	gorm.Model
+	ModelName   string
+	BackendType string
+}
+
+// RngDeviceAttachment links an RngDevice to a VM.
+type RngDeviceAttachment struct {
+	gorm.Model
+	VMID        uint
+	RngDeviceID uint
+}
+
+// PanicDevice represents a panic device for a VM.
+type PanicDevice struct {
+	gorm.Model
+	ModelName string
+}
+
+// PanicDeviceAttachment links a PanicDevice to a VM.
+type PanicDeviceAttachment struct {
+	gorm.Model
+	VMID          uint
+	PanicDeviceID uint
+}
+
+// Vsock represents a VirtIO socket device.
+type Vsock struct {
+	gorm.Model
+	GuestCID uint
+}
+
+// VsockAttachment links a Vsock to a VM.
+type VsockAttachment struct {
+	gorm.Model
+	VMID    uint
+	VsockID uint
+}
+
+// MemoryBalloon represents a memory balloon device.
+type MemoryBalloon struct {
+	gorm.Model
+	ModelName  string
+	ConfigJSON string
+}
+
+// MemoryBalloonAttachment links a MemoryBalloon to a VM.
+type MemoryBalloonAttachment struct {
+	gorm.Model
+	VMID            uint
+	MemoryBalloonID uint
+}
+
+// ShmemDevice represents a shared memory device.
+type ShmemDevice struct {
+	gorm.Model
+	Name    string
+	SizeKiB uint
+	Path    string
+}
+
+// ShmemDeviceAttachment links a ShmemDevice to a VM.
+type ShmemDeviceAttachment struct {
+	gorm.Model
+	VMID          uint
+	ShmemDeviceID uint
+}
+
+// IOMMUDevice represents an IOMMU device.
+type IOMMUDevice struct {
+	gorm.Model
+	ModelName string
+}
+
+// IOMMUDeviceAttachment links an IOMMUDevice to a VM.
+type IOMMUDeviceAttachment struct {
+	gorm.Model
+	VMID          uint
+	IOMMUDeviceID uint
+}
+
 // --- Advanced Features ---
 
 // VMSnapshot stores metadata about a VM snapshot.
@@ -314,6 +444,24 @@ func InitDB(dataSourceName string) (*gorm.DB, error) {
 		&SerialDeviceAttachment{},
 		&ChannelDevice{},
 		&ChannelDeviceAttachment{},
+		&Filesystem{},
+		&FilesystemAttachment{},
+		&Smartcard{},
+		&SmartcardAttachment{},
+		&USBRedirector{},
+		&USBRedirectorAttachment{},
+		&RngDevice{},
+		&RngDeviceAttachment{},
+		&PanicDevice{},
+		&PanicDeviceAttachment{},
+		&Vsock{},
+		&VsockAttachment{},
+		&MemoryBalloon{},
+		&MemoryBalloonAttachment{},
+		&ShmemDevice{},
+		&ShmemDeviceAttachment{},
+		&IOMMUDevice{},
+		&IOMMUDeviceAttachment{},
 		&VMSnapshot{},
 		&User{},
 		&Role{},
@@ -327,5 +475,7 @@ func InitDB(dataSourceName string) (*gorm.DB, error) {
 
 	return db, nil
 }
+
+
 
 

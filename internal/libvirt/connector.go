@@ -266,82 +266,92 @@ func (c *Connector) ListAllDomains(hostID string) ([]VMInfo, error) {
 	for i := range domains {
 		domain := &domains[i]
 
-		name, err := domain.GetName()
+		vmInfo, err := c.domainToVMInfo(domain)
 		if err != nil {
-			log.Printf("Warning: could not get name for a domain on host %s: %v", hostID, err)
-			domain.Free()
-			continue
-		}
-		uuid, err := domain.GetUUIDString()
-		if err != nil {
-			log.Printf("Warning: could not get UUID for a domain on host %s: %v", hostID, err)
-			domain.Free()
-			continue
-		}
-		id, err := domain.GetID()
-		if err != nil {
-			id = 0 // Not running
-		}
-		state, _, err := domain.GetState()
-		if err != nil {
-			log.Printf("Warning: could not get state for domain %s: %v", name, err)
-			domain.Free()
-			continue
-		}
-		info, err := domain.GetInfo()
-		if err != nil {
-			log.Printf("Warning: could not get info for domain %s: %v", name, err)
+			name, _ := domain.GetName()
+			log.Printf("Warning: could not get info for domain %s on host %s: %v", name, hostID, err)
 			domain.Free()
 			continue
 		}
 
-		var uptime int64 = -1
-		if state == libvirt.DOMAIN_RUNNING {
-			timeVal, _, err := domain.GetTime(0)
-			if err == nil {
-				uptime = timeVal
-			}
-		}
-
-		isPersistent, err := domain.IsPersistent()
-		if err != nil {
-			log.Printf("Warning: could not get persistence for domain %s: %v", name, err)
-			isPersistent = false
-		}
-		autostart, err := domain.GetAutostart()
-		if err != nil {
-			log.Printf("Warning: could not get autostart for domain %s: %v", name, err)
-			autostart = false
-		}
-
-		xmlDesc, err := domain.GetXMLDesc(0)
-		if err != nil {
-			log.Printf("Warning: failed to get XML for %s: %v", name, err)
-		}
-
-		graphics, err := parseGraphicsFromXML(xmlDesc)
-		if err != nil {
-			log.Printf("Warning: failed to parse graphics info for %s: %v", name, err)
-		}
-
-		vms = append(vms, VMInfo{
-			ID:         uint32(id),
-			UUID:       uuid,
-			Name:       name,
-			State:      state,
-			MaxMem:     info.MaxMem,
-			Memory:     info.Memory,
-			Vcpu:       uint(info.NrVirtCpu),
-			CpuTime:    info.CpuTime,
-			Uptime:     uptime,
-			Persistent: isPersistent,
-			Autostart:  autostart,
-			Graphics:   graphics,
-		})
+		vms = append(vms, *vmInfo)
 		domain.Free()
 	}
 
 	return vms, nil
+}
+
+// GetDomainInfo retrieves information for a single domain.
+func (c *Connector) GetDomainInfo(hostID, vmName string) (*VMInfo, error) {
+	domain, err := c.getDomainByName(hostID, vmName)
+	if err != nil {
+		return nil, err
+	}
+	defer domain.Free()
+
+	return c.domainToVMInfo(domain)
+}
+
+// domainToVMInfo is a helper to convert a libvirt.Domain object to our VMInfo struct.
+func (c *Connector) domainToVMInfo(domain *libvirt.Domain) (*VMInfo, error) {
+	name, err := domain.GetName()
+	if err != nil {
+		return nil, err
+	}
+	uuid, err := domain.GetUUIDString()
+	if err != nil {
+		return nil, err
+	}
+	id, err := domain.GetID()
+	if err != nil {
+		id = 0 // Not running
+	}
+	state, _, err := domain.GetState()
+	if err != nil {
+		return nil, err
+	}
+	info, err := domain.GetInfo()
+	if err != nil {
+		return nil, err
+	}
+	var uptime int64 = -1
+	if state == libvirt.DOMAIN_RUNNING {
+		timeVal, _, err := domain.GetTime(0)
+		if err == nil {
+			uptime = timeVal
+		}
+	}
+	isPersistent, err := domain.IsPersistent()
+	if err != nil {
+		isPersistent = false
+	}
+	autostart, err := domain.GetAutostart()
+	if err != nil {
+		autostart = false
+	}
+	xmlDesc, err := domain.GetXMLDesc(0)
+	if err != nil {
+		return nil, err
+	}
+	graphics, err := parseGraphicsFromXML(xmlDesc)
+	if err != nil {
+		return nil, err
+	}
+
+	return &VMInfo{
+		ID:         uint32(id),
+		UUID:       uuid,
+		Name:       name,
+		State:      state,
+		MaxMem:     info.MaxMem,
+		Memory:     info.Memory,
+		Vcpu:       uint(info.NrVirtCpu),
+		CpuTime:    info.CpuTime,
+		Uptime:     uptime,
+		Persistent: isPersistent,
+		Autostart:  autostart,
+		Graphics:   graphics,
+	}, nil
 }
 
 // GetDomainStats retrieves real-time statistics for a single domain (VM).
