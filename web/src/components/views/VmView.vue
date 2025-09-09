@@ -9,8 +9,6 @@ const mainStore = useMainStore();
 const route = useRoute();
 const activeTab = ref('summary');
 
-let pollInterval = null;
-
 const vm = computed(() => {
     if (!route.params.vmName) return null;
     for (const host of mainStore.hosts) {
@@ -25,7 +23,23 @@ const host = computed(() => {
     return mainStore.hosts.find(h => h.vms && h.vms.some(v => v.name === vm.value.name));
 });
 
-const stats = computed(() => mainStore.activeVmStats);
+const stats = computed(() => {
+    const s = mainStore.activeVmStats;
+    if (s && host.value && vm.value && s.hostId === host.value.id && s.vmName === vm.value.name) {
+        return s.stats;
+    }
+    // Return a default structure if no stats are available to prevent template errors
+    return {
+        state: vm.value?.state ?? -1,
+        max_mem: vm.value?.max_mem ?? 0,
+        memory: 0,
+        vcpu: vm.value?.vcpu ?? 0,
+        cpu_time: 0,
+        disk_stats: [],
+        net_stats: []
+    };
+});
+
 const hardware = computed(() => mainStore.activeVmHardware);
 
 // --- Real-time Stat Calculation ---
@@ -154,10 +168,13 @@ watch(activeTab, (newTab) => {
     }
 });
 
-watch(vm, (newVm) => {
-    clearInterval(pollInterval);
-    pollInterval = null;
-
+watch(vm, (newVm, oldVm) => {
+    // Unsubscribe from the old VM's stats
+    if (oldVm && host.value) {
+        mainStore.unsubscribeFromVmStats(host.value.id, oldVm.name);
+    }
+    
+    // Reset local state
     activeTab.value = 'summary';
     lastCpuTime.value = 0;
     lastCpuTimeTimestamp.value = 0;
@@ -170,10 +187,8 @@ watch(vm, (newVm) => {
     mainStore.activeVmHardware = null;
 
     if (newVm && host.value) {
-        mainStore.fetchVmStats(host.value.id, newVm.name);
-        pollInterval = setInterval(() => {
-            mainStore.fetchVmStats(host.value.id, newVm.name);
-        }, 2000);
+        // Subscribe to the new VM's stats
+        mainStore.subscribeToVmStats(host.value.id, newVm.name);
 
         if (activeTab.value === 'hardware') {
              mainStore.fetchVmHardware(host.value.id, newVm.name);
@@ -182,9 +197,9 @@ watch(vm, (newVm) => {
 }, { immediate: true });
 
 onUnmounted(() => {
-    clearInterval(pollInterval);
-    mainStore.activeVmStats = null;
-    mainStore.activeVmHardware = null;
+    if (vm.value && host.value) {
+        mainStore.unsubscribeFromVmStats(host.value.id, vm.value.name);
+    }
 });
 
 </script>

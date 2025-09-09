@@ -14,13 +14,13 @@ import (
 )
 
 type APIHandler struct {
-	HostService *services.HostService
+	HostService services.HostServiceProvider
 	Hub         *ws.Hub
 	DB          *gorm.DB
 	Connector   *libvirt.Connector
 }
 
-func NewAPIHandler(hostService *services.HostService, hub *ws.Hub, db *gorm.DB, connector *libvirt.Connector) *APIHandler {
+func NewAPIHandler(hostService services.HostServiceProvider, hub *ws.Hub, db *gorm.DB, connector *libvirt.Connector) *APIHandler {
 	return &APIHandler{
 		HostService: hostService,
 		Hub:         hub,
@@ -30,7 +30,7 @@ func NewAPIHandler(hostService *services.HostService, hub *ws.Hub, db *gorm.DB, 
 }
 
 func (h *APIHandler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
-	ws.ServeWs(h.Hub, w, r)
+	ws.ServeWs(h.Hub, h.HostService, w, r)
 }
 
 func (h *APIHandler) HandleVMConsole(w http.ResponseWriter, r *http.Request) {
@@ -112,18 +112,6 @@ func (h *APIHandler) ListVMsFromLibvirt(w http.ResponseWriter, r *http.Request) 
 	json.NewEncoder(w).Encode(vms)
 }
 
-func (h *APIHandler) GetVMStats(w http.ResponseWriter, r *http.Request) {
-	hostID := chi.URLParam(r, "hostID")
-	vmName := chi.URLParam(r, "vmName")
-	stats, err := h.HostService.GetVMStats(hostID, vmName)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(stats)
-}
-
 func (h *APIHandler) GetVMHardware(w http.ResponseWriter, r *http.Request) {
 	hostID := chi.URLParam(r, "hostID")
 	vmName := chi.URLParam(r, "vmName")
@@ -190,8 +178,4 @@ func (h *APIHandler) ForceResetVM(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
-
-
-
-
 
