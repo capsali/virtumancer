@@ -82,6 +82,7 @@ type Port struct {
 	gorm.Model
 	VMID       uint
 	MACAddress string `gorm:"uniqueIndex"`
+	DeviceName string // e.g. "vnet0", "eth0"
 	ModelName  string // e.g., 'virtio', 'e1000'
 	IPAddress  string
 }

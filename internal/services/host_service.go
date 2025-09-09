@@ -185,20 +185,21 @@ func (s *HostService) GetVMsForHostFromDB(hostID string) ([]VMView, error) {
 
 	var vmViews []VMView
 	for _, dbVM := range dbVMs {
-		var graphicsDevice storage.GraphicsDevice
 		var graphics libvirt.GraphicsInfo // Default to false
 
-		err := s.db.Joins("join graphics_device_attachments on graphics_device_attachments.graphics_device_id = graphics_devices.id").
-			Where("graphics_device_attachments.vm_id = ?", dbVM.ID).First(&graphicsDevice).Error
+		// Only query for graphics devices if the VM is running.
+		if golibvirt.DomainState(dbVM.State) == golibvirt.DomainRunning {
+			var graphicsDevice storage.GraphicsDevice
+			err := s.db.Joins("join graphics_device_attachments on graphics_device_attachments.graphics_device_id = graphics_devices.id").
+				Where("graphics_device_attachments.vm_id = ?", dbVM.ID).First(&graphicsDevice).Error
 
-		if err != nil {
-			if err != gorm.ErrRecordNotFound {
-				log.Printf("Error querying graphics device for VM %d: %v", dbVM.ID, err)
+			if err != nil && err != gorm.ErrRecordNotFound {
+				// Log only unexpected errors, not "not found".
+				log.Printf("Error querying graphics device for running VM %d: %v", dbVM.ID, err)
+			} else if err == nil {
+				graphics.VNC = strings.ToLower(graphicsDevice.Type) == "vnc"
+				graphics.SPICE = strings.ToLower(graphicsDevice.Type) == "spice"
 			}
-			// If not found, `graphics` remains with default false values, which is correct.
-		} else {
-			graphics.VNC = strings.ToLower(graphicsDevice.Type) == "vnc"
-			graphics.SPICE = strings.ToLower(graphicsDevice.Type) == "spice"
 		}
 
 		vmViews = append(vmViews, VMView{
@@ -269,6 +270,11 @@ func (s *HostService) getVMHardwareFromDB(hostID, vmName string) (*libvirt.Hardw
 						Type string `xml:"type,attr" json:"model_type"`
 					}{
 						Type: port.ModelName,
+					},
+					Target: struct {
+						Dev string `xml:"dev,attr" json:"dev"`
+					}{
+						Dev: port.DeviceName,
 					},
 				})
 			}
@@ -430,18 +436,22 @@ func (s *HostService) syncVMHardware(tx *gorm.DB, vmID uint, hostID string, hard
 		})
 
 		var port storage.Port
-		tx.FirstOrCreate(&port, storage.Port{MACAddress: net.Mac.Address}, storage.Port{
-			VMID:       vmID,
-			MACAddress: net.Mac.Address,
-			ModelName:  net.Model.Type,
-		})
+		// Use Assign to update fields on existing records or create a new one.
+		tx.Where(storage.Port{MACAddress: net.Mac.Address}).
+			Assign(storage.Port{
+				VMID:       vmID,
+				MACAddress: net.Mac.Address,
+				DeviceName: net.Target.Dev,
+				ModelName:  net.Model.Type,
+			}).
+			FirstOrCreate(&port)
 
 		if network.ID != 0 && port.ID != 0 {
 			binding := storage.PortBinding{
 				PortID:    port.ID,
 				NetworkID: network.ID,
 			}
-			tx.Create(&binding)
+			tx.FirstOrCreate(&binding, storage.PortBinding{PortID: port.ID, NetworkID: network.ID})
 		}
 	}
 
@@ -699,5 +709,6 @@ func (m *MonitoringManager) pollVmStats(hostID, vmName string, sub *VmSubscripti
 		}
 	}
 }
+
 
 

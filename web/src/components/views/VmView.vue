@@ -163,7 +163,7 @@ const formatBps = (bytes) => {
 
 // --- Lifecycle & Data Fetching ---
 watch(activeTab, (newTab) => {
-    if (newTab === 'hardware' && vm.value && host.value) {
+    if (newTab === 'hardware' && vm.value && host.value && !hardware.value) {
         mainStore.fetchVmHardware(host.value.id, vm.value.name);
     }
 });
@@ -190,9 +190,7 @@ watch(vm, (newVm, oldVm) => {
         // Subscribe to the new VM's stats
         mainStore.subscribeToVmStats(host.value.id, newVm.name);
 
-        if (activeTab.value === 'hardware') {
-             mainStore.fetchVmHardware(host.value.id, newVm.name);
-        }
+        // No longer pre-fetch hardware. It will be fetched when the tab is clicked.
     }
 }, { immediate: true });
 
@@ -323,7 +321,7 @@ onUnmounted(() => {
       <!-- Hardware Tab -->
        <div v-if="activeTab === 'hardware'" class="space-y-8">
             <div v-if="mainStore.isLoading.vmHardware" class="flex items-center justify-center h-48 text-gray-400">
-                <svg class="animate-spin mr-3 h-8 w-8 text-indigo-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <svg class="animate-spin mr-3 h-8 w-8 text-indigo-400" xmlns="http://www.w.org/2000/svg" fill="none" viewBox="0 0 24 24">
                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
@@ -397,4 +395,5 @@ onUnmounted(() => {
     <p>Select a VM from the sidebar to view details, or the VM is still loading.</p>
   </div>
 </template>
+
 
