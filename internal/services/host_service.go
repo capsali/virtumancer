@@ -1,9 +1,9 @@
 package services
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -11,6 +11,7 @@ import (
 	"github.com/capsali/virtumancer/internal/storage"
 	"github.com/capsali/virtumancer/internal/ws"
 	golibvirt "github.com/digitalocean/go-libvirt"
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -176,9 +177,6 @@ func (s *HostService) ConnectToAllHosts() {
 }
 
 // --- VM Management ---
-
-// GetVMsForHostFromDB retrieves the merged VM list for a host purely from the database,
-// for a fast initial UI load.
 func (s *HostService) GetVMsForHostFromDB(hostID string) ([]VMView, error) {
 	var dbVMs []storage.VirtualMachine
 	if err := s.db.Where("host_id = ?", hostID).Find(&dbVMs).Error; err != nil {
@@ -187,9 +185,20 @@ func (s *HostService) GetVMsForHostFromDB(hostID string) ([]VMView, error) {
 
 	var vmViews []VMView
 	for _, dbVM := range dbVMs {
-		var graphics libvirt.GraphicsInfo
-		if err := json.Unmarshal([]byte(dbVM.GraphicsJSON), &graphics); err != nil {
-			log.Printf("Warning: could not parse cached graphics info for VM %s: %v", dbVM.Name, err)
+		var graphicsDevice storage.GraphicsDevice
+		var graphics libvirt.GraphicsInfo // Default to false
+
+		err := s.db.Joins("join graphics_device_attachments on graphics_device_attachments.graphics_device_id = graphics_devices.id").
+			Where("graphics_device_attachments.vm_id = ?", dbVM.ID).First(&graphicsDevice).Error
+
+		if err != nil {
+			if err != gorm.ErrRecordNotFound {
+				log.Printf("Error querying graphics device for VM %d: %v", dbVM.ID, err)
+			}
+			// If not found, `graphics` remains with default false values, which is correct.
+		} else {
+			graphics.VNC = strings.ToLower(graphicsDevice.Type) == "vnc"
+			graphics.SPICE = strings.ToLower(graphicsDevice.Type) == "spice"
 		}
 
 		vmViews = append(vmViews, VMView{
@@ -208,46 +217,79 @@ func (s *HostService) GetVMsForHostFromDB(hostID string) ([]VMView, error) {
 	return vmViews, nil
 }
 
-// getVMHardwareFromDB retrieves the hardware info from the JSON cache in the database.
 func (s *HostService) getVMHardwareFromDB(hostID, vmName string) (*libvirt.HardwareInfo, error) {
-	var dbVM storage.VirtualMachine
-	if err := s.db.Where("host_id = ? AND name = ?", hostID, vmName).First(&dbVM).Error; err != nil {
+	var vm storage.VirtualMachine
+	if err := s.db.Where("host_id = ? AND name = ?", hostID, vmName).First(&vm).Error; err != nil {
 		return nil, fmt.Errorf("could not find VM %s in database: %w", vmName, err)
 	}
 
-	if dbVM.HardwareJSON == "" {
-		return nil, fmt.Errorf("no cached hardware info for VM %s", vmName)
+	var hardware libvirt.HardwareInfo
+
+	// Retrieve and populate disks
+	var diskAttachments []storage.VolumeAttachment
+	s.db.Preload("Volume").Where("vm_id = ?", vm.ID).Find(&diskAttachments)
+	for _, da := range diskAttachments {
+		hardware.Disks = append(hardware.Disks, libvirt.DiskInfo{
+			Device: da.DeviceName,
+			Path:   da.Volume.Name,
+			Target: struct {
+				Dev string `xml:"dev,attr" json:"dev"`
+				Bus string `xml:"bus,attr" json:"bus"`
+			}{
+				Dev: da.DeviceName,
+				Bus: da.BusType,
+			},
+			Driver: struct {
+				Name string `xml:"name,attr" json:"driver_name"`
+				Type string `xml:"type,attr" json:"type"`
+			}{
+				Type: da.Volume.Format,
+			},
+		})
 	}
 
-	var hardware libvirt.HardwareInfo
-	if err := json.Unmarshal([]byte(dbVM.HardwareJSON), &hardware); err != nil {
-		return nil, fmt.Errorf("could not parse cached hardware info for VM %s: %w", vmName, err)
+	// Retrieve and populate networks
+	var ports []storage.Port
+	if err := s.db.Where("vm_id = ?", vm.ID).Find(&ports).Error; err == nil {
+		for _, port := range ports {
+			var binding storage.PortBinding
+			if err := s.db.Preload("Network").Where("port_id = ?", port.ID).First(&binding).Error; err == nil {
+				hardware.Networks = append(hardware.Networks, libvirt.NetworkInfo{
+					Mac: struct {
+						Address string `xml:"address,attr" json:"address"`
+					}{
+						Address: port.MACAddress,
+					},
+					Source: struct {
+						Bridge string `xml:"bridge,attr" json:"bridge"`
+					}{
+						Bridge: binding.Network.BridgeName,
+					},
+					Model: struct {
+						Type string `xml:"type,attr" json:"model_type"`
+					}{
+						Type: port.ModelName,
+					},
+				})
+			}
+		}
 	}
 
 	return &hardware, nil
 }
-
-// GetVMHardwareAndTriggerSync serves cached hardware info from the DB immediately
-// and triggers a background sync with libvirt.
 func (s *HostService) GetVMHardwareAndTriggerSync(hostID, vmName string) (*libvirt.HardwareInfo, error) {
-	hardware, err := s.getVMHardwareFromDB(hostID, vmName)
-	if err != nil {
-		log.Printf("Could not get cached hardware for %s, will attempt live sync.", vmName)
+	// We will now always sync and then get from DB for consistency,
+	// since the data is structured and no longer a simple JSON blob.
+	if changed, syncErr := s.syncSingleVM(hostID, vmName); syncErr != nil {
+		log.Printf("Error during hardware sync for %s: %v", vmName, syncErr)
+		// We can still try to return what's in the DB
+	} else if changed {
+		s.broadcastVMsChanged(hostID)
 	}
 
-	go func() {
-		if changed, syncErr := s.syncSingleVM(hostID, vmName); syncErr == nil && changed {
-			s.broadcastVMsChanged(hostID)
-		} else if syncErr != nil {
-			log.Printf("Error during background hardware sync for %s: %v", vmName, syncErr)
-		}
-	}()
-
-	return hardware, err
+	return s.getVMHardwareFromDB(hostID, vmName)
 }
 
-// SyncVMsForHost triggers a background sync with libvirt for a specific host's VMs.
-// It sends a websocket message upon completion *only if* there were changes.
 func (s *HostService) SyncVMsForHost(hostID string) {
 	changed, err := s.syncAndListVMs(hostID)
 	if err != nil {
@@ -259,77 +301,167 @@ func (s *HostService) SyncVMsForHost(hostID string) {
 	}
 }
 
-// syncSingleVM syncs the state of a single VM from libvirt to the database.
 func (s *HostService) syncSingleVM(hostID, vmName string) (bool, error) {
 	vmInfo, err := s.connector.GetDomainInfo(hostID, vmName)
 	if err != nil {
-		// If the VM is not found, it might have been deleted. Check if it exists in the DB.
+		// The VM might have been deleted from libvirt, so we check if it exists in our DB to prune it.
 		var dbVM storage.VirtualMachine
 		if err := s.db.Where("host_id = ? AND name = ?", hostID, vmName).First(&dbVM).Error; err == nil {
-			// VM exists in DB but not on host, so delete it.
+			log.Printf("Pruning VM %s from database as it's no longer in libvirt.", vmName)
 			if err := s.db.Delete(&dbVM).Error; err != nil {
 				log.Printf("Warning: failed to prune old VM %s: %v", dbVM.Name, err)
 				return false, err
 			}
-			return true, nil
+			return true, nil // Return true as the state has changed (VM is gone).
 		}
+		// If it's not in libvirt and not in our DB, that's not an error.
 		return false, fmt.Errorf("could not fetch info for VM %s on host %s: %w", vmName, hostID, err)
-	}
-
-	graphicsBytes, err := json.Marshal(vmInfo.Graphics)
-	if err != nil {
-		log.Printf("Warning: could not marshal graphics info for VM %s: %v", vmInfo.Name, err)
-		graphicsBytes = []byte("{}")
 	}
 
 	hardwareInfo, err := s.connector.GetDomainHardware(hostID, vmName)
 	if err != nil {
 		log.Printf("Warning: could not fetch hardware for VM %s: %v", vmInfo.Name, err)
 	}
-	hardwareBytes, err := json.Marshal(hardwareInfo)
-	if err != nil {
-		log.Printf("Warning: could not marshal hardware info for VM %s: %v", vmInfo.Name, err)
-		hardwareBytes = []byte("{}")
-	}
+
+	tx := s.db.Begin()
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+		}
+	}()
 
 	vmRecord := storage.VirtualMachine{
-		HostID:       hostID,
-		Name:         vmInfo.Name,
-		UUID:         vmInfo.UUID,
-		State:        int(vmInfo.State),
-		VCPUCount:    vmInfo.Vcpu,
-		MemoryBytes:  vmInfo.MaxMem * 1024,
-		GraphicsJSON: string(graphicsBytes),
-		HardwareJSON: string(hardwareBytes),
+		HostID:      hostID,
+		Name:        vmInfo.Name,
+		UUID:        vmInfo.UUID,
+		State:       int(vmInfo.State),
+		VCPUCount:   vmInfo.Vcpu,
+		MemoryBytes: vmInfo.MaxMem * 1024,
 	}
 
 	var existingVM storage.VirtualMachine
-	if err := s.db.Where("uuid = ?", vmInfo.UUID).First(&existingVM).Error; err != nil {
+	var changed bool
+	if err := tx.Where("uuid = ?", vmInfo.UUID).First(&existingVM).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
-			if err := s.db.Create(&vmRecord).Error; err != nil {
-				log.Printf("Warning: could not create VM %s in database: %v", vmInfo.Name, err)
+			if err := tx.Create(&vmRecord).Error; err != nil {
+				tx.Rollback()
 				return false, err
 			}
-			return true, nil
+			changed = true
+			existingVM = vmRecord
+		} else {
+			tx.Rollback()
+			return false, err
 		}
+	} else {
+		if existingVM.Name != vmRecord.Name ||
+			existingVM.State != vmRecord.State ||
+			existingVM.VCPUCount != vmRecord.VCPUCount ||
+			existingVM.MemoryBytes != vmRecord.MemoryBytes {
+			if err := tx.Model(&existingVM).Updates(vmRecord).Error; err != nil {
+				tx.Rollback()
+				return false, err
+			}
+			changed = true
+		}
+	}
+
+	if hardwareInfo != nil {
+		if err := s.syncVMHardware(tx, existingVM.ID, hostID, hardwareInfo, &vmInfo.Graphics); err != nil {
+			tx.Rollback()
+			return false, fmt.Errorf("failed to sync hardware: %w", err)
+		}
+	}
+
+	if err := tx.Commit().Error; err != nil {
 		return false, err
 	}
 
-	if existingVM.Name != vmRecord.Name ||
-		existingVM.State != vmRecord.State ||
-		existingVM.VCPUCount != vmRecord.VCPUCount ||
-		existingVM.MemoryBytes != vmRecord.MemoryBytes ||
-		existingVM.GraphicsJSON != vmRecord.GraphicsJSON ||
-		existingVM.HardwareJSON != vmRecord.HardwareJSON {
+	return changed, nil
+}
 
-		if err := s.db.Model(&existingVM).Updates(vmRecord).Error; err != nil {
-			log.Printf("Warning: could not update VM %s in database: %v", vmInfo.Name, err)
-			return false, err
+// syncVMHardware reconciles the live hardware state with the database.
+func (s *HostService) syncVMHardware(tx *gorm.DB, vmID uint, hostID string, hardware *libvirt.HardwareInfo, graphics *libvirt.GraphicsInfo) error {
+	// Correctly clear existing PortBindings by finding associated ports first
+	var portsToDelete []storage.Port
+	tx.Where("vm_id = ?", vmID).Find(&portsToDelete)
+	if len(portsToDelete) > 0 {
+		var portIDs []uint
+		for _, p := range portsToDelete {
+			portIDs = append(portIDs, p.ID)
 		}
-		return true, nil
+		tx.Where("port_id IN ?", portIDs).Delete(&storage.PortBinding{})
 	}
 
-	return false, nil
+	tx.Where("vm_id = ?", vmID).Delete(&storage.VolumeAttachment{})
+	tx.Where("vm_id = ?", vmID).Delete(&storage.GraphicsDeviceAttachment{})
+
+	// Sync Disks
+	for _, disk := range hardware.Disks {
+		var volume storage.Volume
+		tx.FirstOrCreate(&volume, storage.Volume{Name: disk.Path}, storage.Volume{
+			Name:   disk.Path,
+			Format: disk.Driver.Type,
+			Type:   "DISK", // Assumption for now
+		})
+
+		if volume.ID != 0 {
+			attachment := storage.VolumeAttachment{
+				VMID:       vmID,
+				VolumeID:   volume.ID,
+				DeviceName: disk.Target.Dev,
+				BusType:    disk.Target.Bus,
+			}
+			tx.Create(&attachment)
+		}
+	}
+
+	// Sync Networks
+	for _, net := range hardware.Networks {
+		var network storage.Network
+		networkUUID := uuid.NewSHA1(uuid.Nil, []byte(fmt.Sprintf("%s:%s", hostID, net.Source.Bridge)))
+
+		tx.FirstOrCreate(&network, storage.Network{UUID: networkUUID.String()}, storage.Network{
+			HostID:     hostID,
+			Name:       net.Source.Bridge,
+			BridgeName: net.Source.Bridge,
+			Mode:       "bridged",
+			UUID:       networkUUID.String(),
+		})
+
+		var port storage.Port
+		tx.FirstOrCreate(&port, storage.Port{MACAddress: net.Mac.Address}, storage.Port{
+			VMID:       vmID,
+			MACAddress: net.Mac.Address,
+			ModelName:  net.Model.Type,
+		})
+
+		if network.ID != 0 && port.ID != 0 {
+			binding := storage.PortBinding{
+				PortID:    port.ID,
+				NetworkID: network.ID,
+			}
+			tx.Create(&binding)
+		}
+	}
+
+	// Sync Graphics
+	var gfxDevice storage.GraphicsDevice
+	if graphics.VNC {
+		tx.FirstOrCreate(&gfxDevice, storage.GraphicsDevice{Type: "vnc"}, storage.GraphicsDevice{Type: "vnc", ModelName: "vnc"})
+	} else if graphics.SPICE {
+		tx.FirstOrCreate(&gfxDevice, storage.GraphicsDevice{Type: "spice"}, storage.GraphicsDevice{Type: "spice", ModelName: "qxl"})
+	}
+
+	if gfxDevice.ID != 0 {
+		attachment := storage.GraphicsDeviceAttachment{
+			VMID:             vmID,
+			GraphicsDeviceID: gfxDevice.ID,
+		}
+		tx.Create(&attachment)
+	}
+
+	return nil
 }
 
 // syncAndListVMs is the core function to get VMs from libvirt and sync with the local DB.
@@ -340,84 +472,37 @@ func (s *HostService) syncAndListVMs(hostID string) (bool, error) {
 		return false, fmt.Errorf("service failed to list vms for host %s: %w", hostID, err)
 	}
 
-	var changed bool
+	var overallChanged bool
+
+	liveVMUUIDs := make(map[string]struct{})
+	for _, vmInfo := range liveVMs {
+		liveVMUUIDs[vmInfo.UUID] = struct{}{}
+		changed, err := s.syncSingleVM(hostID, vmInfo.Name)
+		if err != nil {
+			log.Printf("Error syncing VM %s: %v", vmInfo.Name, err)
+		}
+		if changed {
+			overallChanged = true
+		}
+	}
 
 	var dbVMs []storage.VirtualMachine
 	if err := s.db.Where("host_id = ?", hostID).Find(&dbVMs).Error; err != nil {
-		return false, fmt.Errorf("could not get DB records for comparison: %w", err)
-	}
-	dbVMMap := make(map[string]storage.VirtualMachine)
-	for _, vm := range dbVMs {
-		dbVMMap[vm.UUID] = vm
+		return false, fmt.Errorf("could not get DB records for pruning check: %w", err)
 	}
 
-	for _, vmInfo := range liveVMs {
-		graphicsBytes, err := json.Marshal(vmInfo.Graphics)
-		if err != nil {
-			log.Printf("Warning: could not marshal graphics info for VM %s: %v", vmInfo.Name, err)
-			graphicsBytes = []byte("{}")
-		}
-
-		hardwareInfo, err := s.connector.GetDomainHardware(hostID, vmInfo.Name)
-		if err != nil {
-			log.Printf("Warning: could not fetch hardware for VM %s: %v", vmInfo.Name, err)
-		}
-		hardwareBytes, err := json.Marshal(hardwareInfo)
-		if err != nil {
-			log.Printf("Warning: could not marshal hardware info for VM %s: %v", vmInfo.Name, err)
-			hardwareBytes = []byte("{}")
-		}
-
-		vmRecord := storage.VirtualMachine{
-			HostID:       hostID,
-			Name:         vmInfo.Name,
-			UUID:         vmInfo.UUID,
-			State:        int(vmInfo.State),
-			VCPUCount:    vmInfo.Vcpu,
-			MemoryBytes:  vmInfo.MaxMem * 1024,
-			GraphicsJSON: string(graphicsBytes),
-			HardwareJSON: string(hardwareBytes),
-		}
-
-		existingVM, exists := dbVMMap[vmInfo.UUID]
-		if !exists {
-			if err := s.db.Create(&vmRecord).Error; err != nil {
-				log.Printf("Warning: could not create VM %s in database: %v", vmInfo.Name, err)
-			} else {
-				changed = true
-			}
-		} else {
-			if existingVM.Name != vmRecord.Name ||
-				existingVM.State != vmRecord.State ||
-				existingVM.VCPUCount != vmRecord.VCPUCount ||
-				existingVM.MemoryBytes != vmRecord.MemoryBytes ||
-				existingVM.GraphicsJSON != vmRecord.GraphicsJSON ||
-				existingVM.HardwareJSON != vmRecord.HardwareJSON {
-
-				if err := s.db.Model(&existingVM).Updates(vmRecord).Error; err != nil {
-					log.Printf("Warning: could not update VM %s in database: %v", vmInfo.Name, err)
-				} else {
-					changed = true
-				}
-			}
-		}
-	}
-
-	liveVMUUIDs := make(map[string]struct{})
-	for _, vm := range liveVMs {
-		liveVMUUIDs[vm.UUID] = struct{}{}
-	}
 	for _, dbVM := range dbVMs {
-		if _, ok := liveVMUUIDs[dbVM.UUID]; !ok {
+		if _, exists := liveVMUUIDs[dbVM.UUID]; !exists {
+			log.Printf("Pruning VM %s (UUID: %s) from database as it's no longer in libvirt.", dbVM.Name, dbVM.UUID)
 			if err := s.db.Delete(&dbVM).Error; err != nil {
 				log.Printf("Warning: failed to prune old VM %s: %v", dbVM.Name, err)
 			} else {
-				changed = true
+				overallChanged = true
 			}
 		}
 	}
 
-	return changed, nil
+	return overallChanged, nil
 }
 
 func (s *HostService) GetVMStats(hostID, vmName string) (*libvirt.VMStats, error) {
