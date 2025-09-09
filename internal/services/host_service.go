@@ -10,8 +10,8 @@ import (
 	"github.com/capsali/virtumancer/internal/libvirt"
 	"github.com/capsali/virtumancer/internal/storage"
 	"github.com/capsali/virtumancer/internal/ws"
-	"gorm.io/gorm"
 	golibvirt "github.com/digitalocean/go-libvirt"
+	"gorm.io/gorm"
 )
 
 // VMView is a combination of DB data and live libvirt data for the frontend.
@@ -27,8 +27,8 @@ type VMView struct {
 	CPUTopologyJSON string `json:"cpu_topology_json"`
 
 	// From Libvirt or DB cache
-	State    golibvirt.DomainState `json:"state"`
-	Graphics libvirt.GraphicsInfo  `json:"graphics"`
+	State    golibvirt.DomainState   `json:"state"`
+	Graphics libvirt.GraphicsInfo    `json:"graphics"`
 	Hardware *libvirt.HardwareInfo `json:"hardware,omitempty"` // Pointer to allow for null
 
 	// From Libvirt (live data, only in some calls)
