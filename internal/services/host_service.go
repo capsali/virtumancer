@@ -11,7 +11,7 @@ import (
 	"github.com/capsali/virtumancer/internal/storage"
 	"github.com/capsali/virtumancer/internal/ws"
 	"gorm.io/gorm"
-	lv "libvirt.org/go/libvirt"
+	golibvirt "github.com/digitalocean/go-libvirt"
 )
 
 // VMView is a combination of DB data and live libvirt data for the frontend.
@@ -27,7 +27,7 @@ type VMView struct {
 	CPUTopologyJSON string `json:"cpu_topology_json"`
 
 	// From Libvirt or DB cache
-	State    lv.DomainState        `json:"state"`
+	State    golibvirt.DomainState `json:"state"`
 	Graphics libvirt.GraphicsInfo  `json:"graphics"`
 	Hardware *libvirt.HardwareInfo `json:"hardware,omitempty"` // Pointer to allow for null
 
@@ -201,7 +201,7 @@ func (s *HostService) GetVMsForHostFromDB(hostID string) ([]VMView, error) {
 			IsTemplate:      dbVM.IsTemplate,
 			CPUModel:        dbVM.CPUModel,
 			CPUTopologyJSON: dbVM.CPUTopologyJSON,
-			State:           lv.DomainState(dbVM.State),
+			State:           golibvirt.DomainState(dbVM.State),
 			Graphics:        graphics,
 		})
 	}
@@ -582,14 +582,13 @@ func (m *MonitoringManager) pollVmStats(hostID, vmName string, sub *VmSubscripti
 		case <-ticker.C:
 			stats, err := m.service.connector.GetDomainStats(hostID, vmName)
 			if err != nil {
-				stats = &libvirt.VMStats{State: lv.DOMAIN_SHUTOFF}
+				stats = &libvirt.VMStats{State: golibvirt.DomainShutoff}
 			}
 
 			// Update last known stats
 			sub.mu.Lock()
 			sub.lastKnownStats = stats
 			sub.mu.Unlock()
-
 
 			// Broadcast the stats update.
 			m.service.hub.BroadcastMessage(ws.Message{
@@ -602,7 +601,7 @@ func (m *MonitoringManager) pollVmStats(hostID, vmName string, sub *VmSubscripti
 			})
 
 			// If the VM is no longer running, stop polling it.
-			if stats.State != lv.DOMAIN_RUNNING {
+			if stats.State != golibvirt.DomainRunning {
 				log.Printf("VM %s is not running, stopping stats polling.", vmName)
 				// Unsubscribe all clients for this VM
 				m.mu.Lock()
