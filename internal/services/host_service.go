@@ -25,8 +25,8 @@ type VMView struct {
 	CPUTopologyJSON string `json:"cpu_topology_json"`
 
 	// From Libvirt or DB cache
-	State    lv.DomainState        `json:"state"`
-	Graphics libvirt.GraphicsInfo  `json:"graphics"`
+	State    lv.DomainState       `json:"state"`
+	Graphics libvirt.GraphicsInfo `json:"graphics"`
 	Hardware *libvirt.HardwareInfo `json:"hardware,omitempty"` // Pointer to allow for null
 
 	// From Libvirt (live data, only in some calls)
@@ -50,8 +50,15 @@ func NewHostService(db *gorm.DB, connector *libvirt.Connector, hub *ws.Hub) *Hos
 	}
 }
 
-func (s *HostService) broadcastUpdate() {
-	s.hub.BroadcastMessage([]byte(`{"type": "refresh"}`))
+func (s *HostService) broadcastHostsChanged() {
+	s.hub.BroadcastMessage(ws.Message{Type: "hosts-changed"})
+}
+
+func (s *HostService) broadcastVMsChanged(hostID string) {
+	s.hub.BroadcastMessage(ws.Message{
+		Type:    "vms-changed",
+		Payload: ws.MessagePayload{"hostId": hostID},
+	})
 }
 
 // --- Host Management ---
@@ -84,7 +91,7 @@ func (s *HostService) AddHost(host storage.Host) (*storage.Host, error) {
 	// Initial sync after adding a host
 	go s.SyncVMsForHost(host.ID)
 
-	s.broadcastUpdate()
+	s.broadcastHostsChanged()
 	return &host, nil
 }
 
@@ -101,7 +108,7 @@ func (s *HostService) RemoveHost(hostID string) error {
 		return fmt.Errorf("failed to delete host from database: %w", err)
 	}
 
-	s.broadcastUpdate()
+	s.broadcastHostsChanged()
 	return nil
 }
 
@@ -184,7 +191,7 @@ func (s *HostService) GetVMHardwareAndTriggerSync(hostID, vmName string) (*libvi
 
 	go func() {
 		if changed, syncErr := s.syncSingleVM(hostID, vmName); syncErr == nil && changed {
-			s.broadcastUpdate()
+			s.broadcastVMsChanged(hostID)
 		} else if syncErr != nil {
 			log.Printf("Error during background hardware sync for %s: %v", vmName, syncErr)
 		}
@@ -202,7 +209,7 @@ func (s *HostService) SyncVMsForHost(hostID string) {
 		return
 	}
 	if changed {
-		s.broadcastUpdate()
+		s.broadcastVMsChanged(hostID)
 	}
 }
 
@@ -382,7 +389,7 @@ func (s *HostService) StartVM(hostID, vmName string) error {
 		return err
 	}
 	if changed, err := s.syncSingleVM(hostID, vmName); err == nil && changed {
-		s.broadcastUpdate()
+		s.broadcastVMsChanged(hostID)
 	}
 	return nil
 }
@@ -392,7 +399,7 @@ func (s *HostService) ShutdownVM(hostID, vmName string) error {
 		return err
 	}
 	if changed, err := s.syncSingleVM(hostID, vmName); err == nil && changed {
-		s.broadcastUpdate()
+		s.broadcastVMsChanged(hostID)
 	}
 	return nil
 }
@@ -402,7 +409,7 @@ func (s *HostService) RebootVM(hostID, vmName string) error {
 		return err
 	}
 	if changed, err := s.syncSingleVM(hostID, vmName); err == nil && changed {
-		s.broadcastUpdate()
+		s.broadcastVMsChanged(hostID)
 	}
 	return nil
 }
@@ -412,7 +419,7 @@ func (s *HostService) ForceOffVM(hostID, vmName string) error {
 		return err
 	}
 	if changed, err := s.syncSingleVM(hostID, vmName); err == nil && changed {
-		s.broadcastUpdate()
+		s.broadcastVMsChanged(hostID)
 	}
 	return nil
 }
@@ -422,7 +429,7 @@ func (s *HostService) ForceResetVM(hostID, vmName string) error {
 		return err
 	}
 	if changed, err := s.syncSingleVM(hostID, vmName); err == nil && changed {
-		s.broadcastUpdate()
+		s.broadcastVMsChanged(hostID)
 	}
 	return nil
 }

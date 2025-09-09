@@ -34,9 +34,17 @@ export const useMainStore = defineStore('main', () => {
         ws.onmessage = (event) => {
             try {
                 const message = JSON.parse(event.data);
-                if (message.type === 'refresh') {
-                    console.log('WebSocket received refresh message, refetching hosts.');
-                    fetchHosts();
+                switch (message.type) {
+                    case 'hosts-changed':
+                        console.log('WebSocket received hosts-changed, refetching all hosts.');
+                        fetchHosts();
+                        break;
+                    case 'vms-changed':
+                        console.log(`WebSocket received vms-changed for host ${message.payload.hostId}, refreshing host data.`);
+                        refreshHostData(message.payload.hostId);
+                        break;
+                    default:
+                        console.log('Received unhandled WebSocket message type:', message.type);
                 }
             } catch (e) {
                 console.error("Failed to parse websocket message", e);
@@ -57,6 +65,32 @@ export const useMainStore = defineStore('main', () => {
     };
 
     // --- Host Actions ---
+
+    const refreshHostData = async (hostId) => {
+        const hostIndex = hosts.value.findIndex(h => h.id === hostId);
+        if (hostIndex === -1) {
+            console.warn(`Host ${hostId} not found in state during refresh, performing full fetch.`);
+            fetchHosts();
+            return;
+        }
+
+        // Fetch new data for the specific host
+        const [vms, info] = await Promise.all([
+            fetchVmsForHost(hostId),
+            fetchHostInfo(hostId)
+        ]);
+        
+        // Create a new host object to ensure reactivity
+        const updatedHost = {
+            ...hosts.value[hostIndex],
+            vms,
+            info,
+        };
+
+        // Replace the old host object with the new one
+        hosts.value.splice(hostIndex, 1, updatedHost);
+    };
+
 
     const fetchHosts = async () => {
         isLoading.value.hosts = true;
@@ -232,6 +266,5 @@ export const useMainStore = defineStore('main', () => {
         forceResetVm,
     };
 });
-
 
 
