@@ -112,6 +112,18 @@ func (h *APIHandler) ListVMsFromLibvirt(w http.ResponseWriter, r *http.Request) 
 	json.NewEncoder(w).Encode(vms)
 }
 
+func (h *APIHandler) GetVMStats(w http.ResponseWriter, r *http.Request) {
+	hostID := chi.URLParam(r, "hostID")
+	vmName := chi.URLParam(r, "vmName")
+	stats, err := h.HostService.GetVMStats(hostID, vmName)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(stats)
+}
+
 func (h *APIHandler) GetVMHardware(w http.ResponseWriter, r *http.Request) {
 	hostID := chi.URLParam(r, "hostID")
 	vmName := chi.URLParam(r, "vmName")
@@ -178,4 +190,5 @@ func (h *APIHandler) ForceResetVM(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
 

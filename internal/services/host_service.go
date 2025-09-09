@@ -40,8 +40,10 @@ type VMView struct {
 
 // VmSubscription holds the clients subscribed to a VM's stats and a channel to stop polling.
 type VmSubscription struct {
-	clients map[*ws.Client]bool
-	stop    chan struct{}
+	clients      map[*ws.Client]bool
+	stop         chan struct{}
+	lastKnownStats *libvirt.VMStats
+	mu           sync.RWMutex
 }
 
 // MonitoringManager handles real-time VM stat subscriptions.
@@ -67,6 +69,7 @@ type HostServiceProvider interface {
 	RemoveHost(hostID string) error
 	ConnectToAllHosts()
 	GetVMsForHostFromDB(hostID string) ([]VMView, error)
+	GetVMStats(hostID, vmName string) (*libvirt.VMStats, error)
 	GetVMHardwareAndTriggerSync(hostID, vmName string) (*libvirt.HardwareInfo, error)
 	SyncVMsForHost(hostID string)
 	StartVM(hostID, vmName string) error
@@ -417,6 +420,17 @@ func (s *HostService) syncAndListVMs(hostID string) (bool, error) {
 	return changed, nil
 }
 
+func (s *HostService) GetVMStats(hostID, vmName string) (*libvirt.VMStats, error) {
+	// First, check if there's an active subscription.
+	stats := s.monitor.GetLastKnownStats(hostID, vmName)
+	if stats != nil {
+		return stats, nil
+	}
+
+	// If no active subscription, perform a one-time fetch.
+	return s.connector.GetDomainStats(hostID, vmName)
+}
+
 // --- VM Actions ---
 
 func (s *HostService) StartVM(hostID, vmName string) error {
@@ -495,7 +509,7 @@ func (s *HostService) HandleClientDisconnect(client *ws.Client) {
 	s.monitor.UnsubscribeClient(client)
 }
 
-// --- Monitoring Goroutine ---
+// --- Monitoring Goroutine Logic ---
 
 func (m *MonitoringManager) Subscribe(client *ws.Client, hostID, vmName string) {
 	m.mu.Lock()
@@ -510,7 +524,7 @@ func (m *MonitoringManager) Subscribe(client *ws.Client, hostID, vmName string) 
 			stop:    make(chan struct{}),
 		}
 		m.subscriptions[key] = sub
-		go m.pollVmStats(hostID, vmName, sub.stop)
+		go m.pollVmStats(hostID, vmName, sub)
 	}
 	sub.clients[client] = true
 }
@@ -546,7 +560,20 @@ func (m *MonitoringManager) UnsubscribeClient(client *ws.Client) {
 	}
 }
 
-func (m *MonitoringManager) pollVmStats(hostID, vmName string, stop chan struct{}) {
+func (m *MonitoringManager) GetLastKnownStats(hostID, vmName string) *libvirt.VMStats {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	key := fmt.Sprintf("%s:%s", hostID, vmName)
+	if sub, exists := m.subscriptions[key]; exists {
+		sub.mu.RLock()
+		defer sub.mu.RUnlock()
+		return sub.lastKnownStats
+	}
+	return nil
+}
+
+func (m *MonitoringManager) pollVmStats(hostID, vmName string, sub *VmSubscription) {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 
@@ -555,13 +582,14 @@ func (m *MonitoringManager) pollVmStats(hostID, vmName string, stop chan struct{
 		case <-ticker.C:
 			stats, err := m.service.connector.GetDomainStats(hostID, vmName)
 			if err != nil {
-				// If VM is shut off, libvirt might return an error. This is normal.
-				// We can send a final "shutoff" state and then stop.
-				// For now, we just log and continue, the poller will be stopped on unsubscribe.
-				log.Printf("Could not poll stats for %s:%s: %v", hostID, vmName, err)
-				// Create a synthetic stats object for a non-running VM
 				stats = &libvirt.VMStats{State: lv.DOMAIN_SHUTOFF}
 			}
+
+			// Update last known stats
+			sub.mu.Lock()
+			sub.lastKnownStats = stats
+			sub.mu.Unlock()
+
 
 			// Broadcast the stats update.
 			m.service.hub.BroadcastMessage(ws.Message{
@@ -576,9 +604,13 @@ func (m *MonitoringManager) pollVmStats(hostID, vmName string, stop chan struct{
 			// If the VM is no longer running, stop polling it.
 			if stats.State != lv.DOMAIN_RUNNING {
 				log.Printf("VM %s is not running, stopping stats polling.", vmName)
+				// Unsubscribe all clients for this VM
+				m.mu.Lock()
+				delete(m.subscriptions, fmt.Sprintf("%s:%s", hostID, vmName))
+				m.mu.Unlock()
 				return
 			}
-		case <-stop:
+		case <-sub.stop:
 			return
 		}
 	}
