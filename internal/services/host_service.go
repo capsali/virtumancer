@@ -30,8 +30,8 @@ type VMView struct {
 	CPUTopologyJSON string `json:"cpu_topology_json"`
 
 	// From Libvirt or DB cache
-	State    golibvirt.DomainState `json:"state"`
-	Graphics libvirt.GraphicsInfo  `json:"graphics"`
+	State    golibvirt.DomainState   `json:"state"`
+	Graphics libvirt.GraphicsInfo    `json:"graphics"`
 	Hardware *libvirt.HardwareInfo `json:"hardware,omitempty"` // Pointer to allow for null
 
 	// From Libvirt (live data, only in some calls)
@@ -341,19 +341,19 @@ func (s *HostService) syncSingleVM(hostID, vmName string) (bool, error) {
 
 	var existingVMOnHost storage.VirtualMachine
 	var changed bool
-	err = tx.Where("domain_uuid = ? AND host_id = ?", vmInfo.UUID, hostID).First(&existingVMOnHost).Error
+	err = tx.Where("host_id = ? AND domain_uuid = ?", hostID, vmInfo.UUID).First(&existingVMOnHost).Error
 
 	if err != nil && err != gorm.ErrRecordNotFound {
 		tx.Rollback()
-		return false, err
+		return false, err // Database error
 	}
 
-	// Case 1: This is a new VM to this host.
+	// Case 1: The VM is not in our DB for this host. It's either brand new or has a conflict.
 	if err == gorm.ErrRecordNotFound {
 		var conflictingVM storage.VirtualMachine
 		err := tx.Where("domain_uuid = ? AND host_id != ?", vmInfo.UUID, hostID).First(&conflictingVM).Error
 
-		vmRecord := storage.VirtualMachine{
+		newVMRecord := storage.VirtualMachine{
 			HostID:      hostID,
 			Name:        vmInfo.Name,
 			DomainUUID:  vmInfo.UUID,
@@ -363,20 +363,27 @@ func (s *HostService) syncSingleVM(hostID, vmName string) (bool, error) {
 		}
 
 		if err == gorm.ErrRecordNotFound {
-			// No conflict, safe to use the domain UUID as our internal UUID.
-			vmRecord.UUID = vmInfo.UUID
+			// No conflict found. This is a genuinely new VM to our entire system.
+			// Set our internal UUID to be the same as the domain's UUID.
+			newVMRecord.UUID = vmInfo.UUID
+		} else if err != nil {
+			// Some other DB error occurred
+			tx.Rollback()
+			return false, err
 		} else {
-			// Conflict found! Generate a new internal UUID.
-			vmRecord.UUID = uuid.New().String()
+			// Conflict found! A VM with this domain UUID exists on another host.
+			// Generate a new, unique internal UUID for our system.
+			log.Printf("UUID conflict detected for DomainUUID %s. Assigning new internal UUID.", vmInfo.UUID)
+			newVMRecord.UUID = uuid.New().String()
 		}
 
-		if err := tx.Create(&vmRecord).Error; err != nil {
+		if err := tx.Create(&newVMRecord).Error; err != nil {
 			tx.Rollback()
 			return false, err
 		}
 		changed = true
-		existingVMOnHost = vmRecord
-	} else { // Case 2: This VM is already known on this host.
+		existingVMOnHost = newVMRecord // Use the newly created record for hardware sync
+	} else { // Case 2: The VM already exists in our DB for this host. Just update its state.
 		updates := map[string]interface{}{
 			"Name":        vmInfo.Name,
 			"State":       int(vmInfo.State),
