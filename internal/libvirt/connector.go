@@ -99,7 +99,7 @@ type NetworkInfo struct {
 		Bridge string `xml:"bridge,attr" json:"bridge"`
 	} `xml:"source" json:"source"`
 	Model struct {
-		Type string `xml:"type,attr" json:"model_type"`
+		Type string `xml:"type,attr" json:"type"`
 	} `xml:"model" json:"model"`
 	Target struct {
 		Dev string `xml:"dev,attr" json:"dev"`

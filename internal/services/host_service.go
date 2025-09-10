@@ -286,7 +286,7 @@ func (s *HostService) getVMHardwareFromDB(hostID, vmName string) (*libvirt.Hardw
 						Bridge: binding.Network.BridgeName,
 					},
 					Model: struct {
-						Type string `xml:"type,attr" json:"model_type"`
+						Type string `xml:"type,attr" json:"type"`
 					}{
 						Type: port.ModelName,
 					},
@@ -826,5 +826,6 @@ func (m *MonitoringManager) pollVmStats(hostID, vmName string, sub *VmSubscripti
 		}
 	}
 }
+
 
 
