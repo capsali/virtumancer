@@ -102,11 +102,12 @@ const runningVmsCount = (host) => {
             <li v-for="vm in host.vms" :key="vm.name">
               <div @click="selectVm(vm)" class="flex items-center p-1.5 text-sm rounded-md cursor-pointer hover:bg-gray-700" :class="{'bg-gray-700/50': $route.params.vmName === vm.name}">
                 <span class="h-2 w-2 rounded-full mr-2 flex-shrink-0" :class="{
-                  'bg-green-500': vm.state === 'ACTIVE', 
-                  'bg-red-500': vm.state === 'STOPPED' || vm.state === 'ERROR',
-                  'bg-yellow-500': vm.state === 'PAUSED',
-                  'bg-blue-500': vm.state === 'SUSPENDED',
-                  'bg-gray-500': !['ACTIVE', 'STOPPED', 'ERROR', 'PAUSED', 'SUSPENDED'].includes(vm.state)
+                  'bg-green-500': vm.state === 'ACTIVE' && !vm.task_state, 
+                  'bg-red-500': (vm.state === 'STOPPED' || vm.state === 'ERROR') && !vm.task_state,
+                  'bg-yellow-500': vm.state === 'PAUSED' && !vm.task_state,
+                  'bg-blue-500': vm.state === 'SUSPENDED' && !vm.task_state,
+                  'bg-orange-500 animate-pulse': vm.task_state,
+                  'bg-gray-500': !['ACTIVE', 'STOPPED', 'ERROR', 'PAUSED', 'SUSPENDED'].includes(vm.state) && !vm.task_state
                 }"></span>
                 <span class="truncate">{{ vm.name }}</span>
               </div>
@@ -131,5 +132,6 @@ const runningVmsCount = (host) => {
     </div>
   </aside>
 </template>
+
 
 

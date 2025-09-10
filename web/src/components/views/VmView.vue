@@ -36,10 +36,10 @@ const stats = computed(() => {
     }
     // Return a default structure if no stats are available to prevent template errors
     return {
-        state: vm.value?.state ?? 'UNKNOWN',
-        max_mem: vm.value?.memory_bytes / 1024 ?? 0,
+        state: -1, // Libvirt integer state
+        max_mem: vm.value?.max_mem ?? 0,
         memory: 0,
-        vcpu: vm.value?.vcpu_count ?? 0,
+        vcpu: vm.value?.vcpu ?? 0,
         cpu_time: 0,
         disk_stats: [],
         net_stats: []
@@ -58,7 +58,7 @@ const diskRates = ref({});
 const netRates = ref({});
 
 watch(stats, (newStats) => {
-    if (!newStats || newStats.state !== 1) { // Libvirt state for running is 1
+    if (!newStats || newStats.state !== 1) { // state 1 is DomainRunning
         cpuUsagePercent.value = 0;
         diskRates.value = {};
         netRates.value = {};
@@ -117,28 +117,44 @@ watch(stats, (newStats) => {
 
 
 const memoryUsagePercent = computed(() => {
-    if (!stats.value || !stats.value.max_mem || vm.value.state !== 'ACTIVE') return 0;
-    // stats.memory is in KiB, stats.max_mem is also in KiB from libvirt
+    if (!stats.value || !stats.value.max_mem || stats.value.state !== 1) return 0;
     return (stats.value.memory / stats.value.max_mem) * 100;
 });
 
+const isTaskActive = computed(() => !!vm.value?.task_state);
 
 // --- Helper functions ---
-const stateText = (state) => {
-    if (!state) return 'Unknown';
-    // Capitalize first letter, lowercase the rest
-    return state.charAt(0).toUpperCase() + state.slice(1).toLowerCase();
+const stateText = (vm) => {
+    if (!vm) return 'Unknown';
+    if (vm.task_state) {
+        const task = vm.task_state.toLowerCase().replace(/_/g, ' ');
+        // Capitalize first letter
+        return task.charAt(0).toUpperCase() + task.slice(1);
+    }
+    const states = { 
+        'INITIALIZED': 'Initialized',
+        'ACTIVE': 'Running', 
+        'PAUSED': 'Paused', 
+        'SUSPENDED': 'Suspended',
+        'STOPPED': 'Stopped', 
+        'ERROR': 'Error'
+    };
+    return states[vm.state] || 'Unknown';
 };
 
-const stateColor = (state) => {
-  const colors = {
-    'ACTIVE': 'text-green-400 bg-green-900/50',
-    'PAUSED': 'text-yellow-400 bg-yellow-900/50',
-    'STOPPED': 'text-red-400 bg-red-900/50',
+const stateColor = (vm) => {
+  if (!vm) return 'text-gray-400 bg-gray-700';
+  if (vm.task_state) {
+      return 'text-orange-300 bg-orange-900/50 animate-pulse';
+  }
+  const colors = { 
+    'ACTIVE': 'text-green-400 bg-green-900/50', 
+    'PAUSED': 'text-yellow-400 bg-yellow-900/50', 
     'SUSPENDED': 'text-blue-400 bg-blue-900/50',
-    'ERROR': 'text-red-400 bg-red-900/50',
+    'STOPPED': 'text-red-400 bg-red-900/50',
+    'ERROR': 'text-red-400 bg-red-900/50 font-bold',
   };
-  return colors[state] || 'text-gray-400 bg-gray-700';
+  return colors[vm.state] || 'text-gray-400 bg-gray-700';
 };
 
 const formatMemory = (kb) => {
@@ -203,8 +219,6 @@ watch(vm, (newVm, oldVm) => {
     if (newVm && host.value) {
         // Subscribe to the new VM's stats
         mainStore.subscribeToVmStats(host.value.id, newVm.name);
-
-        // No longer pre-fetch hardware. It will be fetched when the tab is clicked.
     }
 }, { immediate: true });
 
@@ -224,17 +238,17 @@ onUnmounted(() => {
         <h1 class="text-3xl font-bold text-white">{{ vm.name }}</h1>
         <span 
           class="text-sm font-semibold px-3 py-1 rounded-full"
-          :class="stateColor(vm.state)"
+          :class="stateColor(vm)"
         >
-          {{ stateText(vm.state) }}
+          {{ stateText(vm) }}
         </span>
       </div>
       <div class="flex items-center space-x-2">
-         <button v-if="vm.state === 'STOPPED'" @click="mainStore.startVm(host.id, vm.name)" class="px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-md transition-colors">Start</button>
+         <button :disabled="isTaskActive" v-if="vm.state === 'STOPPED'" @click="mainStore.startVm(host.id, vm.name)" class="px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-md transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed">Start</button>
          <template v-if="vm.state === 'ACTIVE'">
-            <button @click="mainStore.gracefulShutdownVm(host.id, vm.name)" class="px-4 py-2 text-sm font-medium text-white bg-yellow-600 hover:bg-yellow-700 rounded-md transition-colors">Shutdown</button>
-            <button @click="mainStore.gracefulRebootVm(host.id, vm.name)" class="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors">Reboot</button>
-            <button @click="mainStore.forceOffVm(host.id, vm.name)" class="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md transition-colors">Force Off</button>
+            <button :disabled="isTaskActive" @click="mainStore.gracefulShutdownVm(host.id, vm.name)" class="px-4 py-2 text-sm font-medium text-white bg-yellow-600 hover:bg-yellow-700 rounded-md transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed">Shutdown</button>
+            <button :disabled="isTaskActive" @click="mainStore.gracefulRebootVm(host.id, vm.name)" class="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed">Reboot</button>
+            <button :disabled="isTaskActive" @click="mainStore.forceOffVm(host.id, vm.name)" class="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed">Force Off</button>
          </template>
       </div>
     </div>
@@ -329,8 +343,8 @@ onUnmounted(() => {
           <dl class="space-y-4">
             <div> <dt class="text-sm font-medium text-gray-400">Host</dt> <dd class="mt-1 text-lg text-gray-200">{{ host.id }}</dd> </div>
             <div> <dt class="text-sm font-medium text-gray-400">Uptime</dt> <dd class="mt-1 text-lg text-gray-200">{{ formatUptime(vm.uptime) }}</dd> </div>
-             <div> <dt class="text-sm font-medium text-gray-400">vCPUs</dt> <dd class="mt-1 text-lg text-gray-200">{{ vm.vcpu_count }}</dd> </div>
-            <div> <dt class="text-sm font-medium text-gray-400">Memory</dt> <dd class="mt-1 text-lg text-gray-200">{{ formatMemory(vm.memory_bytes / 1024) }}</dd> </div>
+             <div> <dt class="text-sm font-medium text-gray-400">vCPUs</dt> <dd class="mt-1 text-lg text-gray-200">{{ vm.vcpu }}</dd> </div>
+            <div> <dt class="text-sm font-medium text-gray-400">Memory</dt> <dd class="mt-1 text-lg text-gray-200">{{ formatMemory(vm.max_mem) }}</dd> </div>
             <div> <dt class="text-sm font-medium text-gray-400">Internal UUID</dt> <dd class="mt-1 text-xs font-mono text-gray-200">{{ vm.uuid }}</dd> </div>
           </dl>
         </div>

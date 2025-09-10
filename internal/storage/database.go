@@ -5,16 +5,35 @@ import (
 	"gorm.io/gorm"
 )
 
-// VMState defines the possible states of a Virtual Machine in Virtumancer.
+// VMState defines the stable power state of a VM.
 type VMState string
 
+// VMTaskState defines the transient state of a VM during an operation.
+type VMTaskState string
+
 const (
-	StateInitialized VMState = "INITIALIZED" // VM created in DB, not yet defined in libvirt.
-	StateActive      VMState = "ACTIVE"      // VM is running.
-	StatePaused      VMState = "PAUSED"      // VM is paused.
-	StateSuspended   VMState = "SUSPENDED"   // VM is suspended (saved to RAM).
-	StateStopped     VMState = "STOPPED"     // VM is not running.
-	StateError       VMState = "ERROR"       // VM is in an unrecoverable error state.
+	// Stable States
+	StateInitialized VMState = "INITIALIZED"
+	StateActive      VMState = "ACTIVE"
+	StatePaused      VMState = "PAUSED"
+	StateSuspended   VMState = "SUSPENDED"
+	StateStopped     VMState = "STOPPED"
+	StateError       VMState = "ERROR"
+
+	// Task States
+	TaskStateBuilding    VMTaskState = "BUILDING"
+	TaskStatePausing     VMTaskState = "PAUSING"
+	TaskStateUnpausing   VMTaskState = "UNPAUSING"
+	TaskStateSuspending  VMTaskState = "SUSPENDING"
+	TaskStateResuming    VMTaskState = "RESUMING"
+	TaskStateDeleting    VMTaskState = "DELETING"
+	TaskStateStopping    VMTaskState = "STOPPING"
+	TaskStateStarting    VMTaskState = "STARTING"
+	TaskStateRebooting   VMTaskState = "REBOOTING"
+	TaskStateRebuilding  VMTaskState = "REBUILDING"
+	TaskStatePoweringOn  VMTaskState = "POWERING_ON"
+	TaskStatePoweringOff VMTaskState = "POWERING_OFF"
+	TaskStateScheduling  VMTaskState = "SCHEDULING"
 )
 
 // --- Core Entities ---
@@ -33,7 +52,8 @@ type VirtualMachine struct {
 	UUID            string `gorm:"uniqueIndex"` // Virtumancer's internal, guaranteed-unique UUID
 	DomainUUID      string `gorm:"uniqueIndex"` // The UUID as reported by libvirt, may not be unique across hosts
 	Description     string
-	State           VMState `gorm:"type:varchar(20);default:'STOPPED'"` // Replaces libvirt's int state with a descriptive string.
+	State           VMState     `gorm:"default:'INITIALIZED'"`
+	TaskState       VMTaskState `gorm:"default:null"`
 	VCPUCount       uint
 	CPUModel        string
 	CPUTopologyJSON string
@@ -490,5 +510,6 @@ func InitDB(dataSourceName string) (*gorm.DB, error) {
 
 	return db, nil
 }
+
 
 

@@ -18,21 +18,21 @@ import (
 // VMView is a combination of DB data and live libvirt data for the frontend.
 type VMView struct {
 	// From DB
-	ID              uint   `json:"db_id"`
-	Name            string `json:"name"`
-	UUID            string `json:"uuid"`
-	DomainUUID      string `json:"domain_uuid"`
-	Description     string `json:"description"`
-	VCPUCount       uint   `json:"vcpu_count"`
-	MemoryBytes     uint64 `json:"memory_bytes"`
-	IsTemplate      bool   `json:"is_template"`
-	CPUModel        string `json:"cpu_model"`
-	CPUTopologyJSON string `json:"cpu_topology_json"`
+	ID              uint                `json:"db_id"`
+	Name            string              `json:"name"`
+	UUID            string              `json:"uuid"`
+	DomainUUID      string              `json:"domain_uuid"`
+	Description     string              `json:"description"`
+	VCPUCount       uint                `json:"vcpu_count"`
+	MemoryBytes     uint64              `json:"memory_bytes"`
+	IsTemplate      bool                `json:"is_template"`
+	CPUModel        string              `json:"cpu_model"`
+	CPUTopologyJSON string              `json:"cpu_topology_json"`
+	TaskState       storage.VMTaskState `json:"task_state"`
 
 	// From Libvirt or DB cache
-	State    storage.VMState       `json:"state"` // Use our custom string state
-	Graphics libvirt.GraphicsInfo    `json:"graphics"`
-	Hardware *libvirt.HardwareInfo `json:"hardware,omitempty"` // Pointer to allow for null
+	State    storage.VMState    `json:"state"`
+	Graphics libvirt.GraphicsInfo `json:"graphics"`
 
 	// From Libvirt (live data, only in some calls)
 	MaxMem  uint64 `json:"max_mem"`
@@ -216,6 +216,7 @@ func (s *HostService) GetVMsForHostFromDB(hostID string) ([]VMView, error) {
 			CPUModel:        dbVM.CPUModel,
 			CPUTopologyJSON: dbVM.CPUTopologyJSON,
 			State:           dbVM.State,
+			TaskState:       dbVM.TaskState,
 			Graphics:        graphics,
 		})
 	}
@@ -559,6 +560,30 @@ func (s *HostService) syncAndListVMs(hostID string) (bool, error) {
 	return overallChanged, nil
 }
 
+// setTaskState updates the task state for a VM in the database and broadcasts an update.
+func (s *HostService) setTaskState(hostID, vmName string, state storage.VMTaskState) {
+	err := s.db.Model(&storage.VirtualMachine{}).Where("host_id = ? AND name = ?", hostID, vmName).Update("task_state", state).Error
+	if err != nil {
+		log.Printf("Error setting task state '%s' for VM %s on host %s: %v", state, vmName, hostID, err)
+		return
+	}
+	log.Printf("VM %s on host %s entered task state: %s", vmName, hostID, state)
+	s.broadcastVMsChanged(hostID)
+}
+
+// clearTaskState clears the task state for a VM in the database and broadcasts an update.
+func (s *HostService) clearTaskState(hostID, vmName string) {
+	// Using a map to update to a NULL value, which is the zero value for a pointer.
+	// GORM handles setting string fields to NULL correctly this way.
+	err := s.db.Model(&storage.VirtualMachine{}).Where("host_id = ? AND name = ?", hostID, vmName).Update("task_state", gorm.Expr("NULL")).Error
+	if err != nil {
+		log.Printf("Error clearing task state for VM %s on host %s: %v", vmName, hostID, err)
+		return
+	}
+	log.Printf("VM %s on host %s cleared task state.", vmName, hostID)
+	// We don't broadcast here because a full sync will happen right after, which will broadcast.
+}
+
 func (s *HostService) GetVMStats(hostID, vmName string) (*libvirt.VMStats, error) {
 	// First, check if there's an active subscription.
 	stats := s.monitor.GetLastKnownStats(hostID, vmName)
@@ -573,6 +598,9 @@ func (s *HostService) GetVMStats(hostID, vmName string) (*libvirt.VMStats, error
 // --- VM Actions ---
 
 func (s *HostService) StartVM(hostID, vmName string) error {
+	s.setTaskState(hostID, vmName, storage.TaskStateStarting)
+	defer s.clearTaskState(hostID, vmName)
+
 	if err := s.connector.StartDomain(hostID, vmName); err != nil {
 		return err
 	}
@@ -583,6 +611,9 @@ func (s *HostService) StartVM(hostID, vmName string) error {
 }
 
 func (s *HostService) ShutdownVM(hostID, vmName string) error {
+	s.setTaskState(hostID, vmName, storage.TaskStateStopping)
+	defer s.clearTaskState(hostID, vmName)
+
 	if err := s.connector.ShutdownDomain(hostID, vmName); err != nil {
 		return err
 	}
@@ -593,6 +624,9 @@ func (s *HostService) ShutdownVM(hostID, vmName string) error {
 }
 
 func (s *HostService) RebootVM(hostID, vmName string) error {
+	s.setTaskState(hostID, vmName, storage.TaskStateRebooting)
+	defer s.clearTaskState(hostID, vmName)
+
 	if err := s.connector.RebootDomain(hostID, vmName); err != nil {
 		return err
 	}
@@ -603,6 +637,9 @@ func (s *HostService) RebootVM(hostID, vmName string) error {
 }
 
 func (s *HostService) ForceOffVM(hostID, vmName string) error {
+	s.setTaskState(hostID, vmName, storage.TaskStatePoweringOff)
+	defer s.clearTaskState(hostID, vmName)
+
 	if err := s.connector.DestroyDomain(hostID, vmName); err != nil {
 		return err
 	}
@@ -613,6 +650,9 @@ func (s *HostService) ForceOffVM(hostID, vmName string) error {
 }
 
 func (s *HostService) ForceResetVM(hostID, vmName string) error {
+	s.setTaskState(hostID, vmName, storage.TaskStateRebooting) // Reset is a form of rebooting
+	defer s.clearTaskState(hostID, vmName)
+
 	if err := s.connector.ResetDomain(hostID, vmName); err != nil {
 		return err
 	}
@@ -740,10 +780,11 @@ func (m *MonitoringManager) pollVmStats(hostID, vmName string, sub *VmSubscripti
 			})
 
 			// If the VM is no longer running, stop polling it.
-			if stats.State != golibvirt.DomainRunning {
-				log.Printf("VM %s is not running, stopping stats polling.", vmName)
-				// Unsubscribe all clients for this VM
-				m.mu.Lock()
+	statsState := mapLibvirtStateToVMState(stats.State)
+	if statsState != storage.StateActive {
+		log.Printf("VM %s is not running (state: %s), stopping stats polling.", vmName, statsState)
+		// Unsubscribe all clients for this VM
+		m.mu.Lock()
 				delete(m.subscriptions, fmt.Sprintf("%s:%s", hostID, vmName))
 				m.mu.Unlock()
 				return
@@ -753,6 +794,8 @@ func (m *MonitoringManager) pollVmStats(hostID, vmName string, sub *VmSubscripti
 		}
 	}
 }
+
+
 
 
 

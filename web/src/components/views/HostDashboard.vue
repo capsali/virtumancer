@@ -18,14 +18,12 @@ const vms = computed(() => {
 });
 
 const totalMemory = computed(() => {
-    return selectedHost.value?.info?.memory || 0; // Already in bytes from service layer
+    return selectedHost.value?.info?.memory || 0;
 });
 
 const usedMemory = computed(() => {
-    if (!vms.value) return 0;
-    // memory_bytes is the max configured memory. We need live stats for current usage.
-    // This is a simplification. For now, we'll sum max memory of active VMs.
-    return vms.value.reduce((total, vm) => total + (vm.state === 'ACTIVE' ? vm.memory_bytes : 0), 0);
+    if (!selectedHost.value || !selectedHost.value.vms) return 0;
+    return selectedHost.value.vms.reduce((total, vm) => total + (vm.state === 'ACTIVE' ? vm.memory : 0), 0);
 });
 
 const memoryUsagePercent = computed(() => {
@@ -38,8 +36,8 @@ const totalCpu = computed(() => {
 });
 
 const usedCpu = computed(() => {
-    if (!vms.value) return 0;
-    return vms.value.reduce((total, vm) => total + (vm.state === 'ACTIVE' ? vm.vcpu_count : 0), 0);
+    if (!selectedHost.value || !selectedHost.value.vms) return 0;
+    return selectedHost.value.vms.reduce((total, vm) => total + (vm.state === 'ACTIVE' ? vm.vcpu : 0), 0);
 });
 
 const cpuUsagePercent = computed(() => {
@@ -53,26 +51,43 @@ const selectVm = (vmName) => {
 }
 
 // Helper functions for display
-const stateText = (state) => {
-    if (!state) return 'Unknown';
-    // Capitalize first letter, lowercase the rest
-    return state.charAt(0).toUpperCase() + state.slice(1).toLowerCase();
+const stateText = (vm) => {
+    if (!vm) return 'Unknown';
+    if (vm.task_state) {
+        const task = vm.task_state.toLowerCase().replace(/_/g, ' ');
+        // Capitalize first letter
+        return task.charAt(0).toUpperCase() + task.slice(1);
+    }
+    const states = {
+        'INITIALIZED': 'Initialized',
+        'ACTIVE': 'Running', 
+        'PAUSED': 'Paused', 
+        'SUSPENDED': 'Suspended',
+        'STOPPED': 'Stopped', 
+        'ERROR': 'Error'
+    };
+    return states[vm.state] || 'Unknown';
 };
 
-const stateColor = (state) => {
+const stateColor = (vm) => {
+  if (!vm) return 'text-gray-400 bg-gray-700';
+  if (vm.task_state) {
+      return 'text-orange-300 bg-orange-900/50 animate-pulse';
+  }
   const colors = {
     'ACTIVE': 'text-green-400 bg-green-900/50',
     'PAUSED': 'text-yellow-400 bg-yellow-900/50',
-    'STOPPED': 'text-red-400 bg-red-900/50',
     'SUSPENDED': 'text-blue-400 bg-blue-900/50',
-    'ERROR': 'text-red-400 bg-red-900/50',
+    'STOPPED': 'text-red-400 bg-red-900/50',
+    'ERROR': 'text-red-400 bg-red-900/50 font-bold',
   };
-  return colors[state] || 'text-gray-400 bg-gray-700';
+  return colors[vm.state] || 'text-gray-400 bg-gray-700';
 };
 
-const formatMemory = (bytes) => {
-    if (bytes === 0) return '0 MB';
-    const mb = bytes / (1024 * 1024);
+const formatMemory = (kb) => {
+    if (kb === 0) return '0 MB';
+    if (!kb) return 'N/A';
+    const mb = kb / 1024;
     if (mb < 1024) return `${mb.toFixed(0)} MB`;
     const gb = mb / 1024;
     return `${gb.toFixed(2)} GB`;
@@ -80,6 +95,7 @@ const formatMemory = (bytes) => {
 
 const formatBytes = (bytes, decimals = 2) => {
     if (bytes === 0) return '0 Bytes';
+    if (!bytes) return 'N/A';
     const k = 1024;
     const dm = decimals < 0 ? 0 : decimals;
     const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB'];
@@ -160,21 +176,22 @@ const formatBytes = (bytes, decimals = 2) => {
               <td class="px-6 py-4 whitespace-nowrap">
                 <div class="flex items-center">
                   <div class="h-2.5 w-2.5 rounded-full mr-3 flex-shrink-0" :class="{
-                    'bg-green-500': vm.state === 'ACTIVE', 
-                    'bg-red-500': vm.state === 'STOPPED' || vm.state === 'ERROR',
-                    'bg-yellow-500': vm.state === 'PAUSED',
-                    'bg-blue-500': vm.state === 'SUSPENDED',
-                    'bg-gray-500': !['ACTIVE', 'STOPPED', 'ERROR', 'PAUSED', 'SUSPENDED'].includes(vm.state)
+                    'bg-green-500': vm.state === 'ACTIVE' && !vm.task_state, 
+                    'bg-red-500': (vm.state === 'STOPPED' || vm.state === 'ERROR') && !vm.task_state,
+                    'bg-yellow-500': vm.state === 'PAUSED' && !vm.task_state,
+                    'bg-blue-500': vm.state === 'SUSPENDED' && !vm.task_state,
+                    'bg-orange-500 animate-pulse': vm.task_state,
+                    'bg-gray-500': !['ACTIVE', 'STOPPED', 'ERROR', 'PAUSED', 'SUSPENDED'].includes(vm.state) && !vm.task_state
                   }"></div>
                   <div class="text-sm font-medium text-white">{{ vm.name }}</div>
                 </div>
               </td>
               <td class="px-6 py-4 whitespace-nowrap">
-                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full" :class="stateColor(vm.state)">
-                  {{ stateText(vm.state) }}
+                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full" :class="stateColor(vm)">
+                  {{ stateText(vm) }}
                 </span>
               </td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ vm.vcpu_count }}</td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ vm.vcpu }}</td>
               <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ formatMemory(vm.memory_bytes / 1024) }}</td>
             </tr>
           </tbody>
