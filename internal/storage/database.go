@@ -5,22 +5,22 @@ import (
 	"gorm.io/gorm"
 )
 
-// VMState defines the stable power state of a VM.
+// VMState defines the possible stable states of a VM.
 type VMState string
 
-// VMTaskState defines the transient state of a VM during an operation.
-type VMTaskState string
-
 const (
-	// Stable States
 	StateInitialized VMState = "INITIALIZED"
 	StateActive      VMState = "ACTIVE"
 	StatePaused      VMState = "PAUSED"
 	StateSuspended   VMState = "SUSPENDED"
 	StateStopped     VMState = "STOPPED"
 	StateError       VMState = "ERROR"
+)
 
-	// Task States
+// VMTaskState defines the possible transient states of a VM during an operation.
+type VMTaskState string
+
+const (
 	TaskStateBuilding    VMTaskState = "BUILDING"
 	TaskStatePausing     VMTaskState = "PAUSING"
 	TaskStateUnpausing   VMTaskState = "UNPAUSING"
@@ -47,13 +47,13 @@ type Host struct {
 // VirtualMachine is Virtumancer's canonical definition of a VM's intended state.
 type VirtualMachine struct {
 	gorm.Model
-	HostID          string `gorm:"uniqueIndex:idx_vm_host_name"`
-	Name            string `gorm:"uniqueIndex:idx_vm_host_name"`
-	UUID            string `gorm:"uniqueIndex"` // Virtumancer's internal, guaranteed-unique UUID
-	DomainUUID      string `gorm:"uniqueIndex"` // The UUID as reported by libvirt, may not be unique across hosts
+	HostID          string      `gorm:"uniqueIndex:idx_vm_host_name"`
+	Name            string      `gorm:"uniqueIndex:idx_vm_host_name"`
+	UUID            string      `gorm:"primaryKey"`  // Virtumancer's internal, guaranteed-unique UUID
+	DomainUUID      string      `gorm:"uniqueIndex"` // The UUID as reported by libvirt
 	Description     string
-	State           VMState     `gorm:"default:'INITIALIZED'"`
-	TaskState       VMTaskState `gorm:"default:null"`
+	State           VMState     `gorm:"default:'INITIALIZED'"` // Stable state
+	TaskState       VMTaskState // Transient state during operations
 	VCPUCount       uint
 	CPUModel        string
 	CPUTopologyJSON string
@@ -90,7 +90,7 @@ type Volume struct {
 // VolumeAttachment links a Volume to a VirtualMachine.
 type VolumeAttachment struct {
 	gorm.Model
-	VMID       uint
+	VMUUID     string `gorm:"index"`
 	VolumeID   uint
 	Volume     Volume
 	DeviceName string // e.g., "vda", "hdb"
@@ -113,8 +113,8 @@ type Network struct {
 // Port represents a virtual Network Interface Card (vNIC) belonging to a VM.
 type Port struct {
 	gorm.Model
-	VMID       uint
-	MACAddress string `gorm:"uniqueIndex"`
+	VMUUID     string `gorm:"uniqueIndex:idx_port_vm_mac"`
+	MACAddress string `gorm:"uniqueIndex:idx_port_vm_mac"`
 	DeviceName string // e.g. "vnet0", "eth0"
 	ModelName  string // e.g., 'virtio', 'e1000'
 	IPAddress  string
@@ -142,7 +142,7 @@ type Controller struct {
 // ControllerAttachment links a Controller to a VirtualMachine.
 type ControllerAttachment struct {
 	gorm.Model
-	VMID         uint
+	VMUUID       string `gorm:"index"`
 	ControllerID uint
 }
 
@@ -156,7 +156,7 @@ type InputDevice struct {
 // InputDeviceAttachment links an InputDevice to a VirtualMachine.
 type InputDeviceAttachment struct {
 	gorm.Model
-	VMID          uint
+	VMUUID        string `gorm:"index"`
 	InputDeviceID uint
 }
 
@@ -172,7 +172,7 @@ type GraphicsDevice struct {
 // GraphicsDeviceAttachment links a GraphicsDevice to a VirtualMachine.
 type GraphicsDeviceAttachment struct {
 	gorm.Model
-	VMID             uint
+	VMUUID           string `gorm:"index"`
 	GraphicsDeviceID uint
 }
 
@@ -185,7 +185,7 @@ type SoundCard struct {
 // SoundCardAttachment links a SoundCard to a VirtualMachine.
 type SoundCardAttachment struct {
 	gorm.Model
-	VMID        uint
+	VMUUID      string `gorm:"index"`
 	SoundCardID uint
 }
 
@@ -201,7 +201,7 @@ type HostDevice struct {
 // HostDeviceAttachment links a HostDevice to a VirtualMachine for passthrough.
 type HostDeviceAttachment struct {
 	gorm.Model
-	VMID         uint
+	VMUUID       string `gorm:"index"`
 	HostDeviceID uint
 }
 
@@ -216,8 +216,8 @@ type TPM struct {
 // TPMAttachment links a TPM to a VirtualMachine.
 type TPMAttachment struct {
 	gorm.Model
-	VMID  uint
-	TPMID uint
+	VMUUID string `gorm:"index"`
+	TPMID  uint
 }
 
 // Watchdog represents a virtual watchdog device.
@@ -230,7 +230,7 @@ type Watchdog struct {
 // WatchdogAttachment links a Watchdog to a VirtualMachine.
 type WatchdogAttachment struct {
 	gorm.Model
-	VMID       uint
+	VMUUID     string `gorm:"index"`
 	WatchdogID uint
 }
 
@@ -245,7 +245,7 @@ type SerialDevice struct {
 // SerialDeviceAttachment links a SerialDevice to a VirtualMachine.
 type SerialDeviceAttachment struct {
 	gorm.Model
-	VMID           uint
+	VMUUID         string `gorm:"index"`
 	SerialDeviceID uint
 }
 
@@ -260,22 +260,22 @@ type ChannelDevice struct {
 // ChannelDeviceAttachment links a ChannelDevice to a VirtualMachine.
 type ChannelDeviceAttachment struct {
 	gorm.Model
-	VMID            uint
+	VMUUID          string `gorm:"index"`
 	ChannelDeviceID uint
 }
 
 // Filesystem represents a shared filesystem for a VM.
 type Filesystem struct {
 	gorm.Model
-	DriverType  string
-	SourcePath  string
-	TargetPath  string
+	DriverType string
+	SourcePath string
+	TargetPath string
 }
 
 // FilesystemAttachment links a Filesystem to a VM.
 type FilesystemAttachment struct {
 	gorm.Model
-	VMID         uint
+	VMUUID       string `gorm:"index"`
 	FilesystemID uint
 }
 
@@ -289,7 +289,7 @@ type Smartcard struct {
 // SmartcardAttachment links a Smartcard to a VM.
 type SmartcardAttachment struct {
 	gorm.Model
-	VMID        uint
+	VMUUID      string `gorm:"index"`
 	SmartcardID uint
 }
 
@@ -303,7 +303,7 @@ type USBRedirector struct {
 // USBRedirectorAttachment links a USBRedirector to a VM.
 type USBRedirectorAttachment struct {
 	gorm.Model
-	VMID            uint
+	VMUUID          string `gorm:"index"`
 	USBRedirectorID uint
 }
 
@@ -317,7 +317,7 @@ type RngDevice struct {
 // RngDeviceAttachment links an RngDevice to a VM.
 type RngDeviceAttachment struct {
 	gorm.Model
-	VMID        uint
+	VMUUID      string `gorm:"index"`
 	RngDeviceID uint
 }
 
@@ -330,7 +330,7 @@ type PanicDevice struct {
 // PanicDeviceAttachment links a PanicDevice to a VM.
 type PanicDeviceAttachment struct {
 	gorm.Model
-	VMID          uint
+	VMUUID        string `gorm:"index"`
 	PanicDeviceID uint
 }
 
@@ -343,7 +343,7 @@ type Vsock struct {
 // VsockAttachment links a Vsock to a VM.
 type VsockAttachment struct {
 	gorm.Model
-	VMID    uint
+	VMUUID  string `gorm:"index"`
 	VsockID uint
 }
 
@@ -357,7 +357,7 @@ type MemoryBalloon struct {
 // MemoryBalloonAttachment links a MemoryBalloon to a VM.
 type MemoryBalloonAttachment struct {
 	gorm.Model
-	VMID            uint
+	VMUUID          string `gorm:"index"`
 	MemoryBalloonID uint
 }
 
@@ -372,7 +372,7 @@ type ShmemDevice struct {
 // ShmemDeviceAttachment links a ShmemDevice to a VM.
 type ShmemDeviceAttachment struct {
 	gorm.Model
-	VMID          uint
+	VMUUID        string `gorm:"index"`
 	ShmemDeviceID uint
 }
 
@@ -385,7 +385,7 @@ type IOMMUDevice struct {
 // IOMMUDeviceAttachment links an IOMMUDevice to a VM.
 type IOMMUDeviceAttachment struct {
 	gorm.Model
-	VMID          uint
+	VMUUID        string `gorm:"index"`
 	IOMMUDeviceID uint
 }
 
@@ -394,7 +394,7 @@ type IOMMUDeviceAttachment struct {
 // VMSnapshot stores metadata about a VM snapshot.
 type VMSnapshot struct {
 	gorm.Model
-	VMID        uint
+	VMUUID      string `gorm:"index"`
 	Name        string
 	Description string
 	ParentName  string
@@ -510,6 +510,5 @@ func InitDB(dataSourceName string) (*gorm.DB, error) {
 
 	return db, nil
 }
-
 
 

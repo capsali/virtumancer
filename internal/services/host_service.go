@@ -18,7 +18,6 @@ import (
 // VMView is a combination of DB data and live libvirt data for the frontend.
 type VMView struct {
 	// From DB
-	ID              uint                `json:"db_id"`
 	Name            string              `json:"name"`
 	UUID            string              `json:"uuid"`
 	DomainUUID      string              `json:"domain_uuid"`
@@ -31,8 +30,9 @@ type VMView struct {
 	TaskState       storage.VMTaskState `json:"task_state"`
 
 	// From Libvirt or DB cache
-	State    storage.VMState    `json:"state"`
-	Graphics libvirt.GraphicsInfo `json:"graphics"`
+	State    storage.VMState       `json:"state"`
+	Graphics libvirt.GraphicsInfo    `json:"graphics"`
+	Hardware *libvirt.HardwareInfo `json:"hardware,omitempty"` // Pointer to allow for null
 
 	// From Libvirt (live data, only in some calls)
 	MaxMem  uint64 `json:"max_mem"`
@@ -108,6 +108,22 @@ func (s *HostService) broadcastVMsChanged(hostID string) {
 		Type:    "vms-changed",
 		Payload: ws.MessagePayload{"hostId": hostID},
 	})
+}
+
+// mapLibvirtStateToVMState translates libvirt's integer state to our internal string state.
+func mapLibvirtStateToVMState(state golibvirt.DomainState) storage.VMState {
+	switch state {
+	case golibvirt.DomainRunning:
+		return storage.StateActive
+	case golibvirt.DomainPaused:
+		return storage.StatePaused
+	case golibvirt.DomainPmsuspended:
+		return storage.StateSuspended
+	case golibvirt.DomainShutdown, golibvirt.DomainShutoff, golibvirt.DomainCrashed:
+		return storage.StateStopped
+	default:
+		return storage.StateError
+	}
 }
 
 // --- Host Management ---
@@ -189,15 +205,13 @@ func (s *HostService) GetVMsForHostFromDB(hostID string) ([]VMView, error) {
 	for _, dbVM := range dbVMs {
 		var graphics libvirt.GraphicsInfo // Default to false
 
-		// Only query for graphics devices if the VM is running.
 		if dbVM.State == storage.StateActive {
 			var graphicsDevice storage.GraphicsDevice
 			err := s.db.Joins("join graphics_device_attachments on graphics_device_attachments.graphics_device_id = graphics_devices.id").
-				Where("graphics_device_attachments.vm_id = ?", dbVM.ID).First(&graphicsDevice).Error
+				Where("graphics_device_attachments.vm_uuid = ?", dbVM.UUID).First(&graphicsDevice).Error
 
 			if err != nil && err != gorm.ErrRecordNotFound {
-				// Log only unexpected errors, not "not found".
-				log.Printf("Error querying graphics device for running VM %d: %v", dbVM.ID, err)
+				log.Printf("Error querying graphics device for running VM %s: %v", dbVM.Name, err)
 			} else if err == nil {
 				graphics.VNC = strings.ToLower(graphicsDevice.Type) == "vnc"
 				graphics.SPICE = strings.ToLower(graphicsDevice.Type) == "spice"
@@ -205,7 +219,6 @@ func (s *HostService) GetVMsForHostFromDB(hostID string) ([]VMView, error) {
 		}
 
 		vmViews = append(vmViews, VMView{
-			ID:              dbVM.ID,
 			Name:            dbVM.Name,
 			UUID:            dbVM.UUID,
 			DomainUUID:      dbVM.DomainUUID,
@@ -233,7 +246,7 @@ func (s *HostService) getVMHardwareFromDB(hostID, vmName string) (*libvirt.Hardw
 
 	// Retrieve and populate disks
 	var diskAttachments []storage.VolumeAttachment
-	s.db.Preload("Volume").Where("vm_id = ?", vm.ID).Find(&diskAttachments)
+	s.db.Preload("Volume").Where("vm_uuid = ?", vm.UUID).Find(&diskAttachments)
 	for _, da := range diskAttachments {
 		hardware.Disks = append(hardware.Disks, libvirt.DiskInfo{
 			Device: da.DeviceName,
@@ -256,7 +269,7 @@ func (s *HostService) getVMHardwareFromDB(hostID, vmName string) (*libvirt.Hardw
 
 	// Retrieve and populate networks
 	var ports []storage.Port
-	err := s.db.Where("vm_id = ?", vm.ID).Find(&ports).Error
+	err := s.db.Where("vm_uuid = ?", vm.UUID).Find(&ports).Error
 	if err == nil {
 		for _, port := range ports {
 			var binding storage.PortBinding
@@ -290,11 +303,8 @@ func (s *HostService) getVMHardwareFromDB(hostID, vmName string) (*libvirt.Hardw
 	return &hardware, nil
 }
 func (s *HostService) GetVMHardwareAndTriggerSync(hostID, vmName string) (*libvirt.HardwareInfo, error) {
-	// We will now always sync and then get from DB for consistency,
-	// since the data is structured and no longer a simple JSON blob.
 	if changed, syncErr := s.syncSingleVM(hostID, vmName); syncErr != nil {
 		log.Printf("Error during hardware sync for %s: %v", vmName, syncErr)
-		// We can still try to return what's in the DB
 	} else if changed {
 		s.broadcastVMsChanged(hostID)
 	}
@@ -346,10 +356,9 @@ func (s *HostService) syncSingleVM(hostID, vmName string) (bool, error) {
 
 	if err != nil && err != gorm.ErrRecordNotFound {
 		tx.Rollback()
-		return false, err // Database error
+		return false, err
 	}
 
-	// Case 1: The VM is not in our DB for this host. It's either brand new or has a conflict.
 	if err == gorm.ErrRecordNotFound {
 		var conflictingVM storage.VirtualMachine
 		err := tx.Where("domain_uuid = ? AND host_id != ?", vmInfo.UUID, hostID).First(&conflictingVM).Error
@@ -364,16 +373,11 @@ func (s *HostService) syncSingleVM(hostID, vmName string) (bool, error) {
 		}
 
 		if err == gorm.ErrRecordNotFound {
-			// No conflict found. This is a genuinely new VM to our entire system.
-			// Set our internal UUID to be the same as the domain's UUID.
 			newVMRecord.UUID = vmInfo.UUID
 		} else if err != nil {
-			// Some other DB error occurred
 			tx.Rollback()
 			return false, err
 		} else {
-			// Conflict found! A VM with this domain UUID exists on another host.
-			// Generate a new, unique internal UUID for our system.
 			log.Printf("UUID conflict detected for DomainUUID %s. Assigning new internal UUID.", vmInfo.UUID)
 			newVMRecord.UUID = uuid.New().String()
 		}
@@ -383,16 +387,26 @@ func (s *HostService) syncSingleVM(hostID, vmName string) (bool, error) {
 			return false, err
 		}
 		changed = true
-		existingVMOnHost = newVMRecord // Use the newly created record for hardware sync
-	} else { // Case 2: The VM already exists in our DB for this host. Just update its state.
-		updates := map[string]interface{}{
-			"Name":        vmInfo.Name,
-			"State":       mapLibvirtStateToVMState(vmInfo.State),
-			"VCPUCount":   vmInfo.Vcpu,
-			"MemoryBytes": vmInfo.MaxMem * 1024,
+		existingVMOnHost = newVMRecord
+	} else {
+		updates := make(map[string]interface{})
+		currentStateInDB := existingVMOnHost.State
+		newState := mapLibvirtStateToVMState(vmInfo.State)
+
+		if existingVMOnHost.Name != vmInfo.Name {
+			updates["Name"] = vmInfo.Name
 		}
-		if existingVMOnHost.Name != vmInfo.Name || existingVMOnHost.State != mapLibvirtStateToVMState(vmInfo.State) ||
-			existingVMOnHost.VCPUCount != vmInfo.Vcpu || existingVMOnHost.MemoryBytes != (vmInfo.MaxMem*1024) {
+		if currentStateInDB != newState {
+			updates["State"] = newState
+		}
+		if existingVMOnHost.VCPUCount != vmInfo.Vcpu {
+			updates["VCPUCount"] = vmInfo.Vcpu
+		}
+		if existingVMOnHost.MemoryBytes != (vmInfo.MaxMem * 1024) {
+			updates["MemoryBytes"] = vmInfo.MaxMem * 1024
+		}
+
+		if len(updates) > 0 {
 			if err := tx.Model(&existingVMOnHost).Updates(updates).Error; err != nil {
 				tx.Rollback()
 				return false, err
@@ -402,9 +416,13 @@ func (s *HostService) syncSingleVM(hostID, vmName string) (bool, error) {
 	}
 
 	if hardwareInfo != nil {
-		if err := s.syncVMHardware(tx, existingVMOnHost.ID, hostID, hardwareInfo, &vmInfo.Graphics); err != nil {
+		hardwareChanged, err := s.syncVMHardware(tx, existingVMOnHost.UUID, hostID, hardwareInfo, &vmInfo.Graphics)
+		if err != nil {
 			tx.Rollback()
 			return false, fmt.Errorf("failed to sync hardware: %w", err)
+		}
+		if hardwareChanged {
+			changed = true
 		}
 	}
 
@@ -415,112 +433,161 @@ func (s *HostService) syncSingleVM(hostID, vmName string) (bool, error) {
 	return changed, nil
 }
 
-// syncVMHardware reconciles the live hardware state with the database.
-func (s *HostService) syncVMHardware(tx *gorm.DB, vmID uint, hostID string, hardware *libvirt.HardwareInfo, graphics *libvirt.GraphicsInfo) error {
-	// Correctly clear existing PortBindings by finding associated ports first
-	var portsToDelete []storage.Port
-	tx.Where("vm_id = ?", vmID).Find(&portsToDelete)
-	if len(portsToDelete) > 0 {
-		var portIDs []uint
-		for _, p := range portsToDelete {
-			portIDs = append(portIDs, p.ID)
-		}
-		tx.Where("port_id IN ?", portIDs).Delete(&storage.PortBinding{})
+// syncVMHardware intelligently syncs hardware state, only performing writes when necessary.
+func (s *HostService) syncVMHardware(tx *gorm.DB, vmUUID string, hostID string, hardware *libvirt.HardwareInfo, graphics *libvirt.GraphicsInfo) (bool, error) {
+	var changed bool = false
+
+	// --- Sync Networks / Ports ---
+	var existingPorts []storage.Port
+	if err := tx.Where("vm_uuid = ?", vmUUID).Find(&existingPorts).Error; err != nil {
+		return false, err
+	}
+	existingPortsMap := make(map[string]storage.Port)
+	for _, p := range existingPorts {
+		existingPortsMap[p.MACAddress] = p
 	}
 
-	tx.Where("vm_id = ?", vmID).Delete(&storage.VolumeAttachment{})
-	tx.Where("vm_id = ?", vmID).Delete(&storage.GraphicsDeviceAttachment{})
+	for _, net := range hardware.Networks {
+		dbPort, exists := existingPortsMap[net.Mac.Address]
 
-	// Sync Disks
+		updates := make(map[string]interface{})
+		if !exists {
+			// This is a new port, create it
+			var network storage.Network
+			networkUUID := uuid.NewSHA1(uuid.Nil, []byte(fmt.Sprintf("%s:%s", hostID, net.Source.Bridge)))
+			tx.FirstOrCreate(&network, storage.Network{UUID: networkUUID.String()}, storage.Network{
+				HostID: hostID, Name: net.Source.Bridge, BridgeName: net.Source.Bridge, Mode: "bridged", UUID: networkUUID.String(),
+			})
+
+			newPort := storage.Port{
+				VMUUID: vmUUID, MACAddress: net.Mac.Address, DeviceName: net.Target.Dev, ModelName: net.Model.Type,
+			}
+			if err := tx.Create(&newPort).Error; err != nil {
+				return false, err
+			}
+
+			if network.ID != 0 && newPort.ID != 0 {
+				binding := storage.PortBinding{PortID: newPort.ID, NetworkID: network.ID}
+				tx.Create(&binding)
+			}
+			changed = true
+		} else {
+			// Port exists, check for changes
+			if dbPort.DeviceName != net.Target.Dev {
+				updates["device_name"] = net.Target.Dev
+			}
+			if dbPort.ModelName != net.Model.Type {
+				updates["model_name"] = net.Model.Type
+			}
+
+			if len(updates) > 0 {
+				if err := tx.Model(&dbPort).Updates(updates).Error; err != nil {
+					return false, err
+				}
+				changed = true
+			}
+			// Remove from map so it's not deleted later
+			delete(existingPortsMap, net.Mac.Address)
+		}
+	}
+
+	// Any ports left in existingPortsMap are stale and should be deleted
+	if len(existingPortsMap) > 0 {
+		var portIDsToDelete []uint
+		for _, port := range existingPortsMap {
+			portIDsToDelete = append(portIDsToDelete, port.ID)
+		}
+		tx.Where("port_id IN ?", portIDsToDelete).Delete(&storage.PortBinding{})
+		tx.Where("id IN ?", portIDsToDelete).Delete(&storage.Port{})
+		changed = true
+	}
+
+	// --- Sync Disks (Intelligent Update) ---
+	var existingAttachments []storage.VolumeAttachment
+	tx.Preload("Volume").Where("vm_uuid = ?", vmUUID).Find(&existingAttachments)
+	existingAttachmentsMap := make(map[string]storage.VolumeAttachment)
+	for _, da := range existingAttachments {
+		existingAttachmentsMap[da.DeviceName] = da
+	}
+
 	for _, disk := range hardware.Disks {
 		var volume storage.Volume
 		tx.FirstOrCreate(&volume, storage.Volume{Name: disk.Path}, storage.Volume{
-			Name:   disk.Path,
-			Format: disk.Driver.Type,
-			Type:   "DISK", // Assumption for now
+			Name: disk.Path, Format: disk.Driver.Type, Type: "DISK",
 		})
 
-		if volume.ID != 0 {
-			attachment := storage.VolumeAttachment{
-				VMID:       vmID,
-				VolumeID:   volume.ID,
-				DeviceName: disk.Target.Dev,
-				BusType:    disk.Target.Bus,
+		attachment, exists := existingAttachmentsMap[disk.Target.Dev]
+		if exists {
+			updates := make(map[string]interface{})
+			if attachment.VolumeID != volume.ID {
+				updates["volume_id"] = volume.ID
 			}
-			tx.Create(&attachment)
+			if attachment.BusType != disk.Target.Bus {
+				updates["bus_type"] = disk.Target.Bus
+			}
+			if len(updates) > 0 {
+				if err := tx.Model(&attachment).Updates(updates).Error; err != nil {
+					return false, err
+				}
+				changed = true
+			}
+			delete(existingAttachmentsMap, disk.Target.Dev)
+		} else {
+			newAttachment := storage.VolumeAttachment{
+				VMUUID: vmUUID, VolumeID: volume.ID, DeviceName: disk.Target.Dev, BusType: disk.Target.Bus,
+			}
+			if err := tx.Create(&newAttachment).Error; err != nil {
+				return false, err
+			}
+			changed = true
 		}
 	}
 
-	// Sync Networks
-	for _, net := range hardware.Networks {
-		var network storage.Network
-		networkUUID := uuid.NewSHA1(uuid.Nil, []byte(fmt.Sprintf("%s:%s", hostID, net.Source.Bridge)))
-
-		tx.FirstOrCreate(&network, storage.Network{UUID: networkUUID.String()}, storage.Network{
-			HostID:     hostID,
-			Name:       net.Source.Bridge,
-			BridgeName: net.Source.Bridge,
-			Mode:       "bridged",
-			UUID:       networkUUID.String(),
-		})
-
-		var port storage.Port
-		// Use Assign to update fields on existing records or create a new one.
-		tx.Where(storage.Port{MACAddress: net.Mac.Address}).
-			Assign(storage.Port{
-				VMID:       vmID,
-				MACAddress: net.Mac.Address,
-				DeviceName: net.Target.Dev,
-				ModelName:  net.Model.Type,
-			}).
-			FirstOrCreate(&port)
-
-		if network.ID != 0 && port.ID != 0 {
-			binding := storage.PortBinding{
-				PortID:    port.ID,
-				NetworkID: network.ID,
-			}
-			tx.FirstOrCreate(&binding, storage.PortBinding{PortID: port.ID, NetworkID: network.ID})
+	if len(existingAttachmentsMap) > 0 {
+		var idsToDelete []uint
+		for _, attachment := range existingAttachmentsMap {
+			idsToDelete = append(idsToDelete, attachment.ID)
 		}
+		if err := tx.Where("id IN ?", idsToDelete).Delete(&storage.VolumeAttachment{}).Error; err != nil {
+			return false, err
+		}
+		changed = true
 	}
 
-	// Sync Graphics
-	var gfxDevice storage.GraphicsDevice
+	// --- Sync Graphics (Intelligent Update) ---
+	var existingGfxAttachment storage.GraphicsDeviceAttachment
+	err := tx.Where("vm_uuid = ?", vmUUID).First(&existingGfxAttachment).Error
+	gfxExists := err == nil
+
+	var desiredGfxType string
 	if graphics.VNC {
-		tx.FirstOrCreate(&gfxDevice, storage.GraphicsDevice{Type: "vnc"}, storage.GraphicsDevice{Type: "vnc", ModelName: "vnc"})
+		desiredGfxType = "vnc"
 	} else if graphics.SPICE {
-		tx.FirstOrCreate(&gfxDevice, storage.GraphicsDevice{Type: "spice"}, storage.GraphicsDevice{Type: "spice", ModelName: "qxl"})
+		desiredGfxType = "spice"
 	}
 
-	if gfxDevice.ID != 0 {
-		attachment := storage.GraphicsDeviceAttachment{
-			VMID:             vmID,
-			GraphicsDeviceID: gfxDevice.ID,
+	if desiredGfxType == "" {
+		if gfxExists {
+			tx.Delete(&existingGfxAttachment)
+			changed = true
 		}
-		tx.Create(&attachment)
+	} else {
+		var gfxDevice storage.GraphicsDevice
+		tx.FirstOrCreate(&gfxDevice, storage.GraphicsDevice{Type: desiredGfxType}, storage.GraphicsDevice{Type: desiredGfxType, ModelName: desiredGfxType})
+
+		if !gfxExists {
+			newAttachment := storage.GraphicsDeviceAttachment{VMUUID: vmUUID, GraphicsDeviceID: gfxDevice.ID}
+			tx.Create(&newAttachment)
+			changed = true
+		} else if existingGfxAttachment.GraphicsDeviceID != gfxDevice.ID {
+			tx.Model(&existingGfxAttachment).Update("graphics_device_id", gfxDevice.ID)
+			changed = true
+		}
 	}
 
-	return nil
+	return changed, nil
 }
 
-// mapLibvirtStateToVMState translates libvirt's integer state to our string state.
-func mapLibvirtStateToVMState(state golibvirt.DomainState) storage.VMState {
-	switch state {
-	case golibvirt.DomainRunning:
-		return storage.StateActive
-	case golibvirt.DomainPaused:
-		return storage.StatePaused
-	case golibvirt.DomainShutdown, golibvirt.DomainShutoff, golibvirt.DomainCrashed:
-		return storage.StateStopped
-	case golibvirt.DomainPmsuspended:
-		return storage.StateSuspended
-	default:
-		return storage.StateStopped // Default to stopped for unknown/other states
-	}
-}
-
-// syncAndListVMs is the core function to get VMs from libvirt and sync with the local DB.
-// It returns true if any data was changed in the database.
 func (s *HostService) syncAndListVMs(hostID string) (bool, error) {
 	liveVMs, err := s.connector.ListAllDomains(hostID)
 	if err != nil {
@@ -560,106 +627,75 @@ func (s *HostService) syncAndListVMs(hostID string) (bool, error) {
 	return overallChanged, nil
 }
 
-// setTaskState updates the task state for a VM in the database and broadcasts an update.
-func (s *HostService) setTaskState(hostID, vmName string, state storage.VMTaskState) {
-	err := s.db.Model(&storage.VirtualMachine{}).Where("host_id = ? AND name = ?", hostID, vmName).Update("task_state", state).Error
-	if err != nil {
-		log.Printf("Error setting task state '%s' for VM %s on host %s: %v", state, vmName, hostID, err)
-		return
-	}
-	log.Printf("VM %s on host %s entered task state: %s", vmName, hostID, state)
-	s.broadcastVMsChanged(hostID)
-}
-
-// clearTaskState clears the task state for a VM in the database and broadcasts an update.
-func (s *HostService) clearTaskState(hostID, vmName string) {
-	// Using a map to update to a NULL value, which is the zero value for a pointer.
-	// GORM handles setting string fields to NULL correctly this way.
-	err := s.db.Model(&storage.VirtualMachine{}).Where("host_id = ? AND name = ?", hostID, vmName).Update("task_state", gorm.Expr("NULL")).Error
-	if err != nil {
-		log.Printf("Error clearing task state for VM %s on host %s: %v", vmName, hostID, err)
-		return
-	}
-	log.Printf("VM %s on host %s cleared task state.", vmName, hostID)
-	// We don't broadcast here because a full sync will happen right after, which will broadcast.
-}
-
 func (s *HostService) GetVMStats(hostID, vmName string) (*libvirt.VMStats, error) {
-	// First, check if there's an active subscription.
 	stats := s.monitor.GetLastKnownStats(hostID, vmName)
 	if stats != nil {
 		return stats, nil
 	}
-
-	// If no active subscription, perform a one-time fetch.
 	return s.connector.GetDomainStats(hostID, vmName)
 }
 
 // --- VM Actions ---
 
-func (s *HostService) StartVM(hostID, vmName string) error {
-	s.setTaskState(hostID, vmName, storage.TaskStateStarting)
-	defer s.clearTaskState(hostID, vmName)
+func (s *HostService) performAndSyncVMAction(hostID, vmName string, taskState storage.VMTaskState, action func() error) error {
+	// Set task state
+	if err := s.db.Model(&storage.VirtualMachine{}).Where("host_id = ? AND name = ?", hostID, vmName).Update("task_state", taskState).Error; err != nil {
+		return fmt.Errorf("failed to set task state for %s: %w", vmName, err)
+	}
+	s.broadcastVMsChanged(hostID)
 
-	if err := s.connector.StartDomain(hostID, vmName); err != nil {
+	// Perform action
+	if err := action(); err != nil {
+		// Clear task state on failure
+		s.db.Model(&storage.VirtualMachine{}).Where("host_id = ? AND name = ?", hostID, vmName).Update("task_state", "")
+		s.broadcastVMsChanged(hostID)
 		return err
 	}
-	if changed, err := s.syncSingleVM(hostID, vmName); err == nil && changed {
+
+	// Sync state after action
+	if changed, syncErr := s.syncSingleVM(hostID, vmName); syncErr != nil {
+		log.Printf("Warning: failed to sync VM %s after %s action: %v", vmName, taskState, syncErr)
+	} else if changed {
 		s.broadcastVMsChanged(hostID)
 	}
+
+	// Clear task state on success
+	if err := s.db.Model(&storage.VirtualMachine{}).Where("host_id = ? AND name = ?", hostID, vmName).Update("task_state", "").Error; err != nil {
+		log.Printf("Warning: failed to clear task state for %s: %v", vmName, err)
+	}
+	s.broadcastVMsChanged(hostID)
+
 	return nil
+}
+
+func (s *HostService) StartVM(hostID, vmName string) error {
+	return s.performAndSyncVMAction(hostID, vmName, storage.TaskStateStarting, func() error {
+		return s.connector.StartDomain(hostID, vmName)
+	})
 }
 
 func (s *HostService) ShutdownVM(hostID, vmName string) error {
-	s.setTaskState(hostID, vmName, storage.TaskStateStopping)
-	defer s.clearTaskState(hostID, vmName)
-
-	if err := s.connector.ShutdownDomain(hostID, vmName); err != nil {
-		return err
-	}
-	if changed, err := s.syncSingleVM(hostID, vmName); err == nil && changed {
-		s.broadcastVMsChanged(hostID)
-	}
-	return nil
+	return s.performAndSyncVMAction(hostID, vmName, storage.TaskStateStopping, func() error {
+		return s.connector.ShutdownDomain(hostID, vmName)
+	})
 }
 
 func (s *HostService) RebootVM(hostID, vmName string) error {
-	s.setTaskState(hostID, vmName, storage.TaskStateRebooting)
-	defer s.clearTaskState(hostID, vmName)
-
-	if err := s.connector.RebootDomain(hostID, vmName); err != nil {
-		return err
-	}
-	if changed, err := s.syncSingleVM(hostID, vmName); err == nil && changed {
-		s.broadcastVMsChanged(hostID)
-	}
-	return nil
+	return s.performAndSyncVMAction(hostID, vmName, storage.TaskStateRebooting, func() error {
+		return s.connector.RebootDomain(hostID, vmName)
+	})
 }
 
 func (s *HostService) ForceOffVM(hostID, vmName string) error {
-	s.setTaskState(hostID, vmName, storage.TaskStatePoweringOff)
-	defer s.clearTaskState(hostID, vmName)
-
-	if err := s.connector.DestroyDomain(hostID, vmName); err != nil {
-		return err
-	}
-	if changed, err := s.syncSingleVM(hostID, vmName); err == nil && changed {
-		s.broadcastVMsChanged(hostID)
-	}
-	return nil
+	return s.performAndSyncVMAction(hostID, vmName, storage.TaskStatePoweringOff, func() error {
+		return s.connector.DestroyDomain(hostID, vmName)
+	})
 }
 
 func (s *HostService) ForceResetVM(hostID, vmName string) error {
-	s.setTaskState(hostID, vmName, storage.TaskStateRebooting) // Reset is a form of rebooting
-	defer s.clearTaskState(hostID, vmName)
-
-	if err := s.connector.ResetDomain(hostID, vmName); err != nil {
-		return err
-	}
-	if changed, err := s.syncSingleVM(hostID, vmName); err == nil && changed {
-		s.broadcastVMsChanged(hostID)
-	}
-	return nil
+	return s.performAndSyncVMAction(hostID, vmName, storage.TaskStateRebooting, func() error {
+		return s.connector.ResetDomain(hostID, vmName)
+	})
 }
 
 // --- WebSocket Message Handling ---
@@ -761,15 +797,13 @@ func (m *MonitoringManager) pollVmStats(hostID, vmName string, sub *VmSubscripti
 		case <-ticker.C:
 			stats, err := m.service.connector.GetDomainStats(hostID, vmName)
 			if err != nil {
-				stats = &libvirt.VMStats{State: golibvirt.DomainShutoff}
+				stats = &libvirt.VMStats{State: -1} // Use an invalid state to signal error
 			}
 
-			// Update last known stats
 			sub.mu.Lock()
 			sub.lastKnownStats = stats
 			sub.mu.Unlock()
 
-			// Broadcast the stats update.
 			m.service.hub.BroadcastMessage(ws.Message{
 				Type: "vm-stats-updated",
 				Payload: ws.MessagePayload{
@@ -779,12 +813,10 @@ func (m *MonitoringManager) pollVmStats(hostID, vmName string, sub *VmSubscripti
 				},
 			})
 
-			// If the VM is no longer running, stop polling it.
-	statsState := mapLibvirtStateToVMState(stats.State)
-	if statsState != storage.StateActive {
-		log.Printf("VM %s is not running (state: %s), stopping stats polling.", vmName, statsState)
-		// Unsubscribe all clients for this VM
-		m.mu.Lock()
+			statsState := mapLibvirtStateToVMState(stats.State)
+			if statsState != storage.StateActive {
+				log.Printf("VM %s is not running (state: %s), stopping stats polling.", vmName, statsState)
+				m.mu.Lock()
 				delete(m.subscriptions, fmt.Sprintf("%s:%s", hostID, vmName))
 				m.mu.Unlock()
 				return
@@ -794,8 +826,5 @@ func (m *MonitoringManager) pollVmStats(hostID, vmName string, sub *VmSubscripti
 		}
 	}
 }
-
-
-
 
 
