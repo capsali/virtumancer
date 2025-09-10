@@ -36,10 +36,10 @@ const stats = computed(() => {
     }
     // Return a default structure if no stats are available to prevent template errors
     return {
-        state: vm.value?.state ?? -1,
-        max_mem: vm.value?.max_mem ?? 0,
+        state: vm.value?.state ?? 'UNKNOWN',
+        max_mem: vm.value?.memory_bytes / 1024 ?? 0,
         memory: 0,
-        vcpu: vm.value?.vcpu ?? 0,
+        vcpu: vm.value?.vcpu_count ?? 0,
         cpu_time: 0,
         disk_stats: [],
         net_stats: []
@@ -58,7 +58,7 @@ const diskRates = ref({});
 const netRates = ref({});
 
 watch(stats, (newStats) => {
-    if (!newStats || newStats.state !== 1) {
+    if (!newStats || newStats.state !== 1) { // Libvirt state for running is 1
         cpuUsagePercent.value = 0;
         diskRates.value = {};
         netRates.value = {};
@@ -117,19 +117,27 @@ watch(stats, (newStats) => {
 
 
 const memoryUsagePercent = computed(() => {
-    if (!stats.value || !stats.value.max_mem || stats.value.state !== 1) return 0;
+    if (!stats.value || !stats.value.max_mem || vm.value.state !== 'ACTIVE') return 0;
+    // stats.memory is in KiB, stats.max_mem is also in KiB from libvirt
     return (stats.value.memory / stats.value.max_mem) * 100;
 });
 
 
 // --- Helper functions ---
 const stateText = (state) => {
-    const states = { 0: 'No State', 1: 'Running', 2: 'Blocked', 3: 'Paused', 4: 'Shutdown', 5: 'Shutoff', 6: 'Crashed', 7: 'PMSuspended' };
-    return states[state] || 'Unknown';
+    if (!state) return 'Unknown';
+    // Capitalize first letter, lowercase the rest
+    return state.charAt(0).toUpperCase() + state.slice(1).toLowerCase();
 };
 
 const stateColor = (state) => {
-  const colors = { 1: 'text-green-400 bg-green-900/50', 3: 'text-yellow-400 bg-yellow-900/50', 5: 'text-red-400 bg-red-900/50' };
+  const colors = {
+    'ACTIVE': 'text-green-400 bg-green-900/50',
+    'PAUSED': 'text-yellow-400 bg-yellow-900/50',
+    'STOPPED': 'text-red-400 bg-red-900/50',
+    'SUSPENDED': 'text-blue-400 bg-blue-900/50',
+    'ERROR': 'text-red-400 bg-red-900/50',
+  };
   return colors[state] || 'text-gray-400 bg-gray-700';
 };
 
@@ -222,8 +230,8 @@ onUnmounted(() => {
         </span>
       </div>
       <div class="flex items-center space-x-2">
-         <button v-if="vm.state === 5" @click="mainStore.startVm(host.id, vm.name)" class="px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-md transition-colors">Start</button>
-         <template v-if="vm.state === 1">
+         <button v-if="vm.state === 'STOPPED'" @click="mainStore.startVm(host.id, vm.name)" class="px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-md transition-colors">Start</button>
+         <template v-if="vm.state === 'ACTIVE'">
             <button @click="mainStore.gracefulShutdownVm(host.id, vm.name)" class="px-4 py-2 text-sm font-medium text-white bg-yellow-600 hover:bg-yellow-700 rounded-md transition-colors">Shutdown</button>
             <button @click="mainStore.gracefulRebootVm(host.id, vm.name)" class="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors">Reboot</button>
             <button @click="mainStore.forceOffVm(host.id, vm.name)" class="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md transition-colors">Force Off</button>
@@ -321,8 +329,8 @@ onUnmounted(() => {
           <dl class="space-y-4">
             <div> <dt class="text-sm font-medium text-gray-400">Host</dt> <dd class="mt-1 text-lg text-gray-200">{{ host.id }}</dd> </div>
             <div> <dt class="text-sm font-medium text-gray-400">Uptime</dt> <dd class="mt-1 text-lg text-gray-200">{{ formatUptime(vm.uptime) }}</dd> </div>
-             <div> <dt class="text-sm font-medium text-gray-400">vCPUs</dt> <dd class="mt-1 text-lg text-gray-200">{{ vm.vcpu }}</dd> </div>
-            <div> <dt class="text-sm font-medium text-gray-400">Memory</dt> <dd class="mt-1 text-lg text-gray-200">{{ formatMemory(vm.max_mem) }}</dd> </div>
+             <div> <dt class="text-sm font-medium text-gray-400">vCPUs</dt> <dd class="mt-1 text-lg text-gray-200">{{ vm.vcpu_count }}</dd> </div>
+            <div> <dt class="text-sm font-medium text-gray-400">Memory</dt> <dd class="mt-1 text-lg text-gray-200">{{ formatMemory(vm.memory_bytes / 1024) }}</dd> </div>
             <div> <dt class="text-sm font-medium text-gray-400">Internal UUID</dt> <dd class="mt-1 text-xs font-mono text-gray-200">{{ vm.uuid }}</dd> </div>
           </dl>
         </div>
@@ -330,7 +338,7 @@ onUnmounted(() => {
 
       <!-- Console Tab -->
       <div v-if="activeTab === 'console'" class="h-full w-full">
-         <div v-if="vm.state !== 1" class="flex items-center justify-center h-full text-gray-500 bg-gray-900 rounded-lg">
+         <div v-if="vm.state !== 'ACTIVE'" class="flex items-center justify-center h-full text-gray-500 bg-gray-900 rounded-lg">
             <p>Console is only available when the VM is running.</p>
          </div>
          <div v-else class="h-full w-full bg-black rounded-lg overflow-hidden">

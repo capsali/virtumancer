@@ -30,7 +30,7 @@ type VMView struct {
 	CPUTopologyJSON string `json:"cpu_topology_json"`
 
 	// From Libvirt or DB cache
-	State    golibvirt.DomainState   `json:"state"`
+	State    storage.VMState       `json:"state"` // Use our custom string state
 	Graphics libvirt.GraphicsInfo    `json:"graphics"`
 	Hardware *libvirt.HardwareInfo `json:"hardware,omitempty"` // Pointer to allow for null
 
@@ -190,7 +190,7 @@ func (s *HostService) GetVMsForHostFromDB(hostID string) ([]VMView, error) {
 		var graphics libvirt.GraphicsInfo // Default to false
 
 		// Only query for graphics devices if the VM is running.
-		if golibvirt.DomainState(dbVM.State) == golibvirt.DomainRunning {
+		if dbVM.State == storage.StateActive {
 			var graphicsDevice storage.GraphicsDevice
 			err := s.db.Joins("join graphics_device_attachments on graphics_device_attachments.graphics_device_id = graphics_devices.id").
 				Where("graphics_device_attachments.vm_id = ?", dbVM.ID).First(&graphicsDevice).Error
@@ -215,7 +215,7 @@ func (s *HostService) GetVMsForHostFromDB(hostID string) ([]VMView, error) {
 			IsTemplate:      dbVM.IsTemplate,
 			CPUModel:        dbVM.CPUModel,
 			CPUTopologyJSON: dbVM.CPUTopologyJSON,
-			State:           golibvirt.DomainState(dbVM.State),
+			State:           dbVM.State,
 			Graphics:        graphics,
 		})
 	}
@@ -357,7 +357,7 @@ func (s *HostService) syncSingleVM(hostID, vmName string) (bool, error) {
 			HostID:      hostID,
 			Name:        vmInfo.Name,
 			DomainUUID:  vmInfo.UUID,
-			State:       int(vmInfo.State),
+			State:       mapLibvirtStateToVMState(vmInfo.State),
 			VCPUCount:   vmInfo.Vcpu,
 			MemoryBytes: vmInfo.MaxMem * 1024,
 		}
@@ -386,11 +386,11 @@ func (s *HostService) syncSingleVM(hostID, vmName string) (bool, error) {
 	} else { // Case 2: The VM already exists in our DB for this host. Just update its state.
 		updates := map[string]interface{}{
 			"Name":        vmInfo.Name,
-			"State":       int(vmInfo.State),
+			"State":       mapLibvirtStateToVMState(vmInfo.State),
 			"VCPUCount":   vmInfo.Vcpu,
 			"MemoryBytes": vmInfo.MaxMem * 1024,
 		}
-		if existingVMOnHost.Name != vmInfo.Name || existingVMOnHost.State != int(vmInfo.State) ||
+		if existingVMOnHost.Name != vmInfo.Name || existingVMOnHost.State != mapLibvirtStateToVMState(vmInfo.State) ||
 			existingVMOnHost.VCPUCount != vmInfo.Vcpu || existingVMOnHost.MemoryBytes != (vmInfo.MaxMem*1024) {
 			if err := tx.Model(&existingVMOnHost).Updates(updates).Error; err != nil {
 				tx.Rollback()
@@ -500,6 +500,22 @@ func (s *HostService) syncVMHardware(tx *gorm.DB, vmID uint, hostID string, hard
 	}
 
 	return nil
+}
+
+// mapLibvirtStateToVMState translates libvirt's integer state to our string state.
+func mapLibvirtStateToVMState(state golibvirt.DomainState) storage.VMState {
+	switch state {
+	case golibvirt.DomainRunning:
+		return storage.StateActive
+	case golibvirt.DomainPaused:
+		return storage.StatePaused
+	case golibvirt.DomainShutdown, golibvirt.DomainShutoff, golibvirt.DomainCrashed:
+		return storage.StateStopped
+	case golibvirt.DomainPmsuspended:
+		return storage.StateSuspended
+	default:
+		return storage.StateStopped // Default to stopped for unknown/other states
+	}
 }
 
 // syncAndListVMs is the core function to get VMs from libvirt and sync with the local DB.
@@ -737,5 +753,6 @@ func (m *MonitoringManager) pollVmStats(hostID, vmName string, sub *VmSubscripti
 		}
 	}
 }
+
 
 
