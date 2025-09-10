@@ -20,6 +20,8 @@ type VMView struct {
 	// From DB
 	ID              uint   `json:"db_id"`
 	Name            string `json:"name"`
+	UUID            string `json:"uuid"`
+	DomainUUID      string `json:"domain_uuid"`
 	Description     string `json:"description"`
 	VCPUCount       uint   `json:"vcpu_count"`
 	MemoryBytes     uint64 `json:"memory_bytes"`
@@ -28,8 +30,8 @@ type VMView struct {
 	CPUTopologyJSON string `json:"cpu_topology_json"`
 
 	// From Libvirt or DB cache
-	State    golibvirt.DomainState   `json:"state"`
-	Graphics libvirt.GraphicsInfo    `json:"graphics"`
+	State    golibvirt.DomainState `json:"state"`
+	Graphics libvirt.GraphicsInfo  `json:"graphics"`
 	Hardware *libvirt.HardwareInfo `json:"hardware,omitempty"` // Pointer to allow for null
 
 	// From Libvirt (live data, only in some calls)
@@ -205,6 +207,8 @@ func (s *HostService) GetVMsForHostFromDB(hostID string) ([]VMView, error) {
 		vmViews = append(vmViews, VMView{
 			ID:              dbVM.ID,
 			Name:            dbVM.Name,
+			UUID:            dbVM.UUID,
+			DomainUUID:      dbVM.DomainUUID,
 			Description:     dbVM.Description,
 			VCPUCount:       dbVM.VCPUCount,
 			MemoryBytes:     dbVM.MemoryBytes,
@@ -251,7 +255,8 @@ func (s *HostService) getVMHardwareFromDB(hostID, vmName string) (*libvirt.Hardw
 
 	// Retrieve and populate networks
 	var ports []storage.Port
-	if err := s.db.Where("vm_id = ?", vm.ID).Find(&ports).Error; err == nil {
+	err := s.db.Where("vm_id = ?", vm.ID).Find(&ports).Error
+	if err == nil {
 		for _, port := range ports {
 			var binding storage.PortBinding
 			if err := s.db.Preload("Network").Where("port_id = ?", port.ID).First(&binding).Error; err == nil {
@@ -310,7 +315,6 @@ func (s *HostService) SyncVMsForHost(hostID string) {
 func (s *HostService) syncSingleVM(hostID, vmName string) (bool, error) {
 	vmInfo, err := s.connector.GetDomainInfo(hostID, vmName)
 	if err != nil {
-		// The VM might have been deleted from libvirt, so we check if it exists in our DB to prune it.
 		var dbVM storage.VirtualMachine
 		if err := s.db.Where("host_id = ? AND name = ?", hostID, vmName).First(&dbVM).Error; err == nil {
 			log.Printf("Pruning VM %s from database as it's no longer in libvirt.", vmName)
@@ -318,9 +322,8 @@ func (s *HostService) syncSingleVM(hostID, vmName string) (bool, error) {
 				log.Printf("Warning: failed to prune old VM %s: %v", dbVM.Name, err)
 				return false, err
 			}
-			return true, nil // Return true as the state has changed (VM is gone).
+			return true, nil
 		}
-		// If it's not in libvirt and not in our DB, that's not an error.
 		return false, fmt.Errorf("could not fetch info for VM %s on host %s: %w", vmName, hostID, err)
 	}
 
@@ -336,35 +339,53 @@ func (s *HostService) syncSingleVM(hostID, vmName string) (bool, error) {
 		}
 	}()
 
-	vmRecord := storage.VirtualMachine{
-		HostID:      hostID,
-		Name:        vmInfo.Name,
-		UUID:        vmInfo.UUID,
-		State:       int(vmInfo.State),
-		VCPUCount:   vmInfo.Vcpu,
-		MemoryBytes: vmInfo.MaxMem * 1024,
+	var existingVMOnHost storage.VirtualMachine
+	var changed bool
+	err = tx.Where("domain_uuid = ? AND host_id = ?", vmInfo.UUID, hostID).First(&existingVMOnHost).Error
+
+	if err != nil && err != gorm.ErrRecordNotFound {
+		tx.Rollback()
+		return false, err
 	}
 
-	var existingVM storage.VirtualMachine
-	var changed bool
-	if err := tx.Where("uuid = ?", vmInfo.UUID).First(&existingVM).Error; err != nil {
+	// Case 1: This is a new VM to this host.
+	if err == gorm.ErrRecordNotFound {
+		var conflictingVM storage.VirtualMachine
+		err := tx.Where("domain_uuid = ? AND host_id != ?", vmInfo.UUID, hostID).First(&conflictingVM).Error
+
+		vmRecord := storage.VirtualMachine{
+			HostID:      hostID,
+			Name:        vmInfo.Name,
+			DomainUUID:  vmInfo.UUID,
+			State:       int(vmInfo.State),
+			VCPUCount:   vmInfo.Vcpu,
+			MemoryBytes: vmInfo.MaxMem * 1024,
+		}
+
 		if err == gorm.ErrRecordNotFound {
-			if err := tx.Create(&vmRecord).Error; err != nil {
-				tx.Rollback()
-				return false, err
-			}
-			changed = true
-			existingVM = vmRecord
+			// No conflict, safe to use the domain UUID as our internal UUID.
+			vmRecord.UUID = vmInfo.UUID
 		} else {
+			// Conflict found! Generate a new internal UUID.
+			vmRecord.UUID = uuid.New().String()
+		}
+
+		if err := tx.Create(&vmRecord).Error; err != nil {
 			tx.Rollback()
 			return false, err
 		}
-	} else {
-		if existingVM.Name != vmRecord.Name ||
-			existingVM.State != vmRecord.State ||
-			existingVM.VCPUCount != vmRecord.VCPUCount ||
-			existingVM.MemoryBytes != vmRecord.MemoryBytes {
-			if err := tx.Model(&existingVM).Updates(vmRecord).Error; err != nil {
+		changed = true
+		existingVMOnHost = vmRecord
+	} else { // Case 2: This VM is already known on this host.
+		updates := map[string]interface{}{
+			"Name":        vmInfo.Name,
+			"State":       int(vmInfo.State),
+			"VCPUCount":   vmInfo.Vcpu,
+			"MemoryBytes": vmInfo.MaxMem * 1024,
+		}
+		if existingVMOnHost.Name != vmInfo.Name || existingVMOnHost.State != int(vmInfo.State) ||
+			existingVMOnHost.VCPUCount != vmInfo.Vcpu || existingVMOnHost.MemoryBytes != (vmInfo.MaxMem*1024) {
+			if err := tx.Model(&existingVMOnHost).Updates(updates).Error; err != nil {
 				tx.Rollback()
 				return false, err
 			}
@@ -373,7 +394,7 @@ func (s *HostService) syncSingleVM(hostID, vmName string) (bool, error) {
 	}
 
 	if hardwareInfo != nil {
-		if err := s.syncVMHardware(tx, existingVM.ID, hostID, hardwareInfo, &vmInfo.Graphics); err != nil {
+		if err := s.syncVMHardware(tx, existingVMOnHost.ID, hostID, hardwareInfo, &vmInfo.Graphics); err != nil {
 			tx.Rollback()
 			return false, fmt.Errorf("failed to sync hardware: %w", err)
 		}
@@ -502,7 +523,7 @@ func (s *HostService) syncAndListVMs(hostID string) (bool, error) {
 	}
 
 	for _, dbVM := range dbVMs {
-		if _, exists := liveVMUUIDs[dbVM.UUID]; !exists {
+		if _, exists := liveVMUUIDs[dbVM.DomainUUID]; !exists {
 			log.Printf("Pruning VM %s (UUID: %s) from database as it's no longer in libvirt.", dbVM.Name, dbVM.UUID)
 			if err := s.db.Delete(&dbVM).Error; err != nil {
 				log.Printf("Warning: failed to prune old VM %s: %v", dbVM.Name, err)
@@ -709,6 +730,5 @@ func (m *MonitoringManager) pollVmStats(hostID, vmName string, sub *VmSubscripti
 		}
 	}
 }
-
 
 

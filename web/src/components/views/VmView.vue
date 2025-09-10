@@ -23,6 +23,12 @@ const host = computed(() => {
     return mainStore.hosts.find(h => h.vms && h.vms.some(v => v.name === vm.value.name));
 });
 
+const uuidConflict = computed(() => {
+    if (!vm.value || !vm.value.uuid || !vm.value.domain_uuid) return false;
+    // A conflict exists if our internal UUID is different from the domain's UUID.
+    return vm.value.uuid !== vm.value.domain_uuid;
+});
+
 const stats = computed(() => {
     const s = mainStore.activeVmStats;
     if (s && host.value && vm.value && s.hostId === host.value.id && s.vmName === vm.value.name) {
@@ -205,7 +211,7 @@ onUnmounted(() => {
 <template>
   <div v-if="vm && host" class="flex flex-col h-full">
     <!-- Header -->
-    <div class="flex items-center justify-between mb-6">
+    <div class="flex items-center justify-between mb-2">
       <div class="flex items-center gap-4">
         <h1 class="text-3xl font-bold text-white">{{ vm.name }}</h1>
         <span 
@@ -225,6 +231,23 @@ onUnmounted(() => {
       </div>
     </div>
     
+    <!-- UUID Conflict Warning -->
+    <div v-if="uuidConflict" class="mb-4 p-4 bg-yellow-900/50 border border-yellow-700 text-yellow-300 rounded-lg">
+        <div class="flex items-start">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-3 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+            <div>
+                <h3 class="font-bold">UUID Conflict Detected</h3>
+                <p class="text-sm mt-1">This VM's libvirt UUID (`{{ vm.domain_uuid }}`) is already in use by another VM in Virtumancer. To avoid conflicts, Virtumancer has assigned a new internal UUID (`{{ vm.uuid }}`).</p>
+                <p class="text-sm mt-2">It is highly recommended to update the VM's actual UUID in libvirt to match the internal one.</p>
+                <button class="mt-3 px-3 py-1.5 text-xs font-semibold text-white bg-yellow-600 hover:bg-yellow-700 rounded-md transition-colors">
+                    Update UUID in Libvirt
+                </button>
+                <p class="text-xs mt-1 text-yellow-400">Note: This action will require the VM to be stopped and started.</p>
+            </div>
+        </div>
+    </div>
+
+
     <!-- Tab Navigation -->
     <div class="border-b border-gray-700">
       <nav class="-mb-px flex space-x-8" aria-label="Tabs">
@@ -300,6 +323,7 @@ onUnmounted(() => {
             <div> <dt class="text-sm font-medium text-gray-400">Uptime</dt> <dd class="mt-1 text-lg text-gray-200">{{ formatUptime(vm.uptime) }}</dd> </div>
              <div> <dt class="text-sm font-medium text-gray-400">vCPUs</dt> <dd class="mt-1 text-lg text-gray-200">{{ vm.vcpu }}</dd> </div>
             <div> <dt class="text-sm font-medium text-gray-400">Memory</dt> <dd class="mt-1 text-lg text-gray-200">{{ formatMemory(vm.max_mem) }}</dd> </div>
+            <div> <dt class="text-sm font-medium text-gray-400">Internal UUID</dt> <dd class="mt-1 text-xs font-mono text-gray-200">{{ vm.uuid }}</dd> </div>
           </dl>
         </div>
       </div>
@@ -321,7 +345,7 @@ onUnmounted(() => {
       <!-- Hardware Tab -->
        <div v-if="activeTab === 'hardware'" class="space-y-8">
             <div v-if="mainStore.isLoading.vmHardware" class="flex items-center justify-center h-48 text-gray-400">
-                <svg class="animate-spin mr-3 h-8 w-8 text-indigo-400" xmlns="http://www.w.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <svg class="animate-spin mr-3 h-8 w-8 text-indigo-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>

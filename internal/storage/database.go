@@ -18,7 +18,8 @@ type VirtualMachine struct {
 	gorm.Model
 	HostID          string `gorm:"uniqueIndex:idx_vm_host_name"`
 	Name            string `gorm:"uniqueIndex:idx_vm_host_name"`
-	UUID            string `gorm:"uniqueIndex"`
+	UUID            string `gorm:"uniqueIndex"` // Virtumancer's internal, guaranteed-unique UUID
+	DomainUUID      string `gorm:"uniqueIndex"` // The UUID as reported by libvirt, may not be unique across hosts
 	Description     string
 	State           int    `gorm:"default:-1"` // Caches the last known libvirt.DomainState
 	VCPUCount       uint
@@ -477,5 +478,4 @@ func InitDB(dataSourceName string) (*gorm.DB, error) {
 
 	return db, nil
 }
-
 

@@ -13,6 +13,7 @@ import (
 
 	"github.com/capsali/virtumancer/internal/storage"
 	"github.com/digitalocean/go-libvirt"
+	"github.com/google/uuid"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -431,7 +432,16 @@ func (c *Connector) domainToVMInfo(l *libvirt.Libvirt, domain libvirt.Domain) (*
 		return nil, err
 	}
 
-	uuidStr := fmt.Sprintf("%x", domain.UUID)
+	var uuidStr string
+	// The domain.UUID is a [16]byte array. We need to convert it to a slice to use uuid.FromBytes
+	parsedUUID, err := uuid.FromBytes(domain.UUID[:])
+	if err != nil {
+		// This should not happen if libvirt provides a valid 16-byte UUID, but we handle it defensively.
+		log.Printf("Warning: could not parse domain UUID for %s: %v. Using raw hex.", domain.Name, err)
+		uuidStr = fmt.Sprintf("%x", domain.UUID)
+	} else {
+		uuidStr = parsedUUID.String()
+	}
 
 	return &VMInfo{
 		ID:         uint32(domain.ID),
@@ -627,5 +637,4 @@ func (c *Connector) ResetDomain(hostID, vmName string) error {
 	}
 	return l.DomainReset(domain, 0)
 }
-
 
