@@ -12,32 +12,30 @@ function selectHost(hostId) {
 }
 
 const totalVms = (host) => host.vms?.length || 0;
-const runningVms = (host) => host.vms?.filter(vm => vm.state === 1).length || 0;
+const runningVms = (host) => host.vms?.filter(vm => vm.state === 'ACTIVE').length || 0;
 
-const formatMemory = (kb) => {
-    if (!kb || kb === 0) return '0 GB';
-    const gb = kb / 1024 / 1024;
-    return `${gb.toFixed(1)} GB`;
-}
+const formatBytes = (bytes, decimals = 2) => {
+    if (bytes === 0) return '0 Bytes';
+    if (!bytes) return 'N/A';
+    const k = 1024;
+    const dm = decimals < 0 ? 0 : decimals;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+};
 
 const calculateCpuUsage = (host) => {
   if (!host || !host.vms || !host.info) return 0;
-  const totalCpuTime = host.vms.reduce((acc, vm) => acc + (vm.cpu_time || 0), 0);
-  // This is a simplified calculation. A more accurate one would track changes over time.
-  // For now, it's more of a representation of total allocated time than live usage.
-  // A better approach would be to get host-level CPU usage stats directly.
   const hostCores = host.info.cpu;
   if (!hostCores) return 0;
-  // This is a placeholder logic and not accurate for live usage.
-  // We'll need a backend endpoint that provides live host CPU usage percentage.
-  const runningVmCores = host.vms.reduce((acc, vm) => vm.state === 1 ? acc + vm.vcpu : acc, 0);
+  const runningVmCores = host.vms.reduce((acc, vm) => vm.state === 'ACTIVE' ? acc + vm.vcpu_count : acc, 0);
   return Math.min(100, (runningVmCores / hostCores) * 100);
 };
 
 const calculateMemoryUsage = (host) => {
-    if (!host || !host.vms || !host.info || !host.info.memory) return { percent: 0, used: 0, total: 0 };
+    if (!host || !host.info || !host.info.memory) return { percent: 0, used: 0, total: 0 };
     const totalMem = host.info.memory;
-    const usedMem = host.vms.reduce((acc, vm) => vm.state === 1 ? acc + vm.memory : acc, 0);
+    const usedMem = host.info.memory_used;
     return {
         percent: totalMem > 0 ? (usedMem / totalMem) * 100 : 0,
         used: usedMem,
@@ -91,7 +89,7 @@ const calculateMemoryUsage = (host) => {
             <div>
                 <div class="flex justify-between items-end mb-1">
                     <span class="text-sm font-medium text-gray-300">Memory</span>
-                     <span class="text-xs font-mono text-gray-400">{{ formatMemory(calculateMemoryUsage(host).used) }} / {{ formatMemory(calculateMemoryUsage(host).total) }}</span>
+                     <span class="text-xs font-mono text-gray-400">{{ formatBytes(calculateMemoryUsage(host).used) }} / {{ formatBytes(calculateMemoryUsage(host).total) }}</span>
                 </div>
                 <div class="w-full bg-gray-700 rounded-full h-2.5">
                     <div class="bg-teal-500 h-2.5 rounded-full" :style="{ width: calculateMemoryUsage(host).percent + '%' }"></div>

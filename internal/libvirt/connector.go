@@ -116,11 +116,12 @@ type DomainHardwareXML struct {
 
 // HostInfo holds basic information and statistics about a hypervisor host.
 type HostInfo struct {
-	Hostname string `json:"hostname"`
-	CPU      uint   `json:"cpu"`
-	Memory   uint64 `json:"memory"`
-	Cores    uint   `json:"cores"`
-	Threads  uint   `json:"threads"`
+	Hostname   string `json:"hostname"`
+	CPU        uint   `json:"cpu"`
+	Memory     uint64 `json:"memory"`
+	MemoryUsed uint64 `json:"memory_used"`
+	Cores      uint   `json:"cores"`
+	Threads    uint   `json:"threads"`
 }
 
 // Connector manages active connections to libvirt hosts.
@@ -320,12 +321,26 @@ func (c *Connector) GetHostInfo(hostID string) (*HostInfo, error) {
 		return nil, fmt.Errorf("failed to get hostname for host %s: %w", hostID, err)
 	}
 
+	freeMemory, err := l.NodeGetFreeMemory()
+	if err != nil {
+		// Don't fail the whole call if we can't get free memory, just log it.
+		log.Printf("Warning: could not get free memory for host %s: %v", hostID, err)
+		freeMemory = 0 // Assume no free memory can be determined
+	}
+
+	totalMemoryBytes := uint64(memory) * 1024 // The library returns KiB, we want Bytes
+	var memoryUsed uint64
+	if freeMemory > 0 {
+		memoryUsed = totalMemoryBytes - freeMemory
+	}
+
 	return &HostInfo{
-		Hostname: hostname,
-		CPU:      uint(cpus),
-		Memory:   uint64(memory) * 1024, // The library returns KiB, we want Bytes
-		Cores:    uint(cores),
-		Threads:  uint(threads),
+		Hostname:   hostname,
+		CPU:        uint(cpus),
+		Memory:     totalMemoryBytes,
+		MemoryUsed: memoryUsed,
+		Cores:      uint(cores),
+		Threads:    uint(threads),
 	}, nil
 }
 

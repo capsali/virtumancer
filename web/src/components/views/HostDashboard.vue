@@ -22,8 +22,7 @@ const totalMemory = computed(() => {
 });
 
 const usedMemory = computed(() => {
-    if (!selectedHost.value || !selectedHost.value.vms) return 0;
-    return selectedHost.value.vms.reduce((total, vm) => total + (vm.state === 'ACTIVE' ? vm.memory : 0), 0);
+    return selectedHost.value?.info?.memory_used || 0;
 });
 
 const memoryUsagePercent = computed(() => {
@@ -37,14 +36,16 @@ const totalCpu = computed(() => {
 
 const usedCpu = computed(() => {
     if (!selectedHost.value || !selectedHost.value.vms) return 0;
-    return selectedHost.value.vms.reduce((total, vm) => total + (vm.state === 'ACTIVE' ? vm.vcpu : 0), 0);
+    // This is an approximation. For true CPU usage, we'd need to monitor CPU time.
+    // Here, we sum the vCPUs of *active* VMs.
+    return selectedHost.value.vms.reduce((total, vm) => total + (vm.state === 'ACTIVE' ? vm.vcpu_count : 0), 0);
 });
 
 const cpuUsagePercent = computed(() => {
     if (!totalCpu.value) return 0;
+    // This percentage represents allocated vCPUs to running VMs vs total host threads.
     return (usedCpu.value / totalCpu.value) * 100;
 });
-
 
 const selectVm = (vmName) => {
     router.push({ name: 'vm-view', params: { vmName } });
@@ -172,7 +173,7 @@ const formatBytes = (bytes, decimals = 2) => {
             </tr>
           </thead>
           <tbody class="bg-gray-900 divide-y divide-gray-800">
-            <tr v-for="vm in vms" :key="vm.name" @click="selectVm(vm.name)" class="hover:bg-gray-800 cursor-pointer transition-colors duration-150">
+            <tr v-for="vm in vms" :key="vm.uuid" @click="selectVm(vm.name)" class="hover:bg-gray-800 cursor-pointer transition-colors duration-150">
               <td class="px-6 py-4 whitespace-nowrap">
                 <div class="flex items-center">
                   <div class="h-2.5 w-2.5 rounded-full mr-3 flex-shrink-0" :class="{
@@ -191,8 +192,8 @@ const formatBytes = (bytes, decimals = 2) => {
                   {{ stateText(vm) }}
                 </span>
               </td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ vm.vcpu }}</td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ formatMemory(vm.memory_bytes / 1024) }}</td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ vm.vcpu_count }}</td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ formatBytes(vm.memory_bytes) }}</td>
             </tr>
           </tbody>
         </table>
