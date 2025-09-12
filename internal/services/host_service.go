@@ -1,6 +1,7 @@
 package services
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
@@ -29,9 +30,14 @@ type VMView struct {
 	CPUTopologyJSON string              `json:"cpu_topology_json"`
 	TaskState       storage.VMTaskState `json:"task_state"`
 
+	// NEW: Drift detection fields
+	SyncStatus   storage.SyncStatus `json:"sync_status"`
+	DriftDetails string             `json:"drift_details"`
+	NeedsRebuild bool               `json:"needs_rebuild"`
+
 	// From Libvirt or DB cache
 	State    storage.VMState       `json:"state"`
-	Graphics libvirt.GraphicsInfo    `json:"graphics"`
+	Graphics libvirt.GraphicsInfo  `json:"graphics"`
 	Hardware *libvirt.HardwareInfo `json:"hardware,omitempty"` // Pointer to allow for null
 
 	// From Libvirt (live data, only in some calls)
@@ -43,10 +49,10 @@ type VMView struct {
 
 // VmSubscription holds the clients subscribed to a VM's stats and a channel to stop polling.
 type VmSubscription struct {
-	clients      map[*ws.Client]bool
-	stop         chan struct{}
+	clients        map[*ws.Client]bool
+	stop           chan struct{}
 	lastKnownStats *libvirt.VMStats
-	mu           sync.RWMutex
+	mu             sync.RWMutex
 }
 
 // MonitoringManager handles real-time VM stat subscriptions.
@@ -73,8 +79,10 @@ type HostServiceProvider interface {
 	ConnectToAllHosts()
 	GetVMsForHostFromDB(hostID string) ([]VMView, error)
 	GetVMStats(hostID, vmName string) (*libvirt.VMStats, error)
-	GetVMHardwareAndTriggerSync(hostID, vmName string) (*libvirt.HardwareInfo, error)
+	GetVMHardwareAndDetectDrift(hostID, vmName string) (*libvirt.HardwareInfo, error)
 	SyncVMsForHost(hostID string)
+	SyncVMFromLibvirt(hostID, vmName string) error
+	RebuildVMFromDB(hostID, vmName string) error
 	StartVM(hostID, vmName string) error
 	ShutdownVM(hostID, vmName string) error
 	RebootVM(hostID, vmName string) error
@@ -231,6 +239,9 @@ func (s *HostService) GetVMsForHostFromDB(hostID string) ([]VMView, error) {
 			State:           dbVM.State,
 			TaskState:       dbVM.TaskState,
 			Graphics:        graphics,
+			SyncStatus:      dbVM.SyncStatus,
+			DriftDetails:    dbVM.DriftDetails,
+			NeedsRebuild:    dbVM.NeedsRebuild,
 		})
 	}
 	return vmViews, nil
@@ -302,8 +313,8 @@ func (s *HostService) getVMHardwareFromDB(hostID, vmName string) (*libvirt.Hardw
 
 	return &hardware, nil
 }
-func (s *HostService) GetVMHardwareAndTriggerSync(hostID, vmName string) (*libvirt.HardwareInfo, error) {
-	if changed, syncErr := s.syncSingleVM(hostID, vmName); syncErr != nil {
+func (s *HostService) GetVMHardwareAndDetectDrift(hostID, vmName string) (*libvirt.HardwareInfo, error) {
+	if changed, syncErr := s.detectDriftOrIngestVM(hostID, vmName, false); syncErr != nil {
 		log.Printf("Error during hardware sync for %s: %v", vmName, syncErr)
 	} else if changed {
 		s.broadcastVMsChanged(hostID)
@@ -313,7 +324,7 @@ func (s *HostService) GetVMHardwareAndTriggerSync(hostID, vmName string) (*libvi
 }
 
 func (s *HostService) SyncVMsForHost(hostID string) {
-	changed, err := s.syncAndListVMs(hostID)
+	changed, err := s.syncHostVMs(hostID)
 	if err != nil {
 		log.Printf("Error during background VM sync for host %s: %v", hostID, err)
 		return
@@ -323,9 +334,10 @@ func (s *HostService) SyncVMsForHost(hostID string) {
 	}
 }
 
-func (s *HostService) syncSingleVM(hostID, vmName string) (bool, error) {
+func (s *HostService) detectDriftOrIngestVM(hostID, vmName string, isInitialSync bool) (bool, error) {
 	vmInfo, err := s.connector.GetDomainInfo(hostID, vmName)
 	if err != nil {
+		// If we can't get info from libvirt, check if it's a stale DB entry
 		var dbVM storage.VirtualMachine
 		if err := s.db.Where("host_id = ? AND name = ?", hostID, vmName).First(&dbVM).Error; err == nil {
 			log.Printf("Pruning VM %s from database as it's no longer in libvirt.", vmName)
@@ -333,14 +345,9 @@ func (s *HostService) syncSingleVM(hostID, vmName string) (bool, error) {
 				log.Printf("Warning: failed to prune old VM %s: %v", dbVM.Name, err)
 				return false, err
 			}
-			return true, nil
+			return true, nil // A change occurred (deletion)
 		}
 		return false, fmt.Errorf("could not fetch info for VM %s on host %s: %w", vmName, hostID, err)
-	}
-
-	hardwareInfo, err := s.connector.GetDomainHardware(hostID, vmName)
-	if err != nil {
-		log.Printf("Warning: could not fetch hardware for VM %s: %v", vmInfo.Name, err)
 	}
 
 	tx := s.db.Begin()
@@ -350,16 +357,18 @@ func (s *HostService) syncSingleVM(hostID, vmName string) (bool, error) {
 		}
 	}()
 
-	var existingVMOnHost storage.VirtualMachine
+	var existingVM storage.VirtualMachine
 	var changed bool
-	err = tx.Where("host_id = ? AND domain_uuid = ?", hostID, vmInfo.UUID).First(&existingVMOnHost).Error
+	err = tx.Where("host_id = ? AND domain_uuid = ?", hostID, vmInfo.UUID).First(&existingVM).Error
 
 	if err != nil && err != gorm.ErrRecordNotFound {
 		tx.Rollback()
 		return false, err
 	}
 
+	// --- Case 1: New VM found, perform initial ingestion ---
 	if err == gorm.ErrRecordNotFound {
+		log.Printf("New VM '%s' detected on host '%s'. Performing initial ingestion.", vmName, hostID)
 		var conflictingVM storage.VirtualMachine
 		err := tx.Where("domain_uuid = ? AND host_id != ?", vmInfo.UUID, hostID).First(&conflictingVM).Error
 
@@ -370,6 +379,7 @@ func (s *HostService) syncSingleVM(hostID, vmName string) (bool, error) {
 			State:       mapLibvirtStateToVMState(vmInfo.State),
 			VCPUCount:   vmInfo.Vcpu,
 			MemoryBytes: vmInfo.MaxMem * 1024,
+			SyncStatus:  storage.StatusSynced, // New VMs are synced by definition
 		}
 
 		if err == gorm.ErrRecordNotFound {
@@ -387,42 +397,61 @@ func (s *HostService) syncSingleVM(hostID, vmName string) (bool, error) {
 			return false, err
 		}
 		changed = true
-		existingVMOnHost = newVMRecord
-	} else {
-		updates := make(map[string]interface{})
-		currentStateInDB := existingVMOnHost.State
-		newState := mapLibvirtStateToVMState(vmInfo.State)
+		existingVM = newVMRecord
 
-		if existingVMOnHost.Name != vmInfo.Name {
-			updates["Name"] = vmInfo.Name
+		// Also ingest hardware on initial sync
+		hardwareInfo, hwErr := s.connector.GetDomainHardware(hostID, vmName)
+		if hwErr != nil {
+			log.Printf("Warning: could not fetch hardware for new VM %s: %v", vmInfo.Name, hwErr)
+		} else {
+			if _, err := s.syncVMHardware(tx, existingVM.UUID, hostID, hardwareInfo, &vmInfo.Graphics); err != nil {
+				tx.Rollback()
+				return false, fmt.Errorf("failed to sync hardware for new VM: %w", err)
+			}
 		}
-		if currentStateInDB != newState {
-			updates["State"] = newState
+	} else { // --- Case 2: Existing VM, perform drift detection ---
+		updates := make(map[string]interface{})
+		driftDetails := make(map[string]map[string]interface{})
+
+		// Always update volatile state
+		newState := mapLibvirtStateToVMState(vmInfo.State)
+		if existingVM.State != newState {
+			updates["state"] = newState
+			changed = true
 		}
-		if existingVMOnHost.VCPUCount != vmInfo.Vcpu {
-			updates["VCPUCount"] = vmInfo.Vcpu
+
+		// Compare configurations for drift
+		if existingVM.Name != vmInfo.Name {
+			driftDetails["name"] = map[string]interface{}{"db": existingVM.Name, "live": vmInfo.Name}
 		}
-		if existingVMOnHost.MemoryBytes != (vmInfo.MaxMem * 1024) {
-			updates["MemoryBytes"] = vmInfo.MaxMem * 1024
+		if existingVM.VCPUCount != vmInfo.Vcpu {
+			driftDetails["vcpu"] = map[string]interface{}{"db": existingVM.VCPUCount, "live": vmInfo.Vcpu}
+		}
+		if existingVM.MemoryBytes != (vmInfo.MaxMem * 1024) {
+			driftDetails["memory"] = map[string]interface{}{"db": existingVM.MemoryBytes, "live": vmInfo.MaxMem * 1024}
+		}
+
+		if len(driftDetails) > 0 {
+			if existingVM.SyncStatus != storage.StatusDrifted {
+				updates["sync_status"] = storage.StatusDrifted
+				changed = true
+			}
+			driftJSON, _ := json.Marshal(driftDetails)
+			updates["drift_details"] = string(driftJSON)
+		} else {
+			// If there's no drift, ensure the drift flags are cleared
+			if existingVM.SyncStatus == storage.StatusDrifted {
+				updates["sync_status"] = storage.StatusSynced
+				updates["drift_details"] = ""
+				changed = true
+			}
 		}
 
 		if len(updates) > 0 {
-			if err := tx.Model(&existingVMOnHost).Updates(updates).Error; err != nil {
+			if err := tx.Model(&existingVM).Updates(updates).Error; err != nil {
 				tx.Rollback()
 				return false, err
 			}
-			changed = true
-		}
-	}
-
-	if hardwareInfo != nil {
-		hardwareChanged, err := s.syncVMHardware(tx, existingVMOnHost.UUID, hostID, hardwareInfo, &vmInfo.Graphics)
-		if err != nil {
-			tx.Rollback()
-			return false, fmt.Errorf("failed to sync hardware: %w", err)
-		}
-		if hardwareChanged {
-			changed = true
 		}
 	}
 
@@ -588,7 +617,7 @@ func (s *HostService) syncVMHardware(tx *gorm.DB, vmUUID string, hostID string, 
 	return changed, nil
 }
 
-func (s *HostService) syncAndListVMs(hostID string) (bool, error) {
+func (s *HostService) syncHostVMs(hostID string) (bool, error) {
 	liveVMs, err := s.connector.ListAllDomains(hostID)
 	if err != nil {
 		return false, fmt.Errorf("service failed to list vms for host %s: %w", hostID, err)
@@ -599,7 +628,7 @@ func (s *HostService) syncAndListVMs(hostID string) (bool, error) {
 	liveVMUUIDs := make(map[string]struct{})
 	for _, vmInfo := range liveVMs {
 		liveVMUUIDs[vmInfo.UUID] = struct{}{}
-		changed, err := s.syncSingleVM(hostID, vmInfo.Name)
+		changed, err := s.detectDriftOrIngestVM(hostID, vmInfo.Name, true)
 		if err != nil {
 			log.Printf("Error syncing VM %s: %v", vmInfo.Name, err)
 		}
@@ -637,7 +666,7 @@ func (s *HostService) GetVMStats(hostID, vmName string) (*libvirt.VMStats, error
 
 // --- VM Actions ---
 
-func (s *HostService) performAndSyncVMAction(hostID, vmName string, taskState storage.VMTaskState, action func() error) error {
+func (s *HostService) performVMAction(hostID, vmName string, taskState storage.VMTaskState, action func() error) error {
 	// Set task state
 	if err := s.db.Model(&storage.VirtualMachine{}).Where("host_id = ? AND name = ?", hostID, vmName).Update("task_state", taskState).Error; err != nil {
 		return fmt.Errorf("failed to set task state for %s: %w", vmName, err)
@@ -652,8 +681,9 @@ func (s *HostService) performAndSyncVMAction(hostID, vmName string, taskState st
 		return err
 	}
 
-	// Sync state after action
-	if changed, syncErr := s.syncSingleVM(hostID, vmName); syncErr != nil {
+	// After a successful action, re-run drift detection.
+	// This will update the power state and clear any drift flags if the action resolved them.
+	if changed, syncErr := s.detectDriftOrIngestVM(hostID, vmName, false); syncErr != nil {
 		log.Printf("Warning: failed to sync VM %s after %s action: %v", vmName, taskState, syncErr)
 	} else if changed {
 		s.broadcastVMsChanged(hostID)
@@ -669,33 +699,120 @@ func (s *HostService) performAndSyncVMAction(hostID, vmName string, taskState st
 }
 
 func (s *HostService) StartVM(hostID, vmName string) error {
-	return s.performAndSyncVMAction(hostID, vmName, storage.TaskStateStarting, func() error {
+	return s.performVMAction(hostID, vmName, storage.TaskStateStarting, func() error {
+		// If a rebuild is needed, this power cycle will apply the changes.
+		// So, we can clear the flag.
+		s.db.Model(&storage.VirtualMachine{}).Where("host_id = ? AND name = ?", hostID, vmName).Update("needs_rebuild", false)
 		return s.connector.StartDomain(hostID, vmName)
 	})
 }
 
 func (s *HostService) ShutdownVM(hostID, vmName string) error {
-	return s.performAndSyncVMAction(hostID, vmName, storage.TaskStateStopping, func() error {
+	return s.performVMAction(hostID, vmName, storage.TaskStateStopping, func() error {
 		return s.connector.ShutdownDomain(hostID, vmName)
 	})
 }
 
 func (s *HostService) RebootVM(hostID, vmName string) error {
-	return s.performAndSyncVMAction(hostID, vmName, storage.TaskStateRebooting, func() error {
+	return s.performVMAction(hostID, vmName, storage.TaskStateRebooting, func() error {
+		// If a rebuild is needed, this power cycle will apply the changes.
+		// So, we can clear the flag.
+		s.db.Model(&storage.VirtualMachine{}).Where("host_id = ? AND name = ?", hostID, vmName).Update("needs_rebuild", false)
 		return s.connector.RebootDomain(hostID, vmName)
 	})
 }
 
 func (s *HostService) ForceOffVM(hostID, vmName string) error {
-	return s.performAndSyncVMAction(hostID, vmName, storage.TaskStatePoweringOff, func() error {
+	return s.performVMAction(hostID, vmName, storage.TaskStatePoweringOff, func() error {
 		return s.connector.DestroyDomain(hostID, vmName)
 	})
 }
 
 func (s *HostService) ForceResetVM(hostID, vmName string) error {
-	return s.performAndSyncVMAction(hostID, vmName, storage.TaskStateRebooting, func() error {
+	return s.performVMAction(hostID, vmName, storage.TaskStateRebooting, func() error {
+		// If a rebuild is needed, this power cycle will apply the changes.
+		// So, we can clear the flag.
+		s.db.Model(&storage.VirtualMachine{}).Where("host_id = ? AND name = ?", hostID, vmName).Update("needs_rebuild", false)
 		return s.connector.ResetDomain(hostID, vmName)
 	})
+}
+
+// --- Drift and Sync Actions ---
+
+// SyncVMFromLibvirt forces an update from the live libvirt state into the database,
+// overwriting the DB record and clearing any drift status.
+func (s *HostService) SyncVMFromLibvirt(hostID, vmName string) error {
+	vmInfo, err := s.connector.GetDomainInfo(hostID, vmName)
+	if err != nil {
+		return fmt.Errorf("could not fetch info for VM %s on host %s: %w", vmName, hostID, err)
+	}
+
+	hardwareInfo, err := s.connector.GetDomainHardware(hostID, vmName)
+	if err != nil {
+		log.Printf("Warning: could not fetch hardware for VM %s during manual sync: %v", vmInfo.Name, err)
+	}
+
+	tx := s.db.Begin()
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+		}
+	}()
+
+	var vmToUpdate storage.VirtualMachine
+	if err := tx.Where("host_id = ? AND name = ?", hostID, vmName).First(&vmToUpdate).Error; err != nil {
+		tx.Rollback()
+		return fmt.Errorf("could not find VM %s in database to sync: %w", vmName, err)
+	}
+
+	// Update the main VM record
+	updates := map[string]interface{}{
+		"Name":         vmInfo.Name,
+		"VCPUCount":    vmInfo.Vcpu,
+		"MemoryBytes":  vmInfo.MaxMem * 1024,
+		"SyncStatus":   storage.StatusSynced,
+		"DriftDetails": "",
+		"NeedsRebuild": false,
+	}
+	if err := tx.Model(&vmToUpdate).Updates(updates).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	// Sync hardware
+	if hardwareInfo != nil {
+		if _, err := s.syncVMHardware(tx, vmToUpdate.UUID, hostID, hardwareInfo, &vmInfo.Graphics); err != nil {
+			tx.Rollback()
+			return fmt.Errorf("failed to sync hardware during manual sync: %w", err)
+		}
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		return err
+	}
+
+	s.broadcastVMsChanged(hostID)
+	return nil
+}
+
+// RebuildVMFromDB flags a VM as needing a rebuild. The actual rebuild would
+// happen on the next power cycle or via a more complex process.
+func (s *HostService) RebuildVMFromDB(hostID, vmName string) error {
+	log.Printf("Flagging VM %s for rebuild. Changes will be applied on next power cycle.", vmName)
+	if err := s.db.Model(&storage.VirtualMachine{}).Where("host_id = ? AND name = ?", hostID, vmName).Update("needs_rebuild", true).Error; err != nil {
+		return fmt.Errorf("failed to set needs_rebuild flag for %s: %w", vmName, err)
+	}
+
+	// In a real implementation, we would generate an XML from our DB state and
+	// redefine the domain in libvirt. For now, we just set the flag.
+	// Example:
+	// xml, err := s.generateXMLFromDB(hostID, vmName)
+	// if err != nil { return err }
+	// err = s.connector.RedefineDomain(hostID, xml)
+	// if err != nil { return err }
+
+	s.broadcastVMsChanged(hostID)
+	return nil
 }
 
 // --- WebSocket Message Handling ---
@@ -826,6 +943,4 @@ func (m *MonitoringManager) pollVmStats(hostID, vmName string, sub *VmSubscripti
 		}
 	}
 }
-
-
 

@@ -59,6 +59,8 @@ func main() {
 		r.Post("/hosts/{hostID}/vms/{vmName}/reboot", apiHandler.RebootVM)
 		r.Post("/hosts/{hostID}/vms/{vmName}/forceoff", apiHandler.ForceOffVM)
 		r.Post("/hosts/{hostID}/vms/{vmName}/forcereset", apiHandler.ForceResetVM)
+		r.Post("/hosts/{hostID}/vms/{vmName}/sync-from-libvirt", apiHandler.SyncVMLive)
+		r.Post("/hosts/{hostID}/vms/{vmName}/rebuild-from-db", apiHandler.RebuildVM)
 		r.Get("/hosts/{hostID}/vms/{vmName}/stats", apiHandler.GetVMStats)
 		r.Get("/hosts/{hostID}/vms/{vmName}/hardware", apiHandler.GetVMHardware)
 
@@ -97,5 +99,4 @@ func main() {
 		log.Println("You can generate them by running the 'generate-certs.sh' script.")
 	}
 }
-
 

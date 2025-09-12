@@ -12,6 +12,7 @@ export const useMainStore = defineStore('main', () => {
         addHost: false,
         vmAction: null,
         vmHardware: false,
+        vmReconcile: null,
     });
 
     const activeVmStats = ref(null);
@@ -253,6 +254,27 @@ export const useMainStore = defineStore('main', () => {
     const forceOffVm = (hostId, vmName) => performVmAction(hostId, vmName, 'forceoff');
     const forceResetVm = (hostId, vmName) => performVmAction(hostId, vmName, 'forcereset');
 
+    const performVmReconciliationAction = async (hostId, vmName, action) => {
+        isLoading.value.vmReconcile = `${vmName}:${action}`;
+        errorMessage.value = '';
+        try {
+            const response = await fetch(`/api/v1/hosts/${hostId}/vms/${vmName}/${action}`, { method: 'POST' });
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(errorText || `HTTP error! status: ${response.status}`);
+            }
+            // The websocket will handle the UI update
+        } catch (error) {
+            errorMessage.value = `Action '${action}' on VM '${vmName}' failed: ${error.message}`;
+            console.error(error);
+        } finally {
+            isLoading.value.vmReconcile = null;
+        }
+    };
+
+    const syncVmFromLibvirt = (hostId, vmName) => performVmReconciliationAction(hostId, vmName, 'sync-from-libvirt');
+    const rebuildVmFromDb = (hostId, vmName) => performVmReconciliationAction(hostId, vmName, 'rebuild-from-db');
+
     return {
         hosts,
         selectedHostId,
@@ -274,7 +296,10 @@ export const useMainStore = defineStore('main', () => {
         forceResetVm,
         subscribeToVmStats,
         unsubscribeFromVmStats,
+        syncVmFromLibvirt,
+        rebuildVmFromDb,
     };
 });
+
 
 

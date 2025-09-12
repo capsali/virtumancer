@@ -36,6 +36,15 @@ const (
 	TaskStateScheduling  VMTaskState = "SCHEDULING"
 )
 
+// SyncStatus defines the sync state of a VM's configuration against libvirt.
+type SyncStatus string
+
+const (
+	StatusUnknown SyncStatus = "UNKNOWN"
+	StatusSynced  SyncStatus = "SYNCED"
+	StatusDrifted SyncStatus = "DRIFTED"
+)
+
 // --- Core Entities ---
 
 // Host represents a libvirt host connection configuration.
@@ -47,10 +56,10 @@ type Host struct {
 // VirtualMachine is Virtumancer's canonical definition of a VM's intended state.
 type VirtualMachine struct {
 	gorm.Model
-	HostID          string      `gorm:"uniqueIndex:idx_vm_host_name"`
-	Name            string      `gorm:"uniqueIndex:idx_vm_host_name"`
-	UUID            string      `gorm:"primaryKey"`  // Virtumancer's internal, guaranteed-unique UUID
-	DomainUUID      string      `gorm:"uniqueIndex"` // The UUID as reported by libvirt
+	HostID          string `gorm:"uniqueIndex:idx_vm_host_name"`
+	Name            string `gorm:"uniqueIndex:idx_vm_host_name"`
+	UUID            string `gorm:"primaryKey"`  // Virtumancer's internal, guaranteed-unique UUID
+	DomainUUID      string `gorm:"uniqueIndex"` // The UUID as reported by libvirt
 	Description     string
 	State           VMState     `gorm:"default:'INITIALIZED'"` // Stable state
 	TaskState       VMTaskState // Transient state during operations
@@ -60,6 +69,9 @@ type VirtualMachine struct {
 	MemoryBytes     uint64
 	OSType          string
 	IsTemplate      bool
+	SyncStatus      SyncStatus `gorm:"default:'UNKNOWN'"`
+	DriftDetails    string     // JSON blob storing drift information
+	NeedsRebuild    bool       `gorm:"default:false"`
 }
 
 // --- Storage Management ---
@@ -510,5 +522,4 @@ func InitDB(dataSourceName string) (*gorm.DB, error) {
 
 	return db, nil
 }
-
 

@@ -122,6 +122,17 @@ const memoryUsagePercent = computed(() => {
 });
 
 const isTaskActive = computed(() => !!vm.value?.task_state);
+const isReconcileLoading = computed(() => !!mainStore.isLoading.vmReconcile);
+
+const driftDetails = computed(() => {
+    if (vm.value?.sync_status !== 'DRIFTED' || !vm.value.drift_details) return null;
+    try {
+        return JSON.parse(vm.value.drift_details);
+    } catch (e) {
+        console.error("Failed to parse drift details:", e);
+        return { "error": "Could not parse details." };
+    }
+});
 
 // --- Helper functions ---
 const stateText = (vm) => {
@@ -244,13 +255,60 @@ onUnmounted(() => {
         </span>
       </div>
       <div class="flex items-center space-x-2">
-         <button :disabled="isTaskActive" v-if="vm.state === 'STOPPED'" @click="mainStore.startVm(host.id, vm.name)" class="px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-md transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed">Start</button>
+         <button :disabled="isTaskActive || isReconcileLoading" v-if="vm.state === 'STOPPED'" @click="mainStore.startVm(host.id, vm.name)" class="px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-md transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed">Start</button>
          <template v-if="vm.state === 'ACTIVE'">
-            <button :disabled="isTaskActive" @click="mainStore.gracefulShutdownVm(host.id, vm.name)" class="px-4 py-2 text-sm font-medium text-white bg-yellow-600 hover:bg-yellow-700 rounded-md transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed">Shutdown</button>
-            <button :disabled="isTaskActive" @click="mainStore.gracefulRebootVm(host.id, vm.name)" class="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed">Reboot</button>
-            <button :disabled="isTaskActive" @click="mainStore.forceOffVm(host.id, vm.name)" class="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed">Force Off</button>
+            <button :disabled="isTaskActive || isReconcileLoading" @click="mainStore.gracefulShutdownVm(host.id, vm.name)" class="px-4 py-2 text-sm font-medium text-white bg-yellow-600 hover:bg-yellow-700 rounded-md transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed">Shutdown</button>
+            <button :disabled="isTaskActive || isReconcileLoading" @click="mainStore.gracefulRebootVm(host.id, vm.name)" class="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed">Reboot</button>
+            <button :disabled="isTaskActive || isReconcileLoading" @click="mainStore.forceOffVm(host.id, vm.name)" class="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed">Force Off</button>
+            <button :disabled="isTaskActive || isReconcileLoading" @click="mainStore.forceResetVm(host.id, vm.name)" class="px-4 py-2 text-sm font-medium text-white bg-red-800 hover:bg-red-900 rounded-md transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed">Force Reset</button>
          </template>
       </div>
+    </div>
+
+    <!-- Needs Rebuild Warning -->
+    <div v-if="vm.needs_rebuild" class="mb-4 p-4 bg-blue-900/50 border border-blue-700 text-blue-300 rounded-lg">
+        <div class="flex items-start">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-3 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            <div>
+                <h3 class="font-bold">Rebuild Pending</h3>
+                <p class="text-sm mt-1">This VM has pending configuration changes. The changes will be applied the next time the VM is started, rebooted, or reset.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Drift Detection Warning -->
+    <div v-if="vm.sync_status === 'DRIFTED'" class="mb-4 p-4 bg-orange-900/50 border border-orange-700 text-orange-300 rounded-lg">
+        <div class="flex items-start">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-3 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+            <div>
+                <h3 class="font-bold">Configuration Drift Detected</h3>
+                <p class="text-sm mt-1">The live state of this VM in libvirt does not match the configuration stored in the Virtumancer database.</p>
+                <div v-if="driftDetails" class="mt-2 text-xs font-mono bg-black/20 p-2 rounded">
+                    <h4 class="font-bold mb-1">Drift Details:</h4>
+                    <pre class="whitespace-pre-wrap">{{ JSON.stringify(driftDetails, null, 2) }}</pre>
+                </div>
+                <div class="mt-4 flex items-center space-x-4">
+                    <button 
+                        @click="mainStore.syncVmFromLibvirt(host.id, vm.name)"
+                        :disabled="isReconcileLoading"
+                        class="px-3 py-1.5 text-xs font-semibold text-white bg-green-600 hover:bg-green-700 rounded-md transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed">
+                        <span v-if="mainStore.isLoading.vmReconcile === `${vm.name}:sync-from-libvirt`">Syncing...</span>
+                        <span v-else>Sync from Live VM</span>
+                    </button>
+                     <button 
+                        @click="mainStore.rebuildVmFromDb(host.id, vm.name)"
+                        :disabled="isReconcileLoading"
+                        class="px-3 py-1.5 text-xs font-semibold text-white bg-red-600 hover:bg-red-700 rounded-md transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed">
+                        <span v-if="mainStore.isLoading.vmReconcile === `${vm.name}:rebuild-from-db`">Rebuilding...</span>
+                        <span v-else>Rebuild from Database</span>
+                    </button>
+                </div>
+                 <p class="text-xs mt-2 text-orange-400">
+                    <b>Sync from Live VM:</b> Updates the database to match the current live state.<br/>
+                    <b>Rebuild from Database:</b> Flags the VM to be reconfigured based on the database on the next power cycle.
+                </p>
+            </div>
+        </div>
     </div>
     
     <!-- UUID Conflict Warning -->
@@ -441,5 +499,6 @@ onUnmounted(() => {
     <p>Select a VM from the sidebar to view details, or the VM is still loading.</p>
   </div>
 </template>
+
 
 

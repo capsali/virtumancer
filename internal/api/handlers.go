@@ -127,7 +127,7 @@ func (h *APIHandler) GetVMStats(w http.ResponseWriter, r *http.Request) {
 func (h *APIHandler) GetVMHardware(w http.ResponseWriter, r *http.Request) {
 	hostID := chi.URLParam(r, "hostID")
 	vmName := chi.URLParam(r, "vmName")
-	hardware, err := h.HostService.GetVMHardwareAndTriggerSync(hostID, vmName)
+	hardware, err := h.HostService.GetVMHardwareAndDetectDrift(hostID, vmName)
 	if err != nil {
 		// Even if there's an error (e.g., no cache yet), we might still proceed
 		// if we want to allow the background sync to populate it.
@@ -191,4 +191,23 @@ func (h *APIHandler) ForceResetVM(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (h *APIHandler) SyncVMLive(w http.ResponseWriter, r *http.Request) {
+	hostID := chi.URLParam(r, "hostID")
+	vmName := chi.URLParam(r, "vmName")
+	if err := h.HostService.SyncVMFromLibvirt(hostID, vmName); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *APIHandler) RebuildVM(w http.ResponseWriter, r *http.Request) {
+	hostID := chi.URLParam(r, "hostID")
+	vmName := chi.URLParam(r, "vmName")
+	if err := h.HostService.RebuildVMFromDB(hostID, vmName); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
 
