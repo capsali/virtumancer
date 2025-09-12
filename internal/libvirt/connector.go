@@ -8,8 +8,10 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/capsali/virtumancer/internal/storage"
 	"github.com/digitalocean/go-libvirt"
@@ -143,8 +145,12 @@ type HostInfo struct {
 	CPU        uint   `json:"cpu"`
 	Memory     uint64 `json:"memory"`
 	MemoryUsed uint64 `json:"memory_used"`
-	Cores      uint   `json:"cores"`
-	Threads    uint   `json:"threads"`
+	// Uptime seconds on the host machine. Libvirt does not provide a host
+	// uptime value via the standard NodeGet* APIs; this field will be 0 unless
+	// an external method (SSH /proc/uptime) is used to populate it.
+	Uptime  int64 `json:"uptime"`
+	Cores   uint  `json:"cores"`
+	Threads uint  `json:"threads"`
 }
 
 // HostStats holds real-time statistics for a single host.
@@ -159,6 +165,15 @@ type Connector struct {
 	mu           sync.RWMutex
 	lastCPUStats map[string][]libvirt.NodeGetCPUStats
 	lastMemStats map[string]uint64
+	// sshClients holds an existing *ssh.Client for hosts connected via qemu+ssh
+	// so we can reuse the session for quick commands like reading /proc/uptime.
+	sshClients map[string]*ssh.Client
+	// uptimeCache stores a cached uptime value with a timestamp to avoid
+	// executing SSH commands on every UI refresh.
+	uptimeCache map[string]struct {
+		uptime int64
+		at     time.Time
+	}
 }
 
 // NewConnector creates a new libvirt connection manager.
@@ -167,6 +182,11 @@ func NewConnector() *Connector {
 		connections:  make(map[string]*libvirt.Libvirt),
 		lastCPUStats: make(map[string][]libvirt.NodeGetCPUStats),
 		lastMemStats: make(map[string]uint64),
+		sshClients:   make(map[string]*ssh.Client),
+		uptimeCache: make(map[string]struct {
+			uptime int64
+			at     time.Time
+		}),
 	}
 }
 
@@ -397,6 +417,13 @@ func (c *Connector) AddHost(host storage.Host) error {
 		return fmt.Errorf("failed to dial libvirt for host '%s': %w", host.ID, err)
 	}
 
+	// If this connection wraps an SSH client, capture it for reuse.
+	if stc, ok := conn.(*sshTunneledConn); ok {
+		if stc.client != nil {
+			c.sshClients[host.ID] = stc.client
+		}
+	}
+
 	l := libvirt.New(conn)
 	if err := l.Connect(); err != nil {
 		conn.Close() // Ensure the connection is closed on failure
@@ -423,8 +450,75 @@ func (c *Connector) RemoveHost(hostID string) error {
 	}
 
 	delete(c.connections, hostID)
+	// Close and remove any stored ssh client for this host.
+	if client, ok := c.sshClients[hostID]; ok {
+		client.Close()
+		delete(c.sshClients, hostID)
+	}
+	// Remove uptime cache entry as well.
+	delete(c.uptimeCache, hostID)
 	log.Printf("Disconnected from host: %s", hostID)
 	return nil
+}
+
+// getHostUptime returns host uptime in seconds, using a cached value when recent.
+// It requires that an *ssh.Client for the host is stored in c.sshClients.
+func (c *Connector) getHostUptime(hostID string, ttl time.Duration, timeout time.Duration) (int64, error) {
+	c.mu.RLock()
+	if ent, ok := c.uptimeCache[hostID]; ok {
+		if time.Since(ent.at) < ttl {
+			c.mu.RUnlock()
+			return ent.uptime, nil
+		}
+	}
+	client, ok := c.sshClients[hostID]
+	c.mu.RUnlock()
+	if !ok || client == nil {
+		return 0, fmt.Errorf("no ssh client available for host %s", hostID)
+	}
+
+	// Execute 'cat /proc/uptime' with a short timeout by using a Goroutine.
+	type result struct {
+		out []byte
+		err error
+	}
+	ch := make(chan result, 1)
+	go func() {
+		sess, err := client.NewSession()
+		if err != nil {
+			ch <- result{nil, err}
+			return
+		}
+		defer sess.Close()
+		out, err := sess.Output("cat /proc/uptime")
+		ch <- result{out, err}
+	}()
+
+	select {
+	case r := <-ch:
+		if r.err != nil {
+			return 0, fmt.Errorf("ssh session failed: %w", r.err)
+		}
+		// parse first float from output
+		fields := strings.Fields(string(r.out))
+		if len(fields) == 0 {
+			return 0, fmt.Errorf("unexpected /proc/uptime output: %q", string(r.out))
+		}
+		secF, err := strconv.ParseFloat(fields[0], 64)
+		if err != nil {
+			return 0, fmt.Errorf("failed to parse uptime: %w", err)
+		}
+		uptime := int64(secF)
+		c.mu.Lock()
+		c.uptimeCache[hostID] = struct {
+			uptime int64
+			at     time.Time
+		}{uptime: uptime, at: time.Now()}
+		c.mu.Unlock()
+		return uptime, nil
+	case <-time.After(timeout):
+		return 0, fmt.Errorf("uptime ssh command timed out")
+	}
 }
 
 // GetConnection returns the active connection for a given host ID.
@@ -496,11 +590,20 @@ func (c *Connector) GetHostInfo(hostID string) (*HostInfo, error) {
 		}
 	}
 
+	// Attempt to get host uptime via cached SSH client (quick). Non-fatal on error.
+	var uptimeSec int64
+	if u, err := c.getHostUptime(hostID, 60*time.Second, 3*time.Second); err == nil {
+		uptimeSec = u
+	} else {
+		log.Printf("Warning: could not get uptime for host %s: %v", hostID, err)
+	}
+
 	return &HostInfo{
 		Hostname:   hostname,
 		CPU:        uint(cpus),
 		Memory:     totalMemoryBytes,
 		MemoryUsed: memoryUsed,
+		Uptime:     uptimeSec,
 		Cores:      uint(cores),
 		Threads:    uint(threads),
 	}, nil

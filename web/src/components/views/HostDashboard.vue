@@ -128,6 +128,19 @@ const formatBytes = (bytes, decimals = 2) => {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
 };
 
+const formatUptime = (sec) => {
+  if (sec === null || sec === undefined) return 'N/A';
+  if (sec <= 0) return '0s';
+  const days = Math.floor(sec / 86400);
+  const hours = Math.floor((sec % 86400) / 3600);
+  const mins = Math.floor((sec % 3600) / 60);
+  const seconds = Math.floor(sec % 60);
+  if (days > 0) return `${days}d ${hours}h ${mins}m`;
+  if (hours > 0) return `${hours}h ${mins}m ${seconds}s`;
+  if (mins > 0) return `${mins}m ${seconds}s`;
+  return `${seconds}s`;
+};
+
 </script>
 
 <template>
@@ -172,6 +185,10 @@ const formatBytes = (bytes, decimals = 2) => {
                 <h3 class="text-sm font-medium text-gray-400">Hostname</h3>
                 <p class="text-2xl font-semibold text-white mt-1 truncate">{{ selectedHost.info?.hostname || 'Loading...' }}</p>
             </div>
+       <div class="bg-gray-800 p-4 rounded-lg">
+        <h3 class="text-sm font-medium text-gray-400">Uptime</h3>
+        <p class="text-2xl font-semibold text-white mt-1">{{ formatUptime(selectedHost.info?.uptime) }}</p>
+      </div>
              <div class="bg-gray-800 p-4 rounded-lg">
                 <h3 class="text-sm font-medium text-gray-400">Cores / Threads</h3>
                 <p class="text-2xl font-semibold text-white mt-1">{{ selectedHost.info?.cores || 'N/A' }} / {{ selectedHost.info?.threads || 'N/A' }}</p>
