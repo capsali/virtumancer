@@ -17,6 +17,29 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
+// typedParamValueString returns a human-readable representation of a TypedParamValue
+// including the discriminator (D) and the concrete Go value held in I.
+func typedParamValueString(v libvirt.TypedParamValue) string {
+	switch val := v.I.(type) {
+	case int32:
+		return fmt.Sprintf("D=%d int32=%d", v.D, val)
+	case int64:
+		return fmt.Sprintf("D=%d int64=%d", v.D, val)
+	case uint32:
+		return fmt.Sprintf("D=%d uint32=%d", v.D, val)
+	case uint64:
+		return fmt.Sprintf("D=%d uint64=%d", v.D, val)
+	case float32:
+		return fmt.Sprintf("D=%d float32=%f", v.D, val)
+	case float64:
+		return fmt.Sprintf("D=%d float64=%f", v.D, val)
+	case string:
+		return fmt.Sprintf("D=%d string=%s", v.D, val)
+	default:
+		return fmt.Sprintf("D=%d unknown=%v", v.D, val)
+	}
+}
+
 // GraphicsInfo holds details about available graphics consoles.
 type GraphicsInfo struct {
 	VNC   bool `json:"vnc"`
@@ -55,13 +78,13 @@ type DomainNetworkStats struct {
 
 // VMStats holds real-time statistics for a single VM.
 type VMStats struct {
-	State      libvirt.DomainState  `json:"state"`
-	Memory     uint64               `json:"memory"`
-	MaxMem     uint64               `json:"max_mem"`
-	Vcpu       uint                 `json:"vcpu"`
-	CpuTime    uint64               `json:"cpu_time"`
-	DiskStats  []DomainDiskStats    `json:"disk_stats"`
-	NetStats   []DomainNetworkStats `json:"net_stats"`
+	State     libvirt.DomainState  `json:"state"`
+	Memory    uint64               `json:"memory"`
+	MaxMem    uint64               `json:"max_mem"`
+	Vcpu      uint                 `json:"vcpu"`
+	CpuTime   uint64               `json:"cpu_time"`
+	DiskStats []DomainDiskStats    `json:"disk_stats"`
+	NetStats  []DomainNetworkStats `json:"net_stats"`
 }
 
 // HardwareInfo holds the hardware configuration of a VM.
@@ -91,8 +114,8 @@ type DiskInfo struct {
 
 // NetworkInfo represents a virtual network interface.
 type NetworkInfo struct {
-	Type   string `xml:"type,attr" json:"type"`
-	Mac    struct {
+	Type string `xml:"type,attr" json:"type"`
+	Mac  struct {
 		Address string `xml:"address,attr" json:"address"`
 	} `xml:"mac" json:"mac"`
 	Source struct {
@@ -145,6 +168,108 @@ func NewConnector() *Connector {
 		lastCPUStats: make(map[string][]libvirt.NodeGetCPUStats),
 		lastMemStats: make(map[string]uint64),
 	}
+}
+
+// typedParamToUint64 converts a libvirt.TypedParam.Value to uint64 when possible.
+// The libvirt.TypedParamValue uses a discriminated union so the concrete
+// numeric type may vary depending on the platform/version.
+func typedParamToUint64(v libvirt.TypedParamValue) uint64 {
+	switch val := v.I.(type) {
+	case int32:
+		return uint64(val)
+	case int64:
+		return uint64(val)
+	case uint32:
+		return uint64(val)
+	case uint64:
+		return val
+	case float32:
+		return uint64(val)
+	case float64:
+		return uint64(val)
+	default:
+		return 0
+	}
+}
+
+// getMemoryUsageFromParams attempts to derive used and total memory from
+// NodeGetMemoryParameters result. It prefers an explicit "used" field if
+// present. If not present, it will try to compute used = total - (free + cached).
+// Returned values are in bytes.
+func getMemoryUsageFromParams(params []libvirt.TypedParam, totalKiB uint64) (usedBytes uint64, ok bool) {
+	var used uint64
+	var free uint64
+	var cached uint64
+
+	for _, p := range params {
+		name := strings.ToLower(p.Field)
+		switch name {
+		case "used", "actual-used":
+			used = typedParamToUint64(p.Value)
+		case "free", "actual-free", "available":
+			free = typedParamToUint64(p.Value)
+		case "cached", "cache", "buffers":
+			cached = typedParamToUint64(p.Value)
+		}
+	}
+
+	totalBytes := totalKiB * 1024
+
+	// Prefer explicit 'used' when present. Interpret as KiB first (common),
+	// then as bytes if KiB interpretation doesn't fit. If explicit 'used' is
+	// not available, fall back to computed used = total - (free + cached).
+
+	if used > 0 {
+		// Interpret 'used' as KiB first
+		usedKiBBytes := used * 1024
+		if usedKiBBytes <= totalBytes {
+			return usedKiBBytes, true
+		}
+		// If that seems too large, try interpreting 'used' as bytes
+		if used <= totalBytes {
+			return used, true
+		}
+	}
+
+	// Compute used from free+cached when available. Try KiB interpretation first.
+	if free > 0 || cached > 0 {
+		effFreeKiB := free + cached
+		// Compute using KiB units
+		if totalBytes > effFreeKiB*1024 {
+			return totalBytes - effFreeKiB*1024, true
+		}
+		// Fall back to bytes interpretation
+		effFree := free + cached
+		if totalBytes > effFree {
+			return totalBytes - effFree, true
+		}
+		return 0, true
+	}
+
+	return 0, false
+}
+
+// paramsContainCached checks whether any of the params correspond to cached/buffers fields.
+func paramsContainCached(params []libvirt.TypedParam) bool {
+	for _, p := range params {
+		name := strings.ToLower(p.Field)
+		if name == "cached" || name == "cache" || name == "buffers" {
+			return true
+		}
+	}
+	return false
+}
+
+// nodeMemoryStatsToTypedParams converts NodeGetMemoryStats entries into TypedParam entries.
+func nodeMemoryStatsToTypedParams(stats []libvirt.NodeGetMemoryStats) []libvirt.TypedParam {
+	out := make([]libvirt.TypedParam, 0, len(stats))
+	for _, s := range stats {
+		out = append(out, libvirt.TypedParam{
+			Field: s.Field,
+			Value: libvirt.TypedParamValue{D: 4, I: s.Value},
+		})
+	}
+	return out
 }
 
 // sshKeyAuth provides an AuthMethod for key-based SSH authentication
@@ -331,17 +456,44 @@ func (c *Connector) GetHostInfo(hostID string) (*HostInfo, error) {
 		return nil, fmt.Errorf("failed to get hostname for host %s: %w", hostID, err)
 	}
 
-	freeMemory, err := l.NodeGetFreeMemory()
+	// Use NodeGetMemoryStats to retrieve memory stats (per-node, numeric fields),
+	// convert them to TypedParam so existing parsing logic can be reused.
+	// NodeGetMemoryStats follows a two-step pattern: first call with nparams=0
+	// to discover how many entries are available, then call again with that
+	// count to retrieve the entries. Some libvirt backends return 0 entries
+	// on the first call but provide rNparams > 0.
+	var params []libvirt.TypedParam
+	stats, rNparams, err := l.NodeGetMemoryStats(0, -1, 0)
 	if err != nil {
-		// Don't fail the whole call if we can't get free memory, just log it.
-		log.Printf("Warning: could not get free memory for host %s: %v", hostID, err)
-		freeMemory = 0 // Assume no free memory can be determined
+		log.Printf("Warning: could not get memory stats count for host %s: %v", hostID, err)
+	} else if rNparams <= 0 {
+		log.Printf("Host %s: NodeGetMemoryStats reported %d available entries", hostID, rNparams)
+	} else {
+		// rNparams > 0, fetch the actual entries.
+		stats, _, err = l.NodeGetMemoryStats(rNparams, -1, 0)
+		if err != nil {
+			log.Printf("Warning: failed to fetch %d memory stats for host %s: %v", rNparams, hostID, err)
+		} else {
+			params = nodeMemoryStatsToTypedParams(stats)
+			// params are available for parsing; debug logging removed
+		}
 	}
 
-	totalMemoryBytes := uint64(memory) * 1024 // The library returns KiB, we want Bytes
+	totalMemoryBytes := uint64(memory) * 1024 // NodeGetInfo returns KiB
 	var memoryUsed uint64
-	if freeMemory > 0 {
-		memoryUsed = totalMemoryBytes - freeMemory
+	if u, ok := getMemoryUsageFromParams(params, uint64(memory)); ok {
+		// getMemoryUsageFromParams returns a value in bytes when ok==true.
+		memoryUsed = u
+	} else {
+		// Final fallback: try the older NodeGetFreeMemory call and compute used as total - free.
+		freeMemory, ferr := l.NodeGetFreeMemory()
+		if ferr != nil {
+			log.Printf("Warning: could not get free memory for host %s: %v", hostID, ferr)
+			freeMemory = 0
+		}
+		if freeMemory > 0 {
+			memoryUsed = totalMemoryBytes - freeMemory
+		}
 	}
 
 	return &HostInfo{
@@ -406,11 +558,23 @@ func (c *Connector) GetHostStats(hostID string) (*HostStats, error) {
 
 	c.lastCPUStats[hostID] = cpuStats
 
-	// Get memory stats
-	freeMemory, err := l.NodeGetFreeMemory()
+	// Prefer an explicit 'used' value from memory parameters when possible.
+	// Prefer NodeGetMemoryStats for runtime stats and reuse the same parsing helper.
+	// See comment above: two-step retrieval to get available count, then entries.
+	stats, rNparams, err := l.NodeGetMemoryStats(0, -1, 0)
+	var params []libvirt.TypedParam
 	if err != nil {
-		log.Printf("Warning: could not get free memory for host %s: %v", hostID, err)
-		freeMemory = 0
+		log.Printf("Warning: could not get memory stats count for host %s: %v", hostID, err)
+	} else if rNparams <= 0 {
+		log.Printf("Host %s: NodeGetMemoryStats reported %d available entries", hostID, rNparams)
+	} else {
+		stats, _, err = l.NodeGetMemoryStats(rNparams, -1, 0)
+		if err != nil {
+			log.Printf("Warning: failed to fetch %d memory stats for host %s: %v", rNparams, hostID, err)
+		} else {
+			params = nodeMemoryStatsToTypedParams(stats)
+			// params are available for parsing; debug logging removed
+		}
 	}
 
 	_, totalMemory, _, _, _, _, _, _, err := l.NodeGetInfo()
@@ -420,8 +584,17 @@ func (c *Connector) GetHostStats(hostID string) (*HostStats, error) {
 
 	totalMemoryBytes := uint64(totalMemory) * 1024
 	var memoryUsed uint64
-	if freeMemory > 0 {
-		memoryUsed = totalMemoryBytes - freeMemory
+	if u, ok := getMemoryUsageFromParams(params, uint64(totalMemory)); ok {
+		memoryUsed = u
+	} else {
+		freeMemory, ferr := l.NodeGetFreeMemory()
+		if ferr != nil {
+			log.Printf("Warning: could not get free memory for host %s: %v", hostID, ferr)
+			freeMemory = 0
+		}
+		if freeMemory > 0 {
+			memoryUsed = totalMemoryBytes - freeMemory
+		}
 	}
 
 	return &HostStats{
@@ -429,7 +602,6 @@ func (c *Connector) GetHostStats(hostID string) (*HostStats, error) {
 		MemoryUsed:     memoryUsed,
 	}, nil
 }
-
 
 // parseGraphicsFromXML extracts VNC and SPICE availability from a domain's XML definition.
 func parseGraphicsFromXML(xmlDesc string) (GraphicsInfo, error) {
@@ -640,13 +812,13 @@ func (c *Connector) GetDomainStats(hostID, vmName string) (*VMStats, error) {
 	}
 
 	stats := &VMStats{
-		State:      state,
-		Memory:     uint64(memory),
-		MaxMem:     uint64(maxMem),
-		Vcpu:       uint(nrVirtCPU),
-		CpuTime:    cpuTime,
-		DiskStats:  diskStats,
-		NetStats:   netStats,
+		State:     state,
+		Memory:    uint64(memory),
+		MaxMem:    uint64(maxMem),
+		Vcpu:      uint(nrVirtCPU),
+		CpuTime:   cpuTime,
+		DiskStats: diskStats,
+		NetStats:  netStats,
 	}
 
 	return stats, nil
