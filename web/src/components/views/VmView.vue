@@ -1,7 +1,7 @@
 <script setup>
 import { useMainStore } from '@/stores/mainStore';
-import { computed, ref, watch, onUnmounted } from 'vue';
-import { useRoute } from 'vue-router';
+import { computed, ref, watch, onMounted } from 'vue';
+import { useRoute, onBeforeRouteLeave } from 'vue-router';
 import VncConsole from '@/components/consoles/VncConsole.vue';
 import SpiceConsole from '@/components/consoles/SpiceConsole.vue';
 
@@ -209,34 +209,40 @@ watch(activeTab, (newTab) => {
     }
 });
 
-watch(vm, (newVm, oldVm) => {
-    // Unsubscribe from the old VM's stats
-    if (oldVm && host.value) {
-        mainStore.unsubscribeFromVmStats(host.value.id, oldVm.name);
-    }
-    
-    // Reset local state
-    activeTab.value = 'summary';
-    lastCpuTime.value = 0;
-    lastCpuTimeTimestamp.value = 0;
-    cpuUsagePercent.value = 0;
-    lastIoStats.value = null;
-    lastIoStatsTimestamp.value = 0;
-    diskRates.value = {};
-    netRates.value = {};
-    mainStore.activeVmStats = null;
-    mainStore.activeVmHardware = null;
+// Track previous VM for proper unsubscribe
+let previousVmName = null;
+let previousHostId = null;
 
-    if (newVm && host.value) {
-        // Subscribe to the new VM's stats
-        mainStore.subscribeToVmStats(host.value.id, newVm.name);
+onMounted(() => {
+    if (host.value && vm.value) {
+        mainStore.subscribeToVmStats(host.value.id, vm.value.name);
+        previousVmName = vm.value.name;
+        previousHostId = host.value.id;
     }
-}, { immediate: true });
+});
 
-onUnmounted(() => {
-    if (vm.value && host.value) {
-        mainStore.unsubscribeFromVmStats(host.value.id, vm.value.name);
+// Watch for route changes to vmName and hostId
+watch(
+    () => [route.params.vmName, host.value?.id],
+    ([newVmName, newHostId], [oldVmName, oldHostId]) => {
+        if (previousVmName && previousHostId) {
+            mainStore.unsubscribeFromVmStats(previousHostId, previousVmName);
+        }
+        if (newVmName && newHostId) {
+            mainStore.subscribeToVmStats(newHostId, newVmName);
+            previousVmName = newVmName;
+            previousHostId = newHostId;
+        }
+    },
+    { immediate: false }
+);
+
+onBeforeRouteLeave((to, from, next) => {
+    // Unsubscribe from VM stats when leaving this route
+    if (previousHostId && previousVmName) {
+        mainStore.unsubscribeFromVmStats(previousHostId, previousVmName);
     }
+    next();
 });
 
 </script>

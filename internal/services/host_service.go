@@ -55,6 +55,14 @@ type VmSubscription struct {
 	mu             sync.RWMutex
 }
 
+// HostSubscription holds the clients subscribed to a Host's stats and a channel to stop polling.
+type HostSubscription struct {
+	clients        map[*ws.Client]bool
+	stop           chan struct{}
+	lastKnownStats *libvirt.HostStats
+	mu             sync.RWMutex
+}
+
 // MonitoringManager handles real-time VM stat subscriptions.
 type MonitoringManager struct {
 	mu            sync.Mutex
@@ -62,10 +70,25 @@ type MonitoringManager struct {
 	service       *HostService               // back-reference
 }
 
+// HostMonitoringManager handles real-time VM stat subscriptions.
+type HostMonitoringManager struct {
+	mu            sync.Mutex
+	subscriptions map[string]*HostSubscription // key is "hostId"
+	service       *HostService               // back-reference
+}
+
 // NewMonitoringManager creates a new manager.
 func NewMonitoringManager(service *HostService) *MonitoringManager {
 	return &MonitoringManager{
 		subscriptions: make(map[string]*VmSubscription),
+		service:       service,
+	}
+}
+
+// NewHostMonitoringManager creates a new manager.
+func NewHostMonitoringManager(service *HostService) *HostMonitoringManager {
+	return &HostMonitoringManager{
+		subscriptions: make(map[string]*HostSubscription),
 		service:       service,
 	}
 }
@@ -95,6 +118,7 @@ type HostService struct {
 	connector *libvirt.Connector
 	hub       *ws.Hub
 	monitor   *MonitoringManager
+	hostMonitor *HostMonitoringManager
 }
 
 func NewHostService(db *gorm.DB, connector *libvirt.Connector, hub *ws.Hub) *HostService {
@@ -104,6 +128,7 @@ func NewHostService(db *gorm.DB, connector *libvirt.Connector, hub *ws.Hub) *Hos
 		hub:       hub,
 	}
 	s.monitor = NewMonitoringManager(s)
+	s.hostMonitor = NewHostMonitoringManager(s)
 	return s
 }
 
@@ -848,8 +873,27 @@ func (s *HostService) HandleUnsubscribe(client *ws.Client, payload ws.MessagePay
 	s.monitor.Unsubscribe(client, hostID, vmName)
 }
 
+func (s *HostService) HandleHostSubscribe(client *ws.Client, payload ws.MessagePayload) {
+	hostID, ok := payload["hostId"].(string)
+	if !ok {
+		log.Println("Invalid payload for host-stats subscription")
+		return
+	}
+	s.hostMonitor.Subscribe(client, hostID)
+}
+
+func (s *HostService) HandleHostUnsubscribe(client *ws.Client, payload ws.MessagePayload) {
+	hostID, ok := payload["hostId"].(string)
+	if !ok {
+		log.Println("Invalid payload for host-stats unsubscription")
+		return
+	}
+	s.hostMonitor.Unsubscribe(client, hostID)
+}
+
 func (s *HostService) HandleClientDisconnect(client *ws.Client) {
 	s.monitor.UnsubscribeClient(client)
+	s.hostMonitor.UnsubscribeClient(client)
 }
 
 // --- Monitoring Goroutine Logic ---
@@ -949,6 +993,87 @@ func (m *MonitoringManager) pollVmStats(hostID, vmName string, sub *VmSubscripti
 				m.mu.Unlock()
 				return
 			}
+		case <-sub.stop:
+			return
+		}
+	}
+}
+
+// --- Host Monitoring Goroutine Logic ---
+
+func (m *HostMonitoringManager) Subscribe(client *ws.Client, hostID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	sub, exists := m.subscriptions[hostID]
+	if !exists {
+		log.Printf("Starting host monitoring for %s", hostID)
+		sub = &HostSubscription{
+			clients: make(map[*ws.Client]bool),
+			stop:    make(chan struct{}),
+		}
+		m.subscriptions[hostID] = sub
+		go m.pollHostStats(hostID, sub)
+	}
+	sub.clients[client] = true
+}
+
+func (m *HostMonitoringManager) Unsubscribe(client *ws.Client, hostID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if sub, exists := m.subscriptions[hostID]; exists {
+		delete(sub.clients, client)
+		if len(sub.clients) == 0 {
+			log.Printf("Stopping host monitoring for %s", hostID)
+			close(sub.stop)
+			delete(m.subscriptions, hostID)
+		}
+	}
+}
+
+func (m *HostMonitoringManager) UnsubscribeClient(client *ws.Client) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for hostID, sub := range m.subscriptions {
+		if _, ok := sub.clients[client]; ok {
+			delete(sub.clients, client)
+			if len(sub.clients) == 0 {
+				log.Printf("Stopping host monitoring for %s due to client disconnect", hostID)
+				close(sub.stop)
+				delete(m.subscriptions, hostID)
+			}
+		}
+	}
+}
+
+func (m *HostMonitoringManager) pollHostStats(hostID string, sub *HostSubscription) {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			stats, err := m.service.connector.GetHostStats(hostID)
+			if err != nil {
+				log.Printf("Error getting host stats for %s: %v", hostID, err)
+				// We don't stop polling here, as the host might just be temporarily unavailable
+				continue
+			}
+
+			sub.mu.Lock()
+			sub.lastKnownStats = stats
+			sub.mu.Unlock()
+
+			m.service.hub.BroadcastMessage(ws.Message{
+				Type: "host-stats-updated",
+				Payload: ws.MessagePayload{
+					"hostId": hostID,
+					"stats":  stats,
+				},
+			})
+
 		case <-sub.stop:
 			return
 		}

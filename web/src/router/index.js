@@ -33,5 +33,23 @@ const router = createRouter({
   ]
 })
 
+import { useMainStore } from '@/stores/mainStore'; // Import the main store
+
+// Global navigation guard
+router.beforeEach((to, from, next) => {
+  const mainStore = useMainStore(); // Get the store instance inside the guard
+
+  // If navigating away from a host-dashboard or vm-view to a non-subscribed route,
+  // clear all active subscriptions.
+  const isLeavingSubscribedRoute = (from.name === 'host-dashboard' || from.name === 'vm-view');
+  const isGoingToUnsubscribedRoute = (to.name !== 'host-dashboard' && to.name !== 'vm-view');
+
+  if (isLeavingSubscribedRoute && isGoingToUnsubscribedRoute) {
+    mainStore.clearAllSubscriptions();
+  }
+
+  next();
+});
+
 export default router
 

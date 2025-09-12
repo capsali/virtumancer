@@ -124,16 +124,26 @@ type HostInfo struct {
 	Threads    uint   `json:"threads"`
 }
 
+// HostStats holds real-time statistics for a single host.
+type HostStats struct {
+	CPUUtilization float64 `json:"cpu_utilization"`
+	MemoryUsed     uint64  `json:"memory_used"`
+}
+
 // Connector manages active connections to libvirt hosts.
 type Connector struct {
-	connections map[string]*libvirt.Libvirt
-	mu          sync.RWMutex
+	connections  map[string]*libvirt.Libvirt
+	mu           sync.RWMutex
+	lastCPUStats map[string][]libvirt.NodeGetCPUStats
+	lastMemStats map[string]uint64
 }
 
 // NewConnector creates a new libvirt connection manager.
 func NewConnector() *Connector {
 	return &Connector{
-		connections: make(map[string]*libvirt.Libvirt),
+		connections:  make(map[string]*libvirt.Libvirt),
+		lastCPUStats: make(map[string][]libvirt.NodeGetCPUStats),
+		lastMemStats: make(map[string]uint64),
 	}
 }
 
@@ -343,6 +353,83 @@ func (c *Connector) GetHostInfo(hostID string) (*HostInfo, error) {
 		Threads:    uint(threads),
 	}, nil
 }
+
+// GetHostStats retrieves real-time statistics about the host itself.
+func (c *Connector) GetHostStats(hostID string) (*HostStats, error) {
+	l, err := c.GetConnection(hostID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get CPU stats
+	// First call to get the number of parameters.
+	_, nparams, err := l.NodeGetCPUStats(-1, 0, 0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get CPU stats count for host %s: %w", hostID, err)
+	}
+
+	// Second call to get the actual stats.
+	cpuStats, _, err := l.NodeGetCPUStats(-1, nparams, 0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get cpu stats for host %s: %w", hostID, err)
+	}
+
+	var cpuUtilization float64
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if lastStats, ok := c.lastCPUStats[hostID]; ok {
+		var totalLast, totalNow, idleLast, idleNow uint64
+
+		lastStatsMap := make(map[string]uint64)
+		for _, stat := range lastStats {
+			lastStatsMap[stat.Field] = stat.Value
+		}
+
+		nowStatsMap := make(map[string]uint64)
+		for _, stat := range cpuStats {
+			nowStatsMap[stat.Field] = stat.Value
+		}
+
+		totalLast = lastStatsMap["kernel"] + lastStatsMap["user"] + lastStatsMap["idle"] + lastStatsMap["iowait"] + lastStatsMap["irq"] + lastStatsMap["softirq"]
+		totalNow = nowStatsMap["kernel"] + nowStatsMap["user"] + nowStatsMap["idle"] + nowStatsMap["iowait"] + nowStatsMap["irq"] + nowStatsMap["softirq"]
+		idleLast = lastStatsMap["idle"]
+		idleNow = nowStatsMap["idle"]
+
+		diffTotal := totalNow - totalLast
+		diffIdle := idleNow - idleLast
+
+		if diffTotal > 0 {
+			cpuUtilization = 1.0 - float64(diffIdle)/float64(diffTotal)
+		}
+	}
+
+	c.lastCPUStats[hostID] = cpuStats
+
+	// Get memory stats
+	freeMemory, err := l.NodeGetFreeMemory()
+	if err != nil {
+		log.Printf("Warning: could not get free memory for host %s: %v", hostID, err)
+		freeMemory = 0
+	}
+
+	_, totalMemory, _, _, _, _, _, _, err := l.NodeGetInfo()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get node info for host %s: %w", hostID, err)
+	}
+
+	totalMemoryBytes := uint64(totalMemory) * 1024
+	var memoryUsed uint64
+	if freeMemory > 0 {
+		memoryUsed = totalMemoryBytes - freeMemory
+	}
+
+	return &HostStats{
+		CPUUtilization: cpuUtilization,
+		MemoryUsed:     memoryUsed,
+	}, nil
+}
+
 
 // parseGraphicsFromXML extracts VNC and SPICE availability from a domain's XML definition.
 func parseGraphicsFromXML(xmlDesc string) (GraphicsInfo, error) {
@@ -652,4 +739,3 @@ func (c *Connector) ResetDomain(hostID, vmName string) error {
 	}
 	return l.DomainReset(domain, 0)
 }
-

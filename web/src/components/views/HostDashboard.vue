@@ -1,7 +1,7 @@
 <script setup>
 import { useMainStore } from '@/stores/mainStore';
-import { computed } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
+import { computed, onMounted } from 'vue';
+import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router';
 
 const mainStore = useMainStore();
 const route = useRoute();
@@ -13,6 +13,11 @@ const selectedHost = computed(() => {
   return mainStore.hosts.find(h => h.id === hostId);
 });
 
+const hostStats = computed(() => {
+    if (!selectedHost.value) return null;
+    return mainStore.hostStats[selectedHost.value.id];
+});
+
 const vms = computed(() => {
     return selectedHost.value?.vms || [];
 });
@@ -22,7 +27,7 @@ const totalMemory = computed(() => {
 });
 
 const usedMemory = computed(() => {
-    return selectedHost.value?.info?.memory_used || 0;
+    return hostStats.value?.memory_used || selectedHost.value?.info?.memory_used || 0;
 });
 
 const memoryUsagePercent = computed(() => {
@@ -34,22 +39,41 @@ const totalCpu = computed(() => {
     return selectedHost.value?.info?.cpu || 0;
 });
 
-const usedCpu = computed(() => {
+const vCpuAllocation = computed(() => {
     if (!selectedHost.value || !selectedHost.value.vms) return 0;
-    // This is an approximation. For true CPU usage, we'd need to monitor CPU time.
-    // Here, we sum the vCPUs of *active* VMs.
     return selectedHost.value.vms.reduce((total, vm) => total + (vm.state === 'ACTIVE' ? vm.vcpu_count : 0), 0);
 });
 
-const cpuUsagePercent = computed(() => {
+const vCpuAllocationPercent = computed(() => {
     if (!totalCpu.value) return 0;
-    // This percentage represents allocated vCPUs to running VMs vs total host threads.
-    return (usedCpu.value / totalCpu.value) * 100;
+    return (vCpuAllocation.value / totalCpu.value) * 100;
+});
+
+const cpuUtilization = computed(() => {
+    if (!hostStats.value) return 0;
+    return (hostStats.value.cpu_utilization * 100).toFixed(1);
 });
 
 const selectVm = (vmName) => {
     router.push({ name: 'vm-view', params: { vmName } });
 }
+
+
+
+onMounted(() => {
+    if (route.params.hostId) {
+        mainStore.subscribeHostStats(route.params.hostId);
+    }
+});
+
+onBeforeRouteLeave((to, from, next) => {
+    // Unsubscribe from host stats when leaving this route
+    if (from.params.hostId) {
+        mainStore.unsubscribeHostStats(from.params.hostId);
+    }
+    next();
+});
+
 
 // Helper functions for display
 const stateText = (vm) => {
@@ -118,12 +142,21 @@ const formatBytes = (bytes, decimals = 2) => {
     <div class="mb-6">
         <h2 class="text-xl font-semibold text-white mb-4">Summary</h2>
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <!-- CPU Usage -->
+            <!-- vCPU Usage -->
             <div class="bg-gray-800 p-4 rounded-lg">
-                <h3 class="text-sm font-medium text-gray-400">CPU Usage</h3>
-                <p class="text-2xl font-semibold text-white mt-1">{{ usedCpu }} / {{ totalCpu }} Cores</p>
+                <h3 class="text-sm font-medium text-gray-400">vCPU Allocation</h3>
+                <p class="text-2xl font-semibold text-white mt-1">{{ vCpuAllocation }} / {{ totalCpu }} Cores</p>
                 <div class="w-full bg-gray-700 rounded-full h-2.5 mt-2">
-                    <div class="bg-indigo-500 h-2.5 rounded-full" :style="{ width: cpuUsagePercent + '%' }"></div>
+                    <div class="bg-indigo-500 h-2.5 rounded-full" :style="{ width: vCpuAllocationPercent + '%' }"></div>
+                </div>
+            </div>
+            
+            <!-- CPU Utilization -->
+            <div class="bg-gray-800 p-4 rounded-lg">
+                <h3 class="text-sm font-medium text-gray-400">CPU Utilization</h3>
+                <p class="text-2xl font-semibold text-white mt-1">{{ cpuUtilization }}%</p>
+                <div class="w-full bg-gray-700 rounded-full h-2.5 mt-2">
+                    <div class="bg-green-500 h-2.5 rounded-full" :style="{ width: cpuUtilization + '%' }"></div>
                 </div>
             </div>
             <!-- Memory Usage -->

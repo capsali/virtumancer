@@ -36,6 +36,8 @@ var upgrader = websocket.Upgrader{
 type InboundMessageHandler interface {
 	HandleSubscribe(client *Client, payload MessagePayload)
 	HandleUnsubscribe(client *Client, payload MessagePayload)
+	HandleHostSubscribe(client *Client, payload MessagePayload)
+	HandleHostUnsubscribe(client *Client, payload MessagePayload)
 	HandleClientDisconnect(client *Client)
 }
 
@@ -83,6 +85,10 @@ func (c *Client) readPump() {
 			c.handler.HandleSubscribe(c, msg.Payload)
 		case "unsubscribe-vm-stats":
 			c.handler.HandleUnsubscribe(c, msg.Payload)
+		case "subscribe-host-stats":
+			c.handler.HandleHostSubscribe(c, msg.Payload)
+		case "unsubscribe-host-stats":
+			c.handler.HandleHostUnsubscribe(c, msg.Payload)
 		default:
 			log.Printf("Received unknown websocket message type: %s", msg.Type)
 		}
