@@ -369,8 +369,20 @@ func (s *HostService) detectDriftOrIngestVM(hostID, vmName string, isInitialSync
 	// --- Case 1: New VM found, perform initial ingestion ---
 	if err == gorm.ErrRecordNotFound {
 		log.Printf("New VM '%s' detected on host '%s'. Performing initial ingestion.", vmName, hostID)
+
+		// Check if this VM's UUID exists on a *different* host. This is a conflict.
 		var conflictingVM storage.VirtualMachine
 		err := tx.Where("domain_uuid = ? AND host_id != ?", vmInfo.UUID, hostID).First(&conflictingVM).Error
+
+		// This is not an error, just informational. It means the VM is new to this host.
+		// We log it at a debug/info level instead of treating it as a query failure.
+		if err == nil {
+			log.Printf("INFO: VM with DomainUUID %s was previously on host %s, now detected on %s. It will be treated as a new VM on this host.", vmInfo.UUID, conflictingVM.HostID, hostID)
+		} else if err != gorm.ErrRecordNotFound {
+			// An actual database error occurred.
+			tx.Rollback()
+			return false, fmt.Errorf("error checking for conflicting VM: %w", err)
+		}
 
 		newVMRecord := storage.VirtualMachine{
 			HostID:      hostID,
@@ -382,11 +394,10 @@ func (s *HostService) detectDriftOrIngestVM(hostID, vmName string, isInitialSync
 			SyncStatus:  storage.StatusSynced, // New VMs are synced by definition
 		}
 
+		// If no conflict was found (err was gorm.ErrRecordNotFound), we can safely use the DomainUUID as our primary UUID.
+		// Otherwise, we generate a new internal UUID to avoid primary key collision.
 		if err == gorm.ErrRecordNotFound {
 			newVMRecord.UUID = vmInfo.UUID
-		} else if err != nil {
-			tx.Rollback()
-			return false, err
 		} else {
 			log.Printf("UUID conflict detected for DomainUUID %s. Assigning new internal UUID.", vmInfo.UUID)
 			newVMRecord.UUID = uuid.New().String()

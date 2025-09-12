@@ -154,7 +154,16 @@ export const useMainStore = defineStore('main', () => {
                 const errorText = await response.text();
                 throw new Error(errorText || `HTTP error! status: ${response.status}`);
             }
-            // The websocket will trigger a full refresh
+            const newHost = await response.json();
+
+            // Optimistically add the new host to the local state.
+            // The websocket will later trigger a full refresh to sync VMs and other info.
+            hosts.value.push({
+                ...newHost,
+                vms: [], // Initialize with empty VMs
+                info: null, // Info will be fetched by the full sync
+            });
+
         } catch (error) {
             errorMessage.value = `Failed to add host: ${error.message}`;
             console.error(error);
