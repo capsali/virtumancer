@@ -74,7 +74,7 @@ type MonitoringManager struct {
 type HostMonitoringManager struct {
 	mu            sync.Mutex
 	subscriptions map[string]*HostSubscription // key is "hostId"
-	service       *HostService               // back-reference
+	service       *HostService                 // back-reference
 }
 
 // NewMonitoringManager creates a new manager.
@@ -114,10 +114,10 @@ type HostServiceProvider interface {
 }
 
 type HostService struct {
-	db        *gorm.DB
-	connector *libvirt.Connector
-	hub       *ws.Hub
-	monitor   *MonitoringManager
+	db          *gorm.DB
+	connector   *libvirt.Connector
+	hub         *ws.Hub
+	monitor     *MonitoringManager
 	hostMonitor *HostMonitoringManager
 }
 
@@ -914,6 +914,11 @@ func (m *MonitoringManager) Subscribe(client *ws.Client, hostID, vmName string) 
 		go m.pollVmStats(hostID, vmName, sub)
 	}
 	sub.clients[client] = true
+	// Notify this client that metrics are warming up until first update arrives.
+	warmingMsg := ws.Message{Type: "vm-stats-warming", Payload: ws.MessagePayload{"hostId": hostID, "vmName": vmName}}
+	if err := client.SendMessage(warmingMsg); err != nil {
+		// Non-fatal: client might be slow or disconnected.
+	}
 }
 
 func (m *MonitoringManager) Unsubscribe(client *ws.Client, hostID, vmName string) {
@@ -961,6 +966,19 @@ func (m *MonitoringManager) GetLastKnownStats(hostID, vmName string) *libvirt.VM
 }
 
 func (m *MonitoringManager) pollVmStats(hostID, vmName string, sub *VmSubscription) {
+	// Perform an immediate fetch to provide instant feedback, then poll on a ticker.
+	stats, err := m.service.connector.GetDomainStats(hostID, vmName)
+	if err != nil {
+		stats = &libvirt.VMStats{State: -1}
+	}
+	sub.mu.Lock()
+	sub.lastKnownStats = stats
+	sub.mu.Unlock()
+	m.service.hub.BroadcastMessage(ws.Message{
+		Type:    "vm-stats-updated",
+		Payload: ws.MessagePayload{"hostId": hostID, "vmName": vmName, "stats": stats},
+	})
+
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 
@@ -977,12 +995,8 @@ func (m *MonitoringManager) pollVmStats(hostID, vmName string, sub *VmSubscripti
 			sub.mu.Unlock()
 
 			m.service.hub.BroadcastMessage(ws.Message{
-				Type: "vm-stats-updated",
-				Payload: ws.MessagePayload{
-					"hostId": hostID,
-					"vmName": vmName,
-					"stats":  stats,
-				},
+				Type:    "vm-stats-updated",
+				Payload: ws.MessagePayload{"hostId": hostID, "vmName": vmName, "stats": stats},
 			})
 
 			statsState := mapLibvirtStateToVMState(stats.State)
@@ -1016,6 +1030,11 @@ func (m *HostMonitoringManager) Subscribe(client *ws.Client, hostID string) {
 		go m.pollHostStats(hostID, sub)
 	}
 	sub.clients[client] = true
+	// Notify this client that metrics are warming up until first update arrives.
+	warmingMsg := ws.Message{Type: "host-stats-warming", Payload: ws.MessagePayload{"hostId": hostID}}
+	if err := client.SendMessage(warmingMsg); err != nil {
+		// Non-fatal: client might be slow or disconnected.
+	}
 }
 
 func (m *HostMonitoringManager) Unsubscribe(client *ws.Client, hostID string) {
@@ -1049,6 +1068,17 @@ func (m *HostMonitoringManager) UnsubscribeClient(client *ws.Client) {
 }
 
 func (m *HostMonitoringManager) pollHostStats(hostID string, sub *HostSubscription) {
+	// Perform an immediate fetch so the UI receives data quickly.
+	stats, err := m.service.connector.GetHostStats(hostID)
+	if err != nil {
+		log.Printf("Error getting host stats for %s (initial): %v", hostID, err)
+	} else {
+		sub.mu.Lock()
+		sub.lastKnownStats = stats
+		sub.mu.Unlock()
+		m.service.hub.BroadcastMessage(ws.Message{Type: "host-stats-updated", Payload: ws.MessagePayload{"hostId": hostID, "stats": stats}})
+	}
+
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 
@@ -1066,17 +1096,10 @@ func (m *HostMonitoringManager) pollHostStats(hostID string, sub *HostSubscripti
 			sub.lastKnownStats = stats
 			sub.mu.Unlock()
 
-			m.service.hub.BroadcastMessage(ws.Message{
-				Type: "host-stats-updated",
-				Payload: ws.MessagePayload{
-					"hostId": hostID,
-					"stats":  stats,
-				},
-			})
+			m.service.hub.BroadcastMessage(ws.Message{Type: "host-stats-updated", Payload: ws.MessagePayload{"hostId": hostID, "stats": stats}})
 
 		case <-sub.stop:
 			return
 		}
 	}
 }
-

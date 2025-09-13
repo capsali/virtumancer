@@ -2,6 +2,7 @@ package ws
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -146,3 +147,17 @@ func ServeWs(hub *Hub, handler InboundMessageHandler, w http.ResponseWriter, r *
 	go client.readPump()
 }
 
+// SendMessage attempts to send a structured Message to this client asynchronously.
+// It returns an error if marshaling fails or the client's send buffer is full.
+func (c *Client) SendMessage(message Message) error {
+	b, err := json.Marshal(message)
+	if err != nil {
+		return fmt.Errorf("marshal message: %w", err)
+	}
+	select {
+	case c.send <- b:
+		return nil
+	default:
+		return fmt.Errorf("client send buffer full")
+	}
+}
