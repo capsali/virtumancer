@@ -190,6 +190,32 @@ func NewConnector() *Connector {
 	}
 }
 
+// defaultDialTimeout is the conservative timeout used for network/ssh/connect
+// operations during startup so a slow/unreachable host doesn't block the server.
+const defaultDialTimeout = 5 * time.Second
+
+// sshDialWithTimeout performs ssh.Dial but enforces a timeout by running the
+// dial in a goroutine and selecting on a timer. This prevents long blocking
+// SSH connect attempts from stalling startup.
+func sshDialWithTimeout(network, addr string, config *ssh.ClientConfig, timeout time.Duration) (*ssh.Client, error) {
+	type result struct {
+		client *ssh.Client
+		err    error
+	}
+	ch := make(chan result, 1)
+	go func() {
+		c, err := ssh.Dial(network, addr, config)
+		ch <- result{client: c, err: err}
+	}()
+
+	select {
+	case r := <-ch:
+		return r.client, r.err
+	case <-time.After(timeout):
+		return nil, fmt.Errorf("ssh dial to %s timed out after %s", addr, timeout)
+	}
+}
+
 // typedParamToUint64 converts a libvirt.TypedParam.Value to uint64 when possible.
 // The libvirt.TypedParamValue uses a discriminated union so the concrete
 // numeric type may vary depending on the platform/version.
@@ -366,7 +392,7 @@ func dialLibvirt(uri string) (net.Conn, error) {
 		}
 
 		log.Printf("Attempting SSH connection to %s for user %s", sshAddr, user)
-		sshClient, err := ssh.Dial("tcp", sshAddr, sshConfig)
+		sshClient, err := sshDialWithTimeout("tcp", sshAddr, sshConfig, defaultDialTimeout)
 		if err != nil {
 			return nil, fmt.Errorf("failed to dial SSH to %s: %w", sshAddr, err)
 		}
@@ -389,14 +415,16 @@ func dialLibvirt(uri string) (net.Conn, error) {
 		if !strings.Contains(address, ":") {
 			address = address + ":16509" // Default libvirt tcp port
 		}
-		return net.Dial("tcp", address)
+		return net.DialTimeout("tcp", address, defaultDialTimeout)
 
 	case "qemu", "qemu+unix":
 		address := parsedURI.Path
 		if address == "" || address == "/system" {
 			address = "/var/run/libvirt/libvirt-sock"
 		}
-		return net.Dial("unix", address)
+		// For unix sockets, use a short timeout by dialing via a net.Dialer with deadline.
+		d := net.Dialer{Timeout: defaultDialTimeout}
+		return d.Dial("unix", address)
 
 	default:
 		return nil, fmt.Errorf("unsupported scheme: %s", parsedURI.Scheme)

@@ -132,6 +132,27 @@ func NewHostService(db *gorm.DB, connector *libvirt.Connector, hub *ws.Hub) *Hos
 	return s
 }
 
+// EnsureHostConnected ensures there's an active libvirt connection for the
+// given host ID. If no connection exists, it will attempt to read the host
+// URI from the database and connect. This allows lazy connection on demand
+// (e.g., when the UI first subscribes to stats) instead of connecting all
+// hosts at startup.
+func (s *HostService) EnsureHostConnected(hostID string) error {
+	if _, err := s.connector.GetConnection(hostID); err == nil {
+		return nil // already connected
+	}
+
+	var host storage.Host
+	if err := s.db.Where("id = ?", hostID).First(&host).Error; err != nil {
+		return fmt.Errorf("could not find host %s in database: %w", hostID, err)
+	}
+
+	if err := s.connector.AddHost(host); err != nil {
+		return fmt.Errorf("failed to connect to host %s: %w", hostID, err)
+	}
+	return nil
+}
+
 func (s *HostService) broadcastHostsChanged() {
 	s.hub.BroadcastMessage(ws.Message{Type: "hosts-changed"})
 }
@@ -989,6 +1010,15 @@ func (s *HostService) HandleClientDisconnect(client *ws.Client) {
 // --- Monitoring Goroutine Logic ---
 
 func (m *MonitoringManager) Subscribe(client *ws.Client, hostID, vmName string) {
+	// Ensure the host connection exists before starting monitoring. Do this
+	// without holding the monitoring mutex because EnsureHostConnected may
+	// attempt network I/O and we don't want to block other subscribe/unsubscribe operations.
+	if err := m.service.EnsureHostConnected(hostID); err != nil {
+		log.Printf("Warning: could not ensure host %s connected: %v", hostID, err)
+		// Continue: we'll still start monitoring which will report errors
+		// when attempting to fetch stats if the host is unavailable.
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -1004,10 +1034,21 @@ func (m *MonitoringManager) Subscribe(client *ws.Client, hostID, vmName string) 
 		go m.pollVmStats(hostID, vmName, sub)
 	}
 	sub.clients[client] = true
-	// Notify this client that metrics are warming up until first update arrives.
-	warmingMsg := ws.Message{Type: "vm-stats-warming", Payload: ws.MessagePayload{"hostId": hostID, "vmName": vmName}}
-	if err := client.SendMessage(warmingMsg); err != nil {
-		// Non-fatal: client might be slow or disconnected.
+	// If we already have cached stats for this VM, send them immediately so the
+	// client doesn't have to wait for the first live fetch. Otherwise, send a
+	// warming message while the first poll is in progress.
+	sub.mu.RLock()
+	cached := sub.lastKnownStats
+	sub.mu.RUnlock()
+	if cached != nil {
+		if err := client.SendMessage(ws.Message{Type: "vm-stats-updated", Payload: ws.MessagePayload{"hostId": hostID, "vmName": vmName, "stats": cached}}); err != nil {
+			// Non-fatal: client might be slow or disconnected.
+		}
+	} else {
+		warmingMsg := ws.Message{Type: "vm-stats-warming", Payload: ws.MessagePayload{"hostId": hostID, "vmName": vmName}}
+		if err := client.SendMessage(warmingMsg); err != nil {
+			// Non-fatal: client might be slow or disconnected.
+		}
 	}
 }
 
@@ -1106,6 +1147,10 @@ func (m *MonitoringManager) pollVmStats(hostID, vmName string, sub *VmSubscripti
 // --- Host Monitoring Goroutine Logic ---
 
 func (m *HostMonitoringManager) Subscribe(client *ws.Client, hostID string) {
+	if err := m.service.EnsureHostConnected(hostID); err != nil {
+		log.Printf("Warning: could not ensure host %s connected: %v", hostID, err)
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -1120,10 +1165,20 @@ func (m *HostMonitoringManager) Subscribe(client *ws.Client, hostID string) {
 		go m.pollHostStats(hostID, sub)
 	}
 	sub.clients[client] = true
-	// Notify this client that metrics are warming up until first update arrives.
-	warmingMsg := ws.Message{Type: "host-stats-warming", Payload: ws.MessagePayload{"hostId": hostID}}
-	if err := client.SendMessage(warmingMsg); err != nil {
-		// Non-fatal: client might be slow or disconnected.
+	// If we already have cached host stats, send them immediately to the new
+	// client. Otherwise send a warming message while the initial poll runs.
+	sub.mu.RLock()
+	cachedHost := sub.lastKnownStats
+	sub.mu.RUnlock()
+	if cachedHost != nil {
+		if err := client.SendMessage(ws.Message{Type: "host-stats-updated", Payload: ws.MessagePayload{"hostId": hostID, "stats": cachedHost}}); err != nil {
+			// Non-fatal: client might be slow or disconnected.
+		}
+	} else {
+		warmingMsg := ws.Message{Type: "host-stats-warming", Payload: ws.MessagePayload{"hostId": hostID}}
+		if err := client.SendMessage(warmingMsg); err != nil {
+			// Non-fatal: client might be slow or disconnected.
+		}
 	}
 }
 

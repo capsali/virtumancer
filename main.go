@@ -31,8 +31,8 @@ func main() {
 	// Initialize Host Service
 	hostService := services.NewHostService(db, connector, hub)
 
-	// On startup, load all hosts from DB and try to connect
-	hostService.ConnectToAllHosts()
+	// Host connections are established lazily when needed (e.g., on the
+	// first websocket subscription) to avoid delaying server startup.
 
 	// Initialize API Handler
 	apiHandler := api.NewAPIHandler(hostService, hub, db, connector)
@@ -99,4 +99,3 @@ func main() {
 		log.Println("You can generate them by running the 'generate-certs.sh' script.")
 	}
 }
-
