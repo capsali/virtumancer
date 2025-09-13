@@ -198,8 +198,29 @@ func (s *HostService) RemoveHost(hostID string) error {
 		log.Printf("Warning: failed to disconnect from host %s during removal, continuing with DB deletion: %v", hostID, err)
 	}
 
-	if err := s.db.Where("host_id = ?", hostID).Delete(&storage.VirtualMachine{}).Error; err != nil {
-		log.Printf("Warning: failed to delete VMs for host %s from database: %v", hostID, err)
+	// Remove VMs and their attachment indices transactionally
+	tx := s.db.Begin()
+	var vms []storage.VirtualMachine
+	if err := tx.Where("host_id = ?", hostID).Find(&vms).Error; err != nil {
+		tx.Rollback()
+		log.Printf("Warning: failed to query VMs for host %s: %v", hostID, err)
+	} else {
+		for _, vm := range vms {
+			if err := tx.Where("vm_uuid = ?", vm.UUID).Delete(&storage.AttachmentIndex{}).Error; err != nil {
+				tx.Rollback()
+				log.Printf("Warning: failed to delete attachment indices for VM %s: %v", vm.UUID, err)
+				break
+			}
+		}
+		// delete VMs
+		if err := tx.Where("host_id = ?", hostID).Delete(&storage.VirtualMachine{}).Error; err != nil {
+			tx.Rollback()
+			log.Printf("Warning: failed to delete VMs for host %s from database: %v", hostID, err)
+		} else {
+			if err := tx.Commit().Error; err != nil {
+				log.Printf("Warning: failed to commit VM deletion transaction for host %s: %v", hostID, err)
+			}
+		}
 	}
 
 	if err := s.db.Where("id = ?", hostID).Delete(&storage.Host{}).Error; err != nil {
@@ -366,8 +387,19 @@ func (s *HostService) detectDriftOrIngestVM(hostID, vmName string, isInitialSync
 		var dbVM storage.VirtualMachine
 		if err := s.db.Where("host_id = ? AND name = ?", hostID, vmName).First(&dbVM).Error; err == nil {
 			log.Printf("Pruning VM %s from database as it's no longer in libvirt.", vmName)
-			if err := s.db.Delete(&dbVM).Error; err != nil {
+			tx := s.db.Begin()
+			if err := tx.Where("vm_uuid = ?", dbVM.UUID).Delete(&storage.AttachmentIndex{}).Error; err != nil {
+				tx.Rollback()
+				log.Printf("Warning: failed to delete attachment indices for VM %s: %v", dbVM.Name, err)
+				return false, err
+			}
+			if err := tx.Delete(&dbVM).Error; err != nil {
+				tx.Rollback()
 				log.Printf("Warning: failed to prune old VM %s: %v", dbVM.Name, err)
+				return false, err
+			}
+			if err := tx.Commit().Error; err != nil {
+				log.Printf("Warning: failed to commit prune transaction for VM %s: %v", dbVM.Name, err)
 				return false, err
 			}
 			return true, nil // A change occurred (deletion)
@@ -594,6 +626,8 @@ func (s *HostService) syncVMHardware(tx *gorm.DB, vmUUID string, hostID string, 
 				if err := tx.Model(&attachment).Updates(updates).Error; err != nil {
 					return false, err
 				}
+				// If the volume_id changed, keep the attachment index in sync
+				// No attachment_index device_id update for volumes: volumes are multi-attach.
 				changed = true
 			}
 			delete(existingAttachmentsMap, disk.Target.Dev)
@@ -604,6 +638,15 @@ func (s *HostService) syncVMHardware(tx *gorm.DB, vmUUID string, hostID string, 
 			if err := tx.Create(&newAttachment).Error; err != nil {
 				return false, err
 			}
+			// Insert corresponding attachment index in the same transaction
+			// Volumes can be multi-attached (e.g., ISOs or multi-attach volumes). To support that,
+			// we do not enforce uniqueness by device_id for device_type == "volume". We still
+			// record the attachment in the index for fast VM-scoped queries, but store DeviceID=0
+			// to avoid conflicts with the unique (device_type, device_id) index.
+			alloc := storage.AttachmentIndex{VMUUID: vmUUID, DeviceType: "volume", AttachmentID: newAttachment.ID, DeviceID: 0}
+			if err := tx.Create(&alloc).Error; err != nil {
+				return false, err
+			}
 			changed = true
 		}
 	}
@@ -612,6 +655,10 @@ func (s *HostService) syncVMHardware(tx *gorm.DB, vmUUID string, hostID string, 
 		var idsToDelete []uint
 		for _, attachment := range existingAttachmentsMap {
 			idsToDelete = append(idsToDelete, attachment.ID)
+		}
+		// Remove index entries first, then remove attachment rows within the same tx
+		if err := tx.Where("device_type = ? AND attachment_id IN ?", "volume", idsToDelete).Delete(&storage.AttachmentIndex{}).Error; err != nil {
+			return false, err
 		}
 		if err := tx.Where("id IN ?", idsToDelete).Delete(&storage.VolumeAttachment{}).Error; err != nil {
 			return false, err
@@ -633,7 +680,13 @@ func (s *HostService) syncVMHardware(tx *gorm.DB, vmUUID string, hostID string, 
 
 	if desiredGfxType == "" {
 		if gfxExists {
-			tx.Delete(&existingGfxAttachment)
+			// delete index entry for this graphics attachment first
+			if err := tx.Where("device_type = ? AND attachment_id = ?", "graphics_device", existingGfxAttachment.ID).Delete(&storage.AttachmentIndex{}).Error; err != nil {
+				return false, err
+			}
+			if err := tx.Delete(&existingGfxAttachment).Error; err != nil {
+				return false, err
+			}
 			changed = true
 		}
 	} else {
@@ -642,10 +695,36 @@ func (s *HostService) syncVMHardware(tx *gorm.DB, vmUUID string, hostID string, 
 
 		if !gfxExists {
 			newAttachment := storage.GraphicsDeviceAttachment{VMUUID: vmUUID, GraphicsDeviceID: gfxDevice.ID}
-			tx.Create(&newAttachment)
+			if err := tx.Create(&newAttachment).Error; err != nil {
+				return false, err
+			}
+			// insert attachment index, but first ensure the device isn't allocated elsewhere
+			alloc := storage.AttachmentIndex{VMUUID: vmUUID, DeviceType: "graphics_device", AttachmentID: newAttachment.ID, DeviceID: gfxDevice.ID}
+			var existingAlloc storage.AttachmentIndex
+			res := tx.Where("device_type = ? AND device_id = ?", alloc.DeviceType, alloc.DeviceID).First(&existingAlloc)
+			if res.Error == nil {
+				if existingAlloc.AttachmentID != alloc.AttachmentID || existingAlloc.VMUUID != alloc.VMUUID {
+					return false, fmt.Errorf("device (graphics id=%d) already allocated to VM %s (attachment_index id %d)", alloc.DeviceID, existingAlloc.VMUUID, existingAlloc.ID)
+				}
+				// allocation already present and matching
+			} else if res.Error != gorm.ErrRecordNotFound {
+				return false, res.Error
+			} else {
+				if err := tx.Create(&alloc).Error; err != nil {
+					return false, err
+				}
+			}
 			changed = true
 		} else if existingGfxAttachment.GraphicsDeviceID != gfxDevice.ID {
-			tx.Model(&existingGfxAttachment).Update("graphics_device_id", gfxDevice.ID)
+			if err := tx.Model(&existingGfxAttachment).Update("graphics_device_id", gfxDevice.ID).Error; err != nil {
+				return false, err
+			}
+			// update attachment index's device_id for this attachment
+			if err := tx.Model(&storage.AttachmentIndex{}).
+				Where("device_type = ? AND attachment_id = ?", "graphics_device", existingGfxAttachment.ID).
+				Update("device_id", gfxDevice.ID).Error; err != nil {
+				return false, err
+			}
 			changed = true
 		}
 	}
@@ -681,11 +760,22 @@ func (s *HostService) syncHostVMs(hostID string) (bool, error) {
 	for _, dbVM := range dbVMs {
 		if _, exists := liveVMUUIDs[dbVM.DomainUUID]; !exists {
 			log.Printf("Pruning VM %s (UUID: %s) from database as it's no longer in libvirt.", dbVM.Name, dbVM.UUID)
-			if err := s.db.Delete(&dbVM).Error; err != nil {
-				log.Printf("Warning: failed to prune old VM %s: %v", dbVM.Name, err)
-			} else {
-				overallChanged = true
+			tx := s.db.Begin()
+			if err := tx.Where("vm_uuid = ?", dbVM.UUID).Delete(&storage.AttachmentIndex{}).Error; err != nil {
+				tx.Rollback()
+				log.Printf("Warning: failed to delete attachment indices for VM %s: %v", dbVM.Name, err)
+				continue
 			}
+			if err := tx.Delete(&dbVM).Error; err != nil {
+				tx.Rollback()
+				log.Printf("Warning: failed to prune old VM %s: %v", dbVM.Name, err)
+				continue
+			}
+			if err := tx.Commit().Error; err != nil {
+				log.Printf("Warning: failed to commit prune transaction for VM %s: %v", dbVM.Name, err)
+				continue
+			}
+			overallChanged = true
 		}
 	}
 

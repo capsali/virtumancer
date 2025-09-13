@@ -228,10 +228,16 @@ watch(
         if (previousVmName && previousHostId) {
             mainStore.unsubscribeFromVmStats(previousHostId, previousVmName);
         }
+        // Clear any previously loaded hardware so the hardware tab will fetch fresh data
+        mainStore.activeVmHardware = null;
         if (newVmName && newHostId) {
             mainStore.subscribeToVmStats(newHostId, newVmName);
             previousVmName = newVmName;
             previousHostId = newHostId;
+            // If the hardware tab is active, immediately fetch hardware for the newly-selected VM
+            if (activeTab.value === 'hardware') {
+                mainStore.fetchVmHardware(newHostId, newVmName);
+            }
         }
     },
     { immediate: false }
