@@ -69,19 +69,46 @@ func (h *APIHandler) GetHosts(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	// Augment host list with a connection flag so the UI can render connection status.
+	type hostWithStatus struct {
+		storage.Host
+		Connected bool `json:"connected"`
+	}
+
+	out := make([]hostWithStatus, 0, len(hosts))
+	for _, host := range hosts {
+		// Consider the host connected if the connector has an active connection.
+		connected := true
+		if _, err := h.Connector.GetConnection(host.ID); err != nil {
+			connected = false
+		}
+		out = append(out, hostWithStatus{Host: host, Connected: connected})
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(hosts)
+	json.NewEncoder(w).Encode(out)
 }
 
 func (h *APIHandler) GetHostInfo(w http.ResponseWriter, r *http.Request) {
 	hostID := chi.URLParam(r, "hostID")
-	info, err := h.HostService.GetHostInfo(hostID)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+	// Return host info when connected and include a connected flag so the UI
+	// can always show connection state without treating missing info as an error.
+	connected := true
+	if _, err := h.Connector.GetConnection(hostID); err != nil {
+		connected = false
 	}
+
+	var info *libvirt.HostInfo
+	if connected {
+		if hi, err := h.HostService.GetHostInfo(hostID); err == nil {
+			info = hi
+		}
+	}
+
+	resp := map[string]interface{}{"connected": connected, "info": info}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(info)
+	json.NewEncoder(w).Encode(resp)
 }
 
 func (h *APIHandler) DeleteHost(w http.ResponseWriter, r *http.Request) {
@@ -210,4 +237,3 @@ func (h *APIHandler) RebuildVM(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
-

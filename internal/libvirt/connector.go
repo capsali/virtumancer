@@ -3,7 +3,6 @@ package libvirt
 import (
 	"encoding/xml"
 	"fmt"
-	log "github.com/capsali/virtumancer/internal/logging"
 	"net"
 	"net/url"
 	"os"
@@ -12,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	log "github.com/capsali/virtumancer/internal/logging"
 
 	"github.com/capsali/virtumancer/internal/storage"
 	"github.com/digitalocean/go-libvirt"
@@ -400,7 +401,7 @@ func dialLibvirt(uri string) (net.Conn, error) {
 
 		// Dial the libvirt socket on the remote machine through the SSH tunnel.
 		remoteSocketPath := "/var/run/libvirt/libvirt-sock"
-	log.Verbosef("SSH connected to %s. Dialing remote libvirt socket at %s", sshAddr, remoteSocketPath)
+		log.Verbosef("SSH connected to %s. Dialing remote libvirt socket at %s", sshAddr, remoteSocketPath)
 		conn, err := sshClient.Dial("unix", remoteSocketPath)
 		if err != nil {
 			sshClient.Close()

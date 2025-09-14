@@ -6,11 +6,12 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	log "github.com/capsali/virtumancer/internal/logging"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	log "github.com/capsali/virtumancer/internal/logging"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -195,9 +196,9 @@ func main() {
 				rows.Close()
 				log.Fatalf("upsert alloc for %s id %d: %v", tbl, id, err)
 			}
-				if verbose && !*dryRun {
-					log.Verbosef("inserted allocation for vm=%s device=%s attachment_id=%d device_id=%d", vmUUID.String, deviceType, id, devID)
-				}
+			if verbose && !*dryRun {
+				log.Verbosef("inserted allocation for vm=%s device=%s attachment_id=%d device_id=%d", vmUUID.String, deviceType, id, devID)
+			}
 			count++
 		}
 		rows.Close()
@@ -219,7 +220,7 @@ func main() {
 			break
 		}
 
-	if hasDup {
+		if hasDup {
 			// run automatically if -yes/-y/--force provided
 			skipConfirm := *yesFlag || *yFlag || *forceFlag
 			if skipConfirm {
@@ -317,9 +318,9 @@ func dedupeAttachmentIndices(db *gorm.DB, fix bool, reportPath string, keepNewes
 	}
 
 	if verbose {
-	log.Infof("Found %d duplicate groups; fix=%v; report=%s", len(groups), fix, reportPath)
+		log.Infof("Found %d duplicate groups; fix=%v; report=%s", len(groups), fix, reportPath)
 	} else {
-	log.Infof("Found %d duplicate groups; fix=%v", len(groups), fix)
+		log.Infof("Found %d duplicate groups; fix=%v", len(groups), fix)
 	}
 
 	// Prepare CSV writer if requested
@@ -404,7 +405,7 @@ func dedupeAttachmentIndices(db *gorm.DB, fix bool, reportPath string, keepNewes
 			}
 		}
 		totalRemoved += len(removeIDNums)
-	log.Infof("Removed %d duplicate entries for device_type=%s device_id=%d", len(removeIDNums), g.DeviceType, g.DeviceID)
+		log.Infof("Removed %d duplicate entries for device_type=%s device_id=%d", len(removeIDNums), g.DeviceType, g.DeviceID)
 	}
 
 	if csvWriter != nil {
@@ -414,7 +415,7 @@ func dedupeAttachmentIndices(db *gorm.DB, fix bool, reportPath string, keepNewes
 			return fmt.Errorf("flush csv: %w", err)
 		}
 		csvFile.Close()
-	log.Infof("Duplicate report written to %s", reportPath)
+		log.Infof("Duplicate report written to %s", reportPath)
 	}
 
 	if fix {

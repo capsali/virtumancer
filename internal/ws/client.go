@@ -3,9 +3,10 @@ package ws
 import (
 	"encoding/json"
 	"fmt"
-	log "github.com/capsali/virtumancer/internal/logging"
 	"net/http"
 	"time"
+
+	log "github.com/capsali/virtumancer/internal/logging"
 
 	"github.com/gorilla/websocket"
 )

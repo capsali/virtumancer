@@ -493,7 +493,7 @@ func InitDB(dataSourceName string) (*gorm.DB, error) {
 		&ControllerAttachment{},
 		&InputDevice{},
 		&InputDeviceAttachment{},
-	// graphics device legacy models removed; Console replaces them
+		// graphics device legacy models removed; Console replaces them
 		&SoundCard{},
 		&SoundCardAttachment{},
 		&HostDevice{},

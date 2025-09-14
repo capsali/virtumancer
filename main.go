@@ -1,9 +1,10 @@
 package main
 
 import (
-	log "github.com/capsali/virtumancer/internal/logging"
 	"net/http"
 	"os"
+
+	log "github.com/capsali/virtumancer/internal/logging"
 
 	"github.com/capsali/virtumancer/internal/api"
 	"github.com/capsali/virtumancer/internal/libvirt"

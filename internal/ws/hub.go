@@ -2,6 +2,7 @@ package ws
 
 import (
 	"encoding/json"
+
 	log "github.com/capsali/virtumancer/internal/logging"
 )
 
@@ -75,5 +76,3 @@ func (h *Hub) Run() {
 func (h *Hub) BroadcastMessage(message Message) {
 	h.broadcast <- message
 }
-
-

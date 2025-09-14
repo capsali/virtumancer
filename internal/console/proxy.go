@@ -4,11 +4,12 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
-	log "github.com/capsali/virtumancer/internal/logging"
 	"net"
 	"net/http"
 	"strings"
 	"sync"
+
+	log "github.com/capsali/virtumancer/internal/logging"
 
 	"github.com/capsali/virtumancer/internal/libvirt"
 	"github.com/capsali/virtumancer/internal/storage"
@@ -344,5 +345,3 @@ func HandleSpiceConsole(db *gorm.DB, connector *libvirt.Connector, w http.Respon
 	wg.Wait()
 	log.Verbosef("SPICE console proxy session ended for %s", vmName)
 }
-
-

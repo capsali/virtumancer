@@ -3,10 +3,11 @@ package services
 import (
 	"encoding/json"
 	"fmt"
-	log "github.com/capsali/virtumancer/internal/logging"
 	"strings"
 	"sync"
 	"time"
+
+	log "github.com/capsali/virtumancer/internal/logging"
 
 	"github.com/capsali/virtumancer/internal/libvirt"
 	"github.com/capsali/virtumancer/internal/storage"
@@ -155,6 +156,8 @@ func (s *HostService) EnsureHostConnected(hostID string) error {
 		return fmt.Errorf("failed to connect to host %s: %w", hostID, err)
 	}
 	log.Verbosef("EnsureHostConnected: connection established for host %s", hostID)
+	// Notify clients that the host is now connected
+	s.broadcastHostConnectionChanged(hostID, true)
 	return nil
 }
 
@@ -166,6 +169,13 @@ func (s *HostService) broadcastVMsChanged(hostID string) {
 	s.hub.BroadcastMessage(ws.Message{
 		Type:    "vms-changed",
 		Payload: ws.MessagePayload{"hostId": hostID},
+	})
+}
+
+func (s *HostService) broadcastHostConnectionChanged(hostID string, connected bool) {
+	s.hub.BroadcastMessage(ws.Message{
+		Type:    "host-connection-changed",
+		Payload: ws.MessagePayload{"hostId": hostID, "connected": connected},
 	})
 }
 
@@ -217,7 +227,9 @@ func (s *HostService) AddHost(host storage.Host) (*storage.Host, error) {
 	go s.SyncVMsForHost(host.ID)
 
 	log.Verbosef("AddHost: starting initial sync for host %s", host.ID)
+	// Notify clients both that hosts changed and that this host is connected
 	s.broadcastHostsChanged()
+	s.broadcastHostConnectionChanged(host.ID, true)
 	return &host, nil
 }
 
@@ -231,7 +243,7 @@ func (s *HostService) RemoveHost(hostID string) error {
 	var vms []storage.VirtualMachine
 	if err := tx.Where("host_id = ?", hostID).Find(&vms).Error; err != nil {
 		tx.Rollback()
-			log.Verbosef("Warning: failed to query VMs for host %s: %v", hostID, err)
+		log.Verbosef("Warning: failed to query VMs for host %s: %v", hostID, err)
 	} else {
 		for _, vm := range vms {
 			if err := tx.Where("vm_uuid = ?", vm.UUID).Delete(&storage.AttachmentIndex{}).Error; err != nil {
@@ -255,7 +267,9 @@ func (s *HostService) RemoveHost(hostID string) error {
 		return fmt.Errorf("failed to delete host from database: %w", err)
 	}
 
+	// Broadcast host removal and disconnected status
 	s.broadcastHostsChanged()
+	s.broadcastHostConnectionChanged(hostID, false)
 	return nil
 }
 
@@ -451,7 +465,7 @@ func (s *HostService) detectDriftOrIngestVM(hostID, vmName string, isInitialSync
 
 	// --- Case 1: New VM found, perform initial ingestion ---
 	if err == gorm.ErrRecordNotFound {
-	log.Infof("New VM '%s' detected on host '%s'. Performing initial ingestion.", vmName, hostID)
+		log.Infof("New VM '%s' detected on host '%s'. Performing initial ingestion.", vmName, hostID)
 
 		// Check if this VM's UUID exists on a *different* host. This is a conflict.
 		var conflictingVM storage.VirtualMachine
@@ -775,9 +789,9 @@ func (s *HostService) syncHostVMs(hostID string) (bool, error) {
 	for _, vmInfo := range liveVMs {
 		liveVMUUIDs[vmInfo.UUID] = struct{}{}
 		changed, err := s.detectDriftOrIngestVM(hostID, vmInfo.Name, true)
-			if err != nil {
-				log.Verbosef("Error syncing VM %s: %v", vmInfo.Name, err)
-			}
+		if err != nil {
+			log.Verbosef("Error syncing VM %s: %v", vmInfo.Name, err)
+		}
 		if changed {
 			overallChanged = true
 		}
@@ -841,14 +855,14 @@ func (s *HostService) performVMAction(hostID, vmName string, taskState storage.V
 	// After a successful action, re-run drift detection.
 	// This will update the power state and clear any drift flags if the action resolved them.
 	if changed, syncErr := s.detectDriftOrIngestVM(hostID, vmName, false); syncErr != nil {
-	log.Verbosef("Warning: failed to sync VM %s after %s action: %v", vmName, taskState, syncErr)
+		log.Verbosef("Warning: failed to sync VM %s after %s action: %v", vmName, taskState, syncErr)
 	} else if changed {
 		s.broadcastVMsChanged(hostID)
 	}
 
 	// Clear task state on success
 	if err := s.db.Model(&storage.VirtualMachine{}).Where("host_id = ? AND name = ?", hostID, vmName).Update("task_state", "").Error; err != nil {
-	log.Verbosef("Warning: failed to clear task state for %s: %v", vmName, err)
+		log.Verbosef("Warning: failed to clear task state for %s: %v", vmName, err)
 	}
 	s.broadcastVMsChanged(hostID)
 
@@ -906,7 +920,7 @@ func (s *HostService) SyncVMFromLibvirt(hostID, vmName string) error {
 
 	hardwareInfo, err := s.connector.GetDomainHardware(hostID, vmName)
 	if err != nil {
-	log.Verbosef("Warning: could not fetch hardware for VM %s during manual sync: %v", vmInfo.Name, err)
+		log.Verbosef("Warning: could not fetch hardware for VM %s during manual sync: %v", vmInfo.Name, err)
 	}
 
 	tx := s.db.Begin()
@@ -1167,7 +1181,7 @@ func (m *HostMonitoringManager) Subscribe(client *ws.Client, hostID string) {
 
 	sub, exists := m.subscriptions[hostID]
 	if !exists {
-	log.Verbosef("Starting host monitoring for %s", hostID)
+		log.Verbosef("Starting host monitoring for %s", hostID)
 		sub = &HostSubscription{
 			clients: make(map[*ws.Client]bool),
 			stop:    make(chan struct{}),
@@ -1200,7 +1214,7 @@ func (m *HostMonitoringManager) Unsubscribe(client *ws.Client, hostID string) {
 	if sub, exists := m.subscriptions[hostID]; exists {
 		delete(sub.clients, client)
 		if len(sub.clients) == 0 {
-				log.Verbosef("Stopping host monitoring for %s", hostID)
+			log.Verbosef("Stopping host monitoring for %s", hostID)
 			close(sub.stop)
 			delete(m.subscriptions, hostID)
 		}

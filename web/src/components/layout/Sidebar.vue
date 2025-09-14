@@ -92,6 +92,10 @@ const runningVmsCount = (host) => {
             </button>
             <svg class="h-6 w-6 flex-shrink-0" :class="{'text-indigo-400': mainStore.selectedHostId === host.id}" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"/></svg>
             <span class="ml-3 font-semibold truncate" v-show="uiStore.isSidebarOpen">{{ host.id }}</span>
+      <div v-show="uiStore.isSidebarOpen" class="ml-2 mr-auto flex items-center space-x-2">
+  <span v-if="mainStore.hostConnecting && mainStore.hostConnecting[host.id]" class="text-xs px-2 py-0.5 rounded-full bg-yellow-500 text-white">connecting...</span>
+  <span v-else class="text-xs px-2 py-0.5 rounded-full" :class="host.connected ? 'bg-green-600 text-white' : 'bg-gray-700 text-gray-300'">{{ host.connected ? 'connected' : 'disconnected' }}</span>
+      </div>
              <span v-if="uiStore.isSidebarOpen && host.vms" class="ml-auto text-xs font-mono bg-gray-800 px-2 py-0.5 rounded-full">
               {{ runningVmsCount(host) }}/{{ host.vms.length }}
             </span>
