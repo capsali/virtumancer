@@ -3,7 +3,7 @@ package libvirt
 import (
 	"encoding/xml"
 	"fmt"
-	"log"
+	log "github.com/capsali/virtumancer/internal/logging"
 	"net"
 	"net/url"
 	"os"
@@ -391,15 +391,16 @@ func dialLibvirt(uri string) (net.Conn, error) {
 			HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 		}
 
-		log.Printf("Attempting SSH connection to %s for user %s", sshAddr, user)
+		log.Debugf("dialLibvirt: attempting SSH connection to %s for user %s", sshAddr, user)
 		sshClient, err := sshDialWithTimeout("tcp", sshAddr, sshConfig, defaultDialTimeout)
 		if err != nil {
+			log.Debugf("dialLibvirt: ssh dial to %s failed: %v", sshAddr, err)
 			return nil, fmt.Errorf("failed to dial SSH to %s: %w", sshAddr, err)
 		}
 
 		// Dial the libvirt socket on the remote machine through the SSH tunnel.
 		remoteSocketPath := "/var/run/libvirt/libvirt-sock"
-		log.Printf("SSH connected. Dialing remote libvirt socket at %s", remoteSocketPath)
+	log.Verbosef("SSH connected to %s. Dialing remote libvirt socket at %s", sshAddr, remoteSocketPath)
 		conn, err := sshClient.Dial("unix", remoteSocketPath)
 		if err != nil {
 			sshClient.Close()
@@ -459,7 +460,7 @@ func (c *Connector) AddHost(host storage.Host) error {
 	}
 
 	c.connections[host.ID] = l
-	log.Printf("Successfully connected to host: %s", host.ID)
+	log.Verbosef("Successfully connected to host: %s", host.ID)
 	return nil
 }
 
@@ -485,7 +486,7 @@ func (c *Connector) RemoveHost(hostID string) error {
 	}
 	// Remove uptime cache entry as well.
 	delete(c.uptimeCache, hostID)
-	log.Printf("Disconnected from host: %s", hostID)
+	log.Verbosef("Disconnected from host: %s", hostID)
 	return nil
 }
 
@@ -587,17 +588,17 @@ func (c *Connector) GetHostInfo(hostID string) (*HostInfo, error) {
 	var params []libvirt.TypedParam
 	stats, rNparams, err := l.NodeGetMemoryStats(0, -1, 0)
 	if err != nil {
-		log.Printf("Warning: could not get memory stats count for host %s: %v", hostID, err)
+		log.Verbosef("Could not get memory stats count for host %s: %v", hostID, err)
 	} else if rNparams <= 0 {
-		log.Printf("Host %s: NodeGetMemoryStats reported %d available entries", hostID, rNparams)
+		log.Debugf("Host %s: NodeGetMemoryStats reported %d available entries", hostID, rNparams)
 	} else {
 		// rNparams > 0, fetch the actual entries.
 		stats, _, err = l.NodeGetMemoryStats(rNparams, -1, 0)
 		if err != nil {
-			log.Printf("Warning: failed to fetch %d memory stats for host %s: %v", rNparams, hostID, err)
+			log.Verbosef("Failed to fetch %d memory stats for host %s: %v", rNparams, hostID, err)
 		} else {
 			params = nodeMemoryStatsToTypedParams(stats)
-			// params are available for parsing; debug logging removed
+			log.Debugf("Fetched %d memory params for host %s", len(params), hostID)
 		}
 	}
 
@@ -610,10 +611,9 @@ func (c *Connector) GetHostInfo(hostID string) (*HostInfo, error) {
 		// Final fallback: try the older NodeGetFreeMemory call and compute used as total - free.
 		freeMemory, ferr := l.NodeGetFreeMemory()
 		if ferr != nil {
-			log.Printf("Warning: could not get free memory for host %s: %v", hostID, ferr)
-			freeMemory = 0
-		}
-		if freeMemory > 0 {
+			log.Debugf("Warning: could not get free memory for host %s: %v", hostID, ferr)
+		} else {
+			log.Verbosef("Host %s: NodeGetMemoryStats reported %d available entries (using NodeGetFreeMemory fallback)", hostID, rNparams)
 			memoryUsed = totalMemoryBytes - freeMemory
 		}
 	}
@@ -623,7 +623,7 @@ func (c *Connector) GetHostInfo(hostID string) (*HostInfo, error) {
 	if u, err := c.getHostUptime(hostID, 60*time.Second, 3*time.Second); err == nil {
 		uptimeSec = u
 	} else {
-		log.Printf("Warning: could not get uptime for host %s: %v", hostID, err)
+		log.Verbosef("Could not get uptime for host %s: %v", hostID, err)
 	}
 
 	return &HostInfo{
@@ -695,13 +695,13 @@ func (c *Connector) GetHostStats(hostID string) (*HostStats, error) {
 	stats, rNparams, err := l.NodeGetMemoryStats(0, -1, 0)
 	var params []libvirt.TypedParam
 	if err != nil {
-		log.Printf("Warning: could not get memory stats count for host %s: %v", hostID, err)
+		log.Debugf("Warning: could not get memory stats count for host %s: %v", hostID, err)
 	} else if rNparams <= 0 {
-		log.Printf("Host %s: NodeGetMemoryStats reported %d available entries", hostID, rNparams)
+		log.Verbosef("Host %s: NodeGetMemoryStats reported %d available entries", hostID, rNparams)
 	} else {
 		stats, _, err = l.NodeGetMemoryStats(rNparams, -1, 0)
 		if err != nil {
-			log.Printf("Warning: failed to fetch %d memory stats for host %s: %v", rNparams, hostID, err)
+			log.Verbosef("Warning: failed to fetch %d memory stats for host %s: %v", rNparams, hostID, err)
 		} else {
 			params = nodeMemoryStatsToTypedParams(stats)
 			// params are available for parsing; debug logging removed
@@ -720,7 +720,7 @@ func (c *Connector) GetHostStats(hostID string) (*HostStats, error) {
 	} else {
 		freeMemory, ferr := l.NodeGetFreeMemory()
 		if ferr != nil {
-			log.Printf("Warning: could not get free memory for host %s: %v", hostID, ferr)
+			log.Verbosef("Warning: could not get free memory for host %s: %v", hostID, ferr)
 			freeMemory = 0
 		}
 		if freeMemory > 0 {
@@ -781,7 +781,7 @@ func (c *Connector) ListAllDomains(hostID string) ([]VMInfo, error) {
 	for _, domain := range domains {
 		vmInfo, err := c.domainToVMInfo(l, domain)
 		if err != nil {
-			log.Printf("Warning: could not get info for domain %s on host %s: %v", domain.Name, hostID, err)
+			log.Debugf("Warning: could not get info for domain %s on host %s: %v", domain.Name, hostID, err)
 			continue
 		}
 		vms = append(vms, *vmInfo)
@@ -842,7 +842,7 @@ func (c *Connector) domainToVMInfo(l *libvirt.Libvirt, domain libvirt.Domain) (*
 	parsedUUID, err := uuid.FromBytes(domain.UUID[:])
 	if err != nil {
 		// This should not happen if libvirt provides a valid 16-byte UUID, but we handle it defensively.
-		log.Printf("Warning: could not parse domain UUID for %s: %v. Using raw hex.", domain.Name, err)
+		log.Debugf("Warning: could not parse domain UUID for %s: %v. Using raw hex.", domain.Name, err)
 		uuidStr = fmt.Sprintf("%x", domain.UUID)
 	} else {
 		uuidStr = parsedUUID.String()
@@ -912,7 +912,7 @@ func (c *Connector) GetDomainStats(hostID, vmName string) (*VMStats, error) {
 		}
 		rdReq, rdBytes, wrReq, wrBytes, errs, err := l.DomainBlockStats(domain, disk.Target.Dev)
 		if err != nil {
-			log.Printf("Warning: could not get block stats for device %s on VM %s: %v", disk.Target.Dev, vmName, err)
+			log.Debugf("Warning: could not get block stats for device %s on VM %s: %v", disk.Target.Dev, vmName, err)
 			continue
 		}
 		_ = rdReq // Suppress unused variable warning
@@ -932,7 +932,7 @@ func (c *Connector) GetDomainStats(hostID, vmName string) (*VMStats, error) {
 		}
 		rxBytes, _, _, _, txBytes, _, _, _, err := l.DomainInterfaceStats(domain, iface.Target.Dev)
 		if err != nil {
-			log.Printf("Warning: could not get interface stats for device %s on VM %s: %v", iface.Target.Dev, vmName, err)
+			log.Debugf("Warning: could not get interface stats for device %s on VM %s: %v", iface.Target.Dev, vmName, err)
 			continue
 		}
 		netStats = append(netStats, DomainNetworkStats{

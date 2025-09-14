@@ -1,7 +1,7 @@
 package main
 
 import (
-	"log"
+	log "github.com/capsali/virtumancer/internal/logging"
 
 	"github.com/capsali/virtumancer/internal/storage"
 )
@@ -14,5 +14,5 @@ func main() {
 	}
 	// Close DB if sqlite needs it (gorm DB doesn't need Close in this context)
 	_ = db
-	log.Println("Migrations applied successfully")
+	log.Infof("Migrations applied successfully")
 }

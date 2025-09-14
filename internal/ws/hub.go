@@ -2,7 +2,7 @@ package ws
 
 import (
 	"encoding/json"
-	"log"
+	log "github.com/capsali/virtumancer/internal/logging"
 )
 
 // MessagePayload defines the structure for data sent with a message.
@@ -44,22 +44,24 @@ func (h *Hub) Run() {
 		select {
 		case client := <-h.register:
 			h.clients[client] = true
-			log.Println("WebSocket client connected")
+			log.Verbosef("WebSocket client connected: %p", client)
 		case client := <-h.unregister:
 			if _, ok := h.clients[client]; ok {
 				delete(h.clients, client)
 				close(client.send)
-				log.Println("WebSocket client disconnected")
+				log.Verbosef("WebSocket client disconnected: %p", client)
 			}
 		case message := <-h.broadcast:
 			messageBytes, err := json.Marshal(message)
 			if err != nil {
-				log.Printf("Error marshalling broadcast message: %v", err)
+				log.Verbosef("Error marshalling broadcast message: %v", err)
 				continue
 			}
+			log.Debugf("Broadcasting message to %d clients: type=%s", len(h.clients), message.Type)
 			for client := range h.clients {
 				select {
 				case client.send <- messageBytes:
+					log.Debugf("Queued message for client %p", client)
 				default:
 					close(client.send)
 					delete(h.clients, client)

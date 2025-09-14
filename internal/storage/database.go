@@ -1,7 +1,7 @@
 package storage
 
 import (
-	"log"
+	log "github.com/capsali/virtumancer/internal/logging"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -174,20 +174,21 @@ type InputDeviceAttachment struct {
 	InputDeviceID uint
 }
 
-// GraphicsDevice represents a virtual GPU and display protocol configuration.
-type GraphicsDevice struct {
+// GraphicsDevice represented a virtual GPU and display protocol (legacy).
+// It was removed in favor of per-VM `Console` instances.
+// Console represents a per-VM console instance (VNC/SPICE) discovered from domain XML.
+// This is a per-instance model used during migration from the older
+// GraphicsDevice/GraphicsDeviceAttachment model to a first-class Console instance.
+type Console struct {
 	gorm.Model
-	Type          string // 'vnc', 'spice'
-	ModelName     string // 'qxl', 'vga', 'virtio'
-	VRAMKiB       uint
+	VMUUID        string `gorm:"index"`
+	HostID        string `gorm:"index"`
+	Type          string // 'vnc' or 'spice'
+	ModelName     string
 	ListenAddress string
-}
-
-// GraphicsDeviceAttachment links a GraphicsDevice to a VirtualMachine.
-type GraphicsDeviceAttachment struct {
-	gorm.Model
-	VMUUID           string `gorm:"index"`
-	GraphicsDeviceID uint
+	Port          uint
+	TLSPort       uint
+	Metadata      string `gorm:"type:text"` // optional JSON blob
 }
 
 // SoundCard represents a virtual sound device.
@@ -492,8 +493,7 @@ func InitDB(dataSourceName string) (*gorm.DB, error) {
 		&ControllerAttachment{},
 		&InputDevice{},
 		&InputDeviceAttachment{},
-		&GraphicsDevice{},
-		&GraphicsDeviceAttachment{},
+	// graphics device legacy models removed; Console replaces them
 		&SoundCard{},
 		&SoundCardAttachment{},
 		&HostDevice{},
@@ -526,6 +526,7 @@ func InitDB(dataSourceName string) (*gorm.DB, error) {
 		&IOMMUDeviceAttachment{},
 		&VMSnapshot{},
 		&AttachmentIndex{},
+		&Console{},
 		&User{},
 		&Role{},
 		&Permission{},
@@ -538,19 +539,20 @@ func InitDB(dataSourceName string) (*gorm.DB, error) {
 
 	// Ensure indexes / unique constraints for the attachment index for fast queries
 	// and to prevent duplicate entries. Run after AutoMigrate so tables exist.
-	if err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS uniq_attachment_index ON attachment_indices(device_type, attachment_id);`).Error; err != nil {
-		log.Printf("failed to create unique index uniq_attachment_index: %v", err)
+	if err := db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS uniq_attachment_index ON attachment_indices(device_type, attachment_id);").Error; err != nil {
+		log.Verbosef("failed to create unique index uniq_attachment_index: %v", err)
 		return nil, err
 	}
-	if err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_attachment_index_vm_uuid ON attachment_indices(vm_uuid);`).Error; err != nil {
-		log.Printf("failed to create index idx_attachment_index_vm_uuid: %v", err)
+	if err := db.Exec("CREATE INDEX IF NOT EXISTS idx_attachment_index_vm_uuid ON attachment_indices(vm_uuid);").Error; err != nil {
+		log.Verbosef("failed to create index idx_attachment_index_vm_uuid: %v", err)
 		return nil, err
 	}
 
 	// Optional: prevent the same device (by device_type + device_id) from being allocated multiple times.
+	// This covers per-instance device types such as `console` (and other non-volume types).
 	// Volumes can be multi-attached so exclude them from this unique constraint using a partial index.
-	if err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS uniq_attachment_index_device ON attachment_indices(device_type, device_id) WHERE device_type != 'volume' AND device_id IS NOT NULL;`).Error; err != nil {
-		log.Printf("failed to create unique index uniq_attachment_index_device: %v", err)
+	if err := db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS uniq_attachment_index_device ON attachment_indices(device_type, device_id) WHERE device_type != 'volume' AND device_id IS NOT NULL;").Error; err != nil {
+		log.Verbosef("failed to create unique index uniq_attachment_index_device: %v", err)
 		return nil, err
 	}
 

@@ -1,7 +1,7 @@
 package main
 
 import (
-	"log"
+	log "github.com/capsali/virtumancer/internal/logging"
 	"net/http"
 	"os"
 
@@ -15,6 +15,25 @@ import (
 )
 
 func main() {
+	// Parse logging flags early
+	var verboseFlag bool
+	var debugFlag bool
+	for _, a := range os.Args[1:] {
+		switch a {
+		case "--verbose":
+			verboseFlag = true
+		case "--debug":
+			debugFlag = true
+		}
+	}
+	// Default to info if none specified
+	if debugFlag {
+		log.SetLevel("debug")
+	} else if verboseFlag {
+		log.SetLevel("verbose")
+	} else {
+		log.SetLevel("info")
+	}
 	// Initialize Database
 	db, err := storage.InitDB("virtumancer.db")
 	if err != nil {
@@ -91,11 +110,11 @@ func main() {
 	certFile := "localhost.crt"
 	keyFile := "localhost.key"
 
-	log.Println("Starting HTTPS server on :8888")
+	log.Infof("Starting HTTPS server on :8888")
 	err = http.ListenAndServeTLS(":8888", certFile, keyFile, r)
 	if err != nil {
-		log.Printf("Could not start HTTPS server: %v", err)
-		log.Println("Please ensure 'localhost.crt' and 'localhost.key' are present in the root directory.")
-		log.Println("You can generate them by running the 'generate-certs.sh' script.")
+		log.Debugf("Could not start HTTPS server: %v", err)
+		log.Infof("Please ensure 'localhost.crt' and 'localhost.key' are present in the root directory.")
+		log.Infof("You can generate them by running the 'generate-certs.sh' script.")
 	}
 }

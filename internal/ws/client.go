@@ -3,7 +3,7 @@ package ws
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	log "github.com/capsali/virtumancer/internal/logging"
 	"net/http"
 	"time"
 
@@ -70,14 +70,14 @@ func (c *Client) readPump() {
 		_, messageBytes, err := c.conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("error: %v", err)
+				log.Debugf("websocket read error: %v", err)
 			}
 			break
 		}
 
 		var msg Message
 		if err := json.Unmarshal(messageBytes, &msg); err != nil {
-			log.Printf("Could not unmarshal inbound websocket message: %v", err)
+			log.Verbosef("Could not unmarshal inbound websocket message: %v", err)
 			continue
 		}
 
@@ -91,7 +91,7 @@ func (c *Client) readPump() {
 		case "unsubscribe-host-stats":
 			c.handler.HandleHostUnsubscribe(c, msg.Payload)
 		default:
-			log.Printf("Received unknown websocket message type: %s", msg.Type)
+			log.Debugf("Received unknown websocket message type: %s", msg.Type)
 		}
 	}
 }
@@ -125,6 +125,7 @@ func (c *Client) writePump() {
 		case <-ticker.C:
 			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				log.Debugf("websocket ping failed: %v", err)
 				return
 			}
 		}
@@ -135,7 +136,7 @@ func (c *Client) writePump() {
 func ServeWs(hub *Hub, handler InboundMessageHandler, w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Println(err)
+		log.Debugf("websocket upgrade failed: %v", err)
 		return
 	}
 	client := &Client{hub: hub, conn: conn, send: make(chan []byte, 256), handler: handler}
@@ -156,6 +157,7 @@ func (c *Client) SendMessage(message Message) error {
 	}
 	select {
 	case c.send <- b:
+		log.Debugf("SendMessage: queued message type=%s for client %p", message.Type, c)
 		return nil
 	default:
 		return fmt.Errorf("client send buffer full")

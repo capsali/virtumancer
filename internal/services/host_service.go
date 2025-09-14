@@ -3,7 +3,7 @@ package services
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	log "github.com/capsali/virtumancer/internal/logging"
 	"strings"
 	"sync"
 	"time"
@@ -138,7 +138,9 @@ func NewHostService(db *gorm.DB, connector *libvirt.Connector, hub *ws.Hub) *Hos
 // (e.g., when the UI first subscribes to stats) instead of connecting all
 // hosts at startup.
 func (s *HostService) EnsureHostConnected(hostID string) error {
+	log.Debugf("EnsureHostConnected: checking connection for host %s", hostID)
 	if _, err := s.connector.GetConnection(hostID); err == nil {
+		log.Debugf("EnsureHostConnected: host %s already connected", hostID)
 		return nil // already connected
 	}
 
@@ -147,9 +149,12 @@ func (s *HostService) EnsureHostConnected(hostID string) error {
 		return fmt.Errorf("could not find host %s in database: %w", hostID, err)
 	}
 
+	log.Verbosef("EnsureHostConnected: connecting to host %s (uri=%s)", hostID, host.URI)
 	if err := s.connector.AddHost(host); err != nil {
+		log.Debugf("EnsureHostConnected: failed to connect to host %s: %v", hostID, err)
 		return fmt.Errorf("failed to connect to host %s: %w", hostID, err)
 	}
+	log.Verbosef("EnsureHostConnected: connection established for host %s", hostID)
 	return nil
 }
 
@@ -198,11 +203,12 @@ func (s *HostService) AddHost(host storage.Host) (*storage.Host, error) {
 	if err := s.db.Create(&host).Error; err != nil {
 		return nil, fmt.Errorf("failed to save host to database: %w", err)
 	}
+	log.Verbosef("AddHost: saved host %s (uri=%s)", host.ID, host.URI)
 
 	err := s.connector.AddHost(host)
 	if err != nil {
 		if delErr := s.db.Delete(&host).Error; delErr != nil {
-			log.Printf("CRITICAL: Failed to rollback host creation for %s after connection failure. DB Error: %v", host.ID, delErr)
+			log.Debugf("CRITICAL: Failed to rollback host creation for %s after connection failure. DB Error: %v", host.ID, delErr)
 		}
 		return nil, fmt.Errorf("failed to connect to host: %w", err)
 	}
@@ -210,13 +216,14 @@ func (s *HostService) AddHost(host storage.Host) (*storage.Host, error) {
 	// Initial sync after adding a host
 	go s.SyncVMsForHost(host.ID)
 
+	log.Verbosef("AddHost: starting initial sync for host %s", host.ID)
 	s.broadcastHostsChanged()
 	return &host, nil
 }
 
 func (s *HostService) RemoveHost(hostID string) error {
 	if err := s.connector.RemoveHost(hostID); err != nil {
-		log.Printf("Warning: failed to disconnect from host %s during removal, continuing with DB deletion: %v", hostID, err)
+		log.Verbosef("RemoveHost: failed to disconnect from host %s during removal: %v", hostID, err)
 	}
 
 	// Remove VMs and their attachment indices transactionally
@@ -224,22 +231,22 @@ func (s *HostService) RemoveHost(hostID string) error {
 	var vms []storage.VirtualMachine
 	if err := tx.Where("host_id = ?", hostID).Find(&vms).Error; err != nil {
 		tx.Rollback()
-		log.Printf("Warning: failed to query VMs for host %s: %v", hostID, err)
+			log.Verbosef("Warning: failed to query VMs for host %s: %v", hostID, err)
 	} else {
 		for _, vm := range vms {
 			if err := tx.Where("vm_uuid = ?", vm.UUID).Delete(&storage.AttachmentIndex{}).Error; err != nil {
 				tx.Rollback()
-				log.Printf("Warning: failed to delete attachment indices for VM %s: %v", vm.UUID, err)
+				log.Verbosef("Warning: failed to delete attachment indices for VM %s: %v", vm.UUID, err)
 				break
 			}
 		}
 		// delete VMs
 		if err := tx.Where("host_id = ?", hostID).Delete(&storage.VirtualMachine{}).Error; err != nil {
 			tx.Rollback()
-			log.Printf("Warning: failed to delete VMs for host %s from database: %v", hostID, err)
+			log.Verbosef("Warning: failed to delete VMs for host %s from database: %v", hostID, err)
 		} else {
 			if err := tx.Commit().Error; err != nil {
-				log.Printf("Warning: failed to commit VM deletion transaction for host %s: %v", hostID, err)
+				log.Verbosef("Warning: failed to commit VM deletion transaction for host %s: %v", hostID, err)
 			}
 		}
 	}
@@ -255,14 +262,14 @@ func (s *HostService) RemoveHost(hostID string) error {
 func (s *HostService) ConnectToAllHosts() {
 	hosts, err := s.GetAllHosts()
 	if err != nil {
-		log.Printf("Error retrieving hosts from database on startup: %v", err)
+		log.Verbosef("Error retrieving hosts from database on startup: %v", err)
 		return
 	}
 
 	for _, host := range hosts {
-		log.Printf("Attempting to connect to stored host: %s", host.ID)
+		log.Verbosef("Attempting to connect to stored host: %s", host.ID)
 		if err := s.connector.AddHost(host); err != nil {
-			log.Printf("Failed to connect to host %s (%s) on startup: %v", host.ID, host.URI, err)
+			log.Verbosef("Failed to connect to host %s (%s) on startup: %v", host.ID, host.URI, err)
 		} else {
 			go s.SyncVMsForHost(host.ID)
 		}
@@ -281,15 +288,13 @@ func (s *HostService) GetVMsForHostFromDB(hostID string) ([]VMView, error) {
 		var graphics libvirt.GraphicsInfo // Default to false
 
 		if dbVM.State == storage.StateActive {
-			var graphicsDevice storage.GraphicsDevice
-			err := s.db.Joins("join graphics_device_attachments on graphics_device_attachments.graphics_device_id = graphics_devices.id").
-				Where("graphics_device_attachments.vm_uuid = ?", dbVM.UUID).First(&graphicsDevice).Error
-
+			var console storage.Console
+			err := s.db.Where("vm_uuid = ?", dbVM.UUID).First(&console).Error
 			if err != nil && err != gorm.ErrRecordNotFound {
-				log.Printf("Error querying graphics device for running VM %s: %v", dbVM.Name, err)
+				log.Verbosef("Error querying console for running VM %s: %v", dbVM.Name, err)
 			} else if err == nil {
-				graphics.VNC = strings.ToLower(graphicsDevice.Type) == "vnc"
-				graphics.SPICE = strings.ToLower(graphicsDevice.Type) == "spice"
+				graphics.VNC = strings.ToLower(console.Type) == "vnc"
+				graphics.SPICE = strings.ToLower(console.Type) == "spice"
 			}
 		}
 
@@ -382,7 +387,7 @@ func (s *HostService) getVMHardwareFromDB(hostID, vmName string) (*libvirt.Hardw
 }
 func (s *HostService) GetVMHardwareAndDetectDrift(hostID, vmName string) (*libvirt.HardwareInfo, error) {
 	if changed, syncErr := s.detectDriftOrIngestVM(hostID, vmName, false); syncErr != nil {
-		log.Printf("Error during hardware sync for %s: %v", vmName, syncErr)
+		log.Verbosef("Error during hardware sync for %s: %v", vmName, syncErr)
 	} else if changed {
 		s.broadcastVMsChanged(hostID)
 	}
@@ -393,7 +398,7 @@ func (s *HostService) GetVMHardwareAndDetectDrift(hostID, vmName string) (*libvi
 func (s *HostService) SyncVMsForHost(hostID string) {
 	changed, err := s.syncHostVMs(hostID)
 	if err != nil {
-		log.Printf("Error during background VM sync for host %s: %v", hostID, err)
+		log.Verbosef("Error during background VM sync for host %s: %v", hostID, err)
 		return
 	}
 	if changed {
@@ -407,20 +412,20 @@ func (s *HostService) detectDriftOrIngestVM(hostID, vmName string, isInitialSync
 		// If we can't get info from libvirt, check if it's a stale DB entry
 		var dbVM storage.VirtualMachine
 		if err := s.db.Where("host_id = ? AND name = ?", hostID, vmName).First(&dbVM).Error; err == nil {
-			log.Printf("Pruning VM %s from database as it's no longer in libvirt.", vmName)
+			log.Verbosef("Pruning VM %s from database as it's no longer in libvirt.", vmName)
 			tx := s.db.Begin()
 			if err := tx.Where("vm_uuid = ?", dbVM.UUID).Delete(&storage.AttachmentIndex{}).Error; err != nil {
 				tx.Rollback()
-				log.Printf("Warning: failed to delete attachment indices for VM %s: %v", dbVM.Name, err)
+				log.Verbosef("Warning: failed to delete attachment indices for VM %s: %v", dbVM.Name, err)
 				return false, err
 			}
 			if err := tx.Delete(&dbVM).Error; err != nil {
 				tx.Rollback()
-				log.Printf("Warning: failed to prune old VM %s: %v", dbVM.Name, err)
+				log.Verbosef("Warning: failed to prune old VM %s: %v", dbVM.Name, err)
 				return false, err
 			}
 			if err := tx.Commit().Error; err != nil {
-				log.Printf("Warning: failed to commit prune transaction for VM %s: %v", dbVM.Name, err)
+				log.Verbosef("Warning: failed to commit prune transaction for VM %s: %v", dbVM.Name, err)
 				return false, err
 			}
 			return true, nil // A change occurred (deletion)
@@ -446,7 +451,7 @@ func (s *HostService) detectDriftOrIngestVM(hostID, vmName string, isInitialSync
 
 	// --- Case 1: New VM found, perform initial ingestion ---
 	if err == gorm.ErrRecordNotFound {
-		log.Printf("New VM '%s' detected on host '%s'. Performing initial ingestion.", vmName, hostID)
+	log.Infof("New VM '%s' detected on host '%s'. Performing initial ingestion.", vmName, hostID)
 
 		// Check if this VM's UUID exists on a *different* host. This is a conflict.
 		var conflictingVM storage.VirtualMachine
@@ -455,7 +460,7 @@ func (s *HostService) detectDriftOrIngestVM(hostID, vmName string, isInitialSync
 		// This is not an error, just informational. It means the VM is new to this host.
 		// We log it at a debug/info level instead of treating it as a query failure.
 		if err == nil {
-			log.Printf("INFO: VM with DomainUUID %s was previously on host %s, now detected on %s. It will be treated as a new VM on this host.", vmInfo.UUID, conflictingVM.HostID, hostID)
+			log.Infof("VM with DomainUUID %s was previously on host %s, now detected on %s; treating as new on this host.", vmInfo.UUID, conflictingVM.HostID, hostID)
 		} else if err != gorm.ErrRecordNotFound {
 			// An actual database error occurred.
 			tx.Rollback()
@@ -477,13 +482,25 @@ func (s *HostService) detectDriftOrIngestVM(hostID, vmName string, isInitialSync
 		if err == gorm.ErrRecordNotFound {
 			newVMRecord.UUID = vmInfo.UUID
 		} else {
-			log.Printf("UUID conflict detected for DomainUUID %s. Assigning new internal UUID.", vmInfo.UUID)
+			log.Infof("UUID conflict detected for DomainUUID %s; assigning new internal UUID.", vmInfo.UUID)
 			newVMRecord.UUID = uuid.New().String()
 		}
 
 		if err := tx.Create(&newVMRecord).Error; err != nil {
-			tx.Rollback()
-			return false, err
+			// If insertion failed due to a name conflict on (host_id, name), attempt
+			// to disambiguate the VM name by appending a short suffix and retry.
+			if strings.Contains(err.Error(), "UNIQUE constraint failed: virtual_machines.host_id, virtual_machines.name") {
+				origName := newVMRecord.Name
+				newVMRecord.Name = fmt.Sprintf("%s-%s", origName, uuid.New().String()[:8])
+				log.Verbosef("Name conflict for VM '%s' on host %s — retrying insert as '%s'", origName, hostID, newVMRecord.Name)
+				if ierr := tx.Create(&newVMRecord).Error; ierr != nil {
+					tx.Rollback()
+					return false, fmt.Errorf("failed to create VM record after disambiguating name: %w", ierr)
+				}
+			} else {
+				tx.Rollback()
+				return false, err
+			}
 		}
 		changed = true
 		existingVM = newVMRecord
@@ -491,7 +508,7 @@ func (s *HostService) detectDriftOrIngestVM(hostID, vmName string, isInitialSync
 		// Also ingest hardware on initial sync
 		hardwareInfo, hwErr := s.connector.GetDomainHardware(hostID, vmName)
 		if hwErr != nil {
-			log.Printf("Warning: could not fetch hardware for new VM %s: %v", vmInfo.Name, hwErr)
+			log.Verbosef("Warning: could not fetch hardware for new VM %s: %v", vmInfo.Name, hwErr)
 		} else {
 			if _, err := s.syncVMHardware(tx, existingVM.UUID, hostID, hardwareInfo, &vmInfo.Graphics); err != nil {
 				tx.Rollback()
@@ -554,6 +571,12 @@ func (s *HostService) detectDriftOrIngestVM(hostID, vmName string, isInitialSync
 // syncVMHardware intelligently syncs hardware state, only performing writes when necessary.
 func (s *HostService) syncVMHardware(tx *gorm.DB, vmUUID string, hostID string, hardware *libvirt.HardwareInfo, graphics *libvirt.GraphicsInfo) (bool, error) {
 	var changed bool = false
+	if hardware != nil {
+		log.Debugf("syncVMHardware: vm=%s host=%s start devices: disks=%d networks=%d", vmUUID, hostID, len(hardware.Disks), len(hardware.Networks))
+	} else {
+		log.Debugf("syncVMHardware: vm=%s host=%s start (no hardware)", vmUUID, hostID)
+	}
+	defer log.Debugf("syncVMHardware: vm=%s host=%s finished", vmUUID, hostID)
 
 	// --- Sync Networks / Ports ---
 	var existingPorts []storage.Port
@@ -687,11 +710,7 @@ func (s *HostService) syncVMHardware(tx *gorm.DB, vmUUID string, hostID string, 
 		changed = true
 	}
 
-	// --- Sync Graphics (Intelligent Update) ---
-	var existingGfxAttachment storage.GraphicsDeviceAttachment
-	err := tx.Where("vm_uuid = ?", vmUUID).First(&existingGfxAttachment).Error
-	gfxExists := err == nil
-
+	// --- Sync Graphics (Console model) ---
 	var desiredGfxType string
 	if graphics.VNC {
 		desiredGfxType = "vnc"
@@ -700,54 +719,45 @@ func (s *HostService) syncVMHardware(tx *gorm.DB, vmUUID string, hostID string, 
 	}
 
 	if desiredGfxType == "" {
-		if gfxExists {
-			// delete index entry for this graphics attachment first
-			if err := tx.Where("device_type = ? AND attachment_id = ?", "graphics_device", existingGfxAttachment.ID).Delete(&storage.AttachmentIndex{}).Error; err != nil {
-				return false, err
-			}
-			if err := tx.Delete(&existingGfxAttachment).Error; err != nil {
-				return false, err
-			}
-			changed = true
+		// No console desired: remove any Console rows + attachment index for this VM
+		if err := tx.Where("device_type = ? AND vm_uuid = ?", "console", vmUUID).Delete(&storage.AttachmentIndex{}).Error; err != nil {
+			return false, err
 		}
+		if err := tx.Where("vm_uuid = ? AND type = ?", vmUUID, desiredGfxType).Delete(&storage.Console{}).Error; err != nil {
+			return false, err
+		}
+		changed = true
 	} else {
-		var gfxDevice storage.GraphicsDevice
-		tx.FirstOrCreate(&gfxDevice, storage.GraphicsDevice{Type: desiredGfxType}, storage.GraphicsDevice{Type: desiredGfxType, ModelName: desiredGfxType})
-
-		if !gfxExists {
-			newAttachment := storage.GraphicsDeviceAttachment{VMUUID: vmUUID, GraphicsDeviceID: gfxDevice.ID}
-			if err := tx.Create(&newAttachment).Error; err != nil {
-				return false, err
-			}
-			// insert attachment index, but first ensure the device isn't allocated elsewhere
-			alloc := storage.AttachmentIndex{VMUUID: vmUUID, DeviceType: "graphics_device", AttachmentID: newAttachment.ID, DeviceID: gfxDevice.ID}
-			var existingAlloc storage.AttachmentIndex
-			res := tx.Where("device_type = ? AND device_id = ?", alloc.DeviceType, alloc.DeviceID).First(&existingAlloc)
-			if res.Error == nil {
-				if existingAlloc.AttachmentID != alloc.AttachmentID || existingAlloc.VMUUID != alloc.VMUUID {
-					return false, fmt.Errorf("device (graphics id=%d) already allocated to VM %s (attachment_index id %d)", alloc.DeviceID, existingAlloc.VMUUID, existingAlloc.ID)
-				}
-				// allocation already present and matching
-			} else if res.Error != gorm.ErrRecordNotFound {
-				return false, res.Error
-			} else {
-				if err := tx.Create(&alloc).Error; err != nil {
+		// Create or reuse a Console instance for this VM+type
+		var console storage.Console
+		if err := tx.Where("vm_uuid = ? AND type = ?", vmUUID, desiredGfxType).First(&console).Error; err != nil {
+			if err == gorm.ErrRecordNotFound {
+				console = storage.Console{VMUUID: vmUUID, HostID: hostID, Type: desiredGfxType, ModelName: desiredGfxType}
+				if err := tx.Create(&console).Error; err != nil {
 					return false, err
 				}
-			}
-			changed = true
-		} else if existingGfxAttachment.GraphicsDeviceID != gfxDevice.ID {
-			if err := tx.Model(&existingGfxAttachment).Update("graphics_device_id", gfxDevice.ID).Error; err != nil {
+			} else {
 				return false, err
 			}
-			// update attachment index's device_id for this attachment
-			if err := tx.Model(&storage.AttachmentIndex{}).
-				Where("device_type = ? AND attachment_id = ?", "graphics_device", existingGfxAttachment.ID).
-				Update("device_id", gfxDevice.ID).Error; err != nil {
-				return false, err
-			}
-			changed = true
 		}
+
+		// Ensure attachment index references the console instance
+		alloc := storage.AttachmentIndex{VMUUID: vmUUID, DeviceType: "console", AttachmentID: console.ID, DeviceID: console.ID}
+		var existingAlloc storage.AttachmentIndex
+		res := tx.Where("device_type = ? AND device_id = ?", alloc.DeviceType, alloc.DeviceID).First(&existingAlloc)
+		if res.Error == nil {
+			if existingAlloc.AttachmentID != alloc.AttachmentID || existingAlloc.VMUUID != alloc.VMUUID {
+				return false, fmt.Errorf("console (id=%d) already allocated to VM %s (attachment_index id %d)", alloc.DeviceID, existingAlloc.VMUUID, existingAlloc.ID)
+			}
+			// allocation already present and matching
+		} else if res.Error != gorm.ErrRecordNotFound {
+			return false, res.Error
+		} else {
+			if err := tx.Create(&alloc).Error; err != nil {
+				return false, err
+			}
+		}
+		changed = true
 	}
 
 	return changed, nil
@@ -765,9 +775,9 @@ func (s *HostService) syncHostVMs(hostID string) (bool, error) {
 	for _, vmInfo := range liveVMs {
 		liveVMUUIDs[vmInfo.UUID] = struct{}{}
 		changed, err := s.detectDriftOrIngestVM(hostID, vmInfo.Name, true)
-		if err != nil {
-			log.Printf("Error syncing VM %s: %v", vmInfo.Name, err)
-		}
+			if err != nil {
+				log.Verbosef("Error syncing VM %s: %v", vmInfo.Name, err)
+			}
 		if changed {
 			overallChanged = true
 		}
@@ -780,20 +790,20 @@ func (s *HostService) syncHostVMs(hostID string) (bool, error) {
 
 	for _, dbVM := range dbVMs {
 		if _, exists := liveVMUUIDs[dbVM.DomainUUID]; !exists {
-			log.Printf("Pruning VM %s (UUID: %s) from database as it's no longer in libvirt.", dbVM.Name, dbVM.UUID)
+			log.Verbosef("Pruning VM %s (UUID: %s) from database as it's no longer in libvirt.", dbVM.Name, dbVM.UUID)
 			tx := s.db.Begin()
 			if err := tx.Where("vm_uuid = ?", dbVM.UUID).Delete(&storage.AttachmentIndex{}).Error; err != nil {
 				tx.Rollback()
-				log.Printf("Warning: failed to delete attachment indices for VM %s: %v", dbVM.Name, err)
+				log.Verbosef("Warning: failed to delete attachment indices for VM %s: %v", dbVM.Name, err)
 				continue
 			}
 			if err := tx.Delete(&dbVM).Error; err != nil {
 				tx.Rollback()
-				log.Printf("Warning: failed to prune old VM %s: %v", dbVM.Name, err)
+				log.Verbosef("Warning: failed to prune old VM %s: %v", dbVM.Name, err)
 				continue
 			}
 			if err := tx.Commit().Error; err != nil {
-				log.Printf("Warning: failed to commit prune transaction for VM %s: %v", dbVM.Name, err)
+				log.Verbosef("Warning: failed to commit prune transaction for VM %s: %v", dbVM.Name, err)
 				continue
 			}
 			overallChanged = true
@@ -831,14 +841,14 @@ func (s *HostService) performVMAction(hostID, vmName string, taskState storage.V
 	// After a successful action, re-run drift detection.
 	// This will update the power state and clear any drift flags if the action resolved them.
 	if changed, syncErr := s.detectDriftOrIngestVM(hostID, vmName, false); syncErr != nil {
-		log.Printf("Warning: failed to sync VM %s after %s action: %v", vmName, taskState, syncErr)
+	log.Verbosef("Warning: failed to sync VM %s after %s action: %v", vmName, taskState, syncErr)
 	} else if changed {
 		s.broadcastVMsChanged(hostID)
 	}
 
 	// Clear task state on success
 	if err := s.db.Model(&storage.VirtualMachine{}).Where("host_id = ? AND name = ?", hostID, vmName).Update("task_state", "").Error; err != nil {
-		log.Printf("Warning: failed to clear task state for %s: %v", vmName, err)
+	log.Verbosef("Warning: failed to clear task state for %s: %v", vmName, err)
 	}
 	s.broadcastVMsChanged(hostID)
 
@@ -896,7 +906,7 @@ func (s *HostService) SyncVMFromLibvirt(hostID, vmName string) error {
 
 	hardwareInfo, err := s.connector.GetDomainHardware(hostID, vmName)
 	if err != nil {
-		log.Printf("Warning: could not fetch hardware for VM %s during manual sync: %v", vmInfo.Name, err)
+	log.Verbosef("Warning: could not fetch hardware for VM %s during manual sync: %v", vmInfo.Name, err)
 	}
 
 	tx := s.db.Begin()
@@ -945,7 +955,7 @@ func (s *HostService) SyncVMFromLibvirt(hostID, vmName string) error {
 // RebuildVMFromDB flags a VM as needing a rebuild. The actual rebuild would
 // happen on the next power cycle or via a more complex process.
 func (s *HostService) RebuildVMFromDB(hostID, vmName string) error {
-	log.Printf("Flagging VM %s for rebuild. Changes will be applied on next power cycle.", vmName)
+	log.Infof("Flagging VM %s for rebuild; changes will be applied on next power cycle.", vmName)
 	if err := s.db.Model(&storage.VirtualMachine{}).Where("host_id = ? AND name = ?", hostID, vmName).Update("needs_rebuild", true).Error; err != nil {
 		return fmt.Errorf("failed to set needs_rebuild flag for %s: %w", vmName, err)
 	}
@@ -968,7 +978,7 @@ func (s *HostService) HandleSubscribe(client *ws.Client, payload ws.MessagePaylo
 	hostID, ok1 := payload["hostId"].(string)
 	vmName, ok2 := payload["vmName"].(string)
 	if !ok1 || !ok2 {
-		log.Println("Invalid payload for vm-stats subscription")
+		log.Verbosef("Invalid payload for vm-stats subscription: %+v", payload)
 		return
 	}
 	s.monitor.Subscribe(client, hostID, vmName)
@@ -978,7 +988,7 @@ func (s *HostService) HandleUnsubscribe(client *ws.Client, payload ws.MessagePay
 	hostID, ok1 := payload["hostId"].(string)
 	vmName, ok2 := payload["vmName"].(string)
 	if !ok1 || !ok2 {
-		log.Println("Invalid payload for vm-stats unsubscription")
+		log.Verbosef("Invalid payload for vm-stats unsubscription: %+v", payload)
 		return
 	}
 	s.monitor.Unsubscribe(client, hostID, vmName)
@@ -987,7 +997,7 @@ func (s *HostService) HandleUnsubscribe(client *ws.Client, payload ws.MessagePay
 func (s *HostService) HandleHostSubscribe(client *ws.Client, payload ws.MessagePayload) {
 	hostID, ok := payload["hostId"].(string)
 	if !ok {
-		log.Println("Invalid payload for host-stats subscription")
+		log.Verbosef("Invalid payload for host-stats subscription: %+v", payload)
 		return
 	}
 	s.hostMonitor.Subscribe(client, hostID)
@@ -996,7 +1006,7 @@ func (s *HostService) HandleHostSubscribe(client *ws.Client, payload ws.MessageP
 func (s *HostService) HandleHostUnsubscribe(client *ws.Client, payload ws.MessagePayload) {
 	hostID, ok := payload["hostId"].(string)
 	if !ok {
-		log.Println("Invalid payload for host-stats unsubscription")
+		log.Verbosef("Invalid payload for host-stats unsubscription: %+v", payload)
 		return
 	}
 	s.hostMonitor.Unsubscribe(client, hostID)
@@ -1014,7 +1024,7 @@ func (m *MonitoringManager) Subscribe(client *ws.Client, hostID, vmName string) 
 	// without holding the monitoring mutex because EnsureHostConnected may
 	// attempt network I/O and we don't want to block other subscribe/unsubscribe operations.
 	if err := m.service.EnsureHostConnected(hostID); err != nil {
-		log.Printf("Warning: could not ensure host %s connected: %v", hostID, err)
+		log.Debugf("Warning: could not ensure host %s connected: %v", hostID, err)
 		// Continue: we'll still start monitoring which will report errors
 		// when attempting to fetch stats if the host is unavailable.
 	}
@@ -1025,7 +1035,7 @@ func (m *MonitoringManager) Subscribe(client *ws.Client, hostID, vmName string) 
 	key := fmt.Sprintf("%s:%s", hostID, vmName)
 	sub, exists := m.subscriptions[key]
 	if !exists {
-		log.Printf("Starting monitoring for %s", key)
+		log.Verbosef("Starting monitoring for %s", key)
 		sub = &VmSubscription{
 			clients: make(map[*ws.Client]bool),
 			stop:    make(chan struct{}),
@@ -1060,7 +1070,7 @@ func (m *MonitoringManager) Unsubscribe(client *ws.Client, hostID, vmName string
 	if sub, exists := m.subscriptions[key]; exists {
 		delete(sub.clients, client)
 		if len(sub.clients) == 0 {
-			log.Printf("Stopping monitoring for %s", key)
+			log.Verbosef("Stopping monitoring for %s", key)
 			close(sub.stop)
 			delete(m.subscriptions, key)
 		}
@@ -1075,7 +1085,7 @@ func (m *MonitoringManager) UnsubscribeClient(client *ws.Client) {
 		if _, ok := sub.clients[client]; ok {
 			delete(sub.clients, client)
 			if len(sub.clients) == 0 {
-				log.Printf("Stopping monitoring for %s due to client disconnect", key)
+				log.Verbosef("Stopping monitoring for %s due to client disconnect", key)
 				close(sub.stop)
 				delete(m.subscriptions, key)
 			}
@@ -1098,6 +1108,7 @@ func (m *MonitoringManager) GetLastKnownStats(hostID, vmName string) *libvirt.VM
 
 func (m *MonitoringManager) pollVmStats(hostID, vmName string, sub *VmSubscription) {
 	// Perform an immediate fetch to provide instant feedback, then poll on a ticker.
+	log.Debugf("pollVmStats: immediate fetch for %s:%s", hostID, vmName)
 	stats, err := m.service.connector.GetDomainStats(hostID, vmName)
 	if err != nil {
 		stats = &libvirt.VMStats{State: -1}
@@ -1132,7 +1143,7 @@ func (m *MonitoringManager) pollVmStats(hostID, vmName string, sub *VmSubscripti
 
 			statsState := mapLibvirtStateToVMState(stats.State)
 			if statsState != storage.StateActive {
-				log.Printf("VM %s is not running (state: %s), stopping stats polling.", vmName, statsState)
+				log.Verbosef("VM %s is not running (state: %s), stopping stats polling.", vmName, statsState)
 				m.mu.Lock()
 				delete(m.subscriptions, fmt.Sprintf("%s:%s", hostID, vmName))
 				m.mu.Unlock()
@@ -1156,7 +1167,7 @@ func (m *HostMonitoringManager) Subscribe(client *ws.Client, hostID string) {
 
 	sub, exists := m.subscriptions[hostID]
 	if !exists {
-		log.Printf("Starting host monitoring for %s", hostID)
+	log.Verbosef("Starting host monitoring for %s", hostID)
 		sub = &HostSubscription{
 			clients: make(map[*ws.Client]bool),
 			stop:    make(chan struct{}),
@@ -1189,7 +1200,7 @@ func (m *HostMonitoringManager) Unsubscribe(client *ws.Client, hostID string) {
 	if sub, exists := m.subscriptions[hostID]; exists {
 		delete(sub.clients, client)
 		if len(sub.clients) == 0 {
-			log.Printf("Stopping host monitoring for %s", hostID)
+				log.Verbosef("Stopping host monitoring for %s", hostID)
 			close(sub.stop)
 			delete(m.subscriptions, hostID)
 		}
@@ -1204,7 +1215,7 @@ func (m *HostMonitoringManager) UnsubscribeClient(client *ws.Client) {
 		if _, ok := sub.clients[client]; ok {
 			delete(sub.clients, client)
 			if len(sub.clients) == 0 {
-				log.Printf("Stopping host monitoring for %s due to client disconnect", hostID)
+				log.Verbosef("Stopping host monitoring for %s due to client disconnect", hostID)
 				close(sub.stop)
 				delete(m.subscriptions, hostID)
 			}
@@ -1216,7 +1227,7 @@ func (m *HostMonitoringManager) pollHostStats(hostID string, sub *HostSubscripti
 	// Perform an immediate fetch so the UI receives data quickly.
 	stats, err := m.service.connector.GetHostStats(hostID)
 	if err != nil {
-		log.Printf("Error getting host stats for %s (initial): %v", hostID, err)
+		log.Debugf("Error getting host stats for %s (initial): %v", hostID, err)
 	} else {
 		sub.mu.Lock()
 		sub.lastKnownStats = stats
@@ -1232,7 +1243,7 @@ func (m *HostMonitoringManager) pollHostStats(hostID string, sub *HostSubscripti
 		case <-ticker.C:
 			stats, err := m.service.connector.GetHostStats(hostID)
 			if err != nil {
-				log.Printf("Error getting host stats for %s: %v", hostID, err)
+				log.Debugf("Error getting host stats for %s: %v", hostID, err)
 				// We don't stop polling here, as the host might just be temporarily unavailable
 				continue
 			}

@@ -6,7 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log"
+	log "github.com/capsali/virtumancer/internal/logging"
 	"os"
 	"strconv"
 	"strings"
@@ -34,6 +34,9 @@ func main() {
 	flag.Parse()
 
 	verbose := *verboseFlag || *vFlag
+	if verbose {
+		log.SetLevel("verbose")
+	}
 
 	// Configure log file if requested
 	var logF *os.File
@@ -86,7 +89,7 @@ func main() {
 		}
 		alloc := storage.AttachmentIndex{VMUUID: vmUUID, DeviceType: deviceType, AttachmentID: attachmentID, DeviceID: deviceID}
 		if *dryRun {
-			log.Printf("dry-run: would insert allocation: %+v", alloc)
+			log.Verbosef("dry-run: would insert allocation: %+v", alloc)
 			return nil
 		}
 		return db.Create(&alloc).Error
@@ -106,7 +109,7 @@ func main() {
 		}
 
 		if verbose {
-			log.Printf("Inspecting table: %s", tbl)
+			log.Verbosef("Inspecting table: %s", tbl)
 		}
 		// Inspect columns
 		pragma := fmt.Sprintf("PRAGMA table_info(%s);", tbl)
@@ -192,9 +195,9 @@ func main() {
 				rows.Close()
 				log.Fatalf("upsert alloc for %s id %d: %v", tbl, id, err)
 			}
-			if verbose && !*dryRun {
-				log.Printf("inserted allocation for vm=%s device=%s attachment_id=%d device_id=%d", vmUUID.String, deviceType, id, devID)
-			}
+				if verbose && !*dryRun {
+					log.Verbosef("inserted allocation for vm=%s device=%s attachment_id=%d device_id=%d", vmUUID.String, deviceType, id, devID)
+				}
 			count++
 		}
 		rows.Close()
@@ -216,18 +219,18 @@ func main() {
 			break
 		}
 
-		if hasDup {
+	if hasDup {
 			// run automatically if -yes/-y/--force provided
 			skipConfirm := *yesFlag || *yFlag || *forceFlag
 			if skipConfirm {
-				log.Println("Skipping confirmation due to --yes; running dedupe and creating index...")
+				log.Verbosef("Skipping confirmation due to --yes; running dedupe and creating index...")
 				if err := dedupeAttachmentIndices(db, true, *reportCSV, *keepNewest, *dryRun, verbose); err != nil {
 					log.Fatalf("dedupe failed: %v", err)
 				}
 				if err := createUniqueDeviceIndex(db, *dryRun); err != nil {
 					log.Fatalf("failed to create unique device index after dedupe: %v", err)
 				}
-				log.Println("Unique index on (device_type, device_id) created successfully")
+				log.Verbosef("Unique index on (device_type, device_id) created successfully")
 			} else {
 				// Ask for confirmation to run dedupe automatically
 				fmt.Print("Duplicates exist for (device_type, device_id). Run dedupe now and create the unique index? [y/N]: ")
@@ -237,7 +240,7 @@ func main() {
 				}
 				resp = strings.ToLower(strings.TrimSpace(resp))
 				if resp == "y" || resp == "yes" {
-					log.Println("Running dedupe (removing duplicates, keeping oldest)...")
+					log.Verbosef("Running dedupe (removing duplicates, keeping oldest)...")
 					if err := dedupeAttachmentIndices(db, true, *reportCSV, *keepNewest, *dryRun, verbose); err != nil {
 						log.Fatalf("dedupe failed: %v", err)
 					}
@@ -245,9 +248,9 @@ func main() {
 					if err := createUniqueDeviceIndex(db, *dryRun); err != nil {
 						log.Fatalf("failed to create unique device index after dedupe: %v", err)
 					}
-					log.Println("Unique index on (device_type, device_id) created successfully")
+					log.Verbosef("Unique index on (device_type, device_id) created successfully")
 				} else {
-					log.Println("Aborting index creation. Run the tool with -fix to remove duplicates first or rerun with -create-index and confirm.")
+					log.Verbosef("Aborting index creation. Run the tool with -fix to remove duplicates first or rerun with -create-index and confirm.")
 				}
 			}
 		} else {
@@ -255,7 +258,7 @@ func main() {
 			if err := createUniqueDeviceIndex(db, *dryRun); err != nil {
 				log.Fatalf("failed to create unique device index: %v", err)
 			}
-			log.Println("Unique index on (device_type, device_id) created successfully")
+			log.Verbosef("Unique index on (device_type, device_id) created successfully")
 		}
 	}
 }
@@ -309,14 +312,14 @@ func dedupeAttachmentIndices(db *gorm.DB, fix bool, reportPath string, keepNewes
 	}
 
 	if len(groups) == 0 {
-		log.Println("No duplicate attachment_indices found (by device_type+device_id)")
+		log.Infof("No duplicate attachment_indices found (by device_type+device_id)")
 		return nil
 	}
 
 	if verbose {
-		log.Printf("Found %d duplicate groups; fix=%v; report=%s", len(groups), fix, reportPath)
+	log.Infof("Found %d duplicate groups; fix=%v; report=%s", len(groups), fix, reportPath)
 	} else {
-		log.Printf("Found %d duplicate groups; fix=%v", len(groups), fix)
+	log.Infof("Found %d duplicate groups; fix=%v", len(groups), fix)
 	}
 
 	// Prepare CSV writer if requested
@@ -378,9 +381,9 @@ func dedupeAttachmentIndices(db *gorm.DB, fix bool, reportPath string, keepNewes
 		}
 
 		if dryRun {
-			log.Printf("dry-run: would remove ids %v for device_type=%s device_id=%d", removeIDs, g.DeviceType, g.DeviceID)
+			log.Verbosef("dry-run: would remove ids %v for device_type=%s device_id=%d", removeIDs, g.DeviceType, g.DeviceID)
 		} else if !fix {
-			log.Printf("Duplicate for device_type=%s device_id=%d: %d entries (would remove %d)", g.DeviceType, g.DeviceID, g.Cnt, len(removeIDs))
+			log.Verbosef("Duplicate for device_type=%s device_id=%d: %d entries (would remove %d)", g.DeviceType, g.DeviceID, g.Cnt, len(removeIDs))
 			continue
 		}
 
@@ -401,7 +404,7 @@ func dedupeAttachmentIndices(db *gorm.DB, fix bool, reportPath string, keepNewes
 			}
 		}
 		totalRemoved += len(removeIDNums)
-		log.Printf("Removed %d duplicate entries for device_type=%s device_id=%d", len(removeIDNums), g.DeviceType, g.DeviceID)
+	log.Infof("Removed %d duplicate entries for device_type=%s device_id=%d", len(removeIDNums), g.DeviceType, g.DeviceID)
 	}
 
 	if csvWriter != nil {
@@ -411,11 +414,11 @@ func dedupeAttachmentIndices(db *gorm.DB, fix bool, reportPath string, keepNewes
 			return fmt.Errorf("flush csv: %w", err)
 		}
 		csvFile.Close()
-		log.Printf("Duplicate report written to %s", reportPath)
+	log.Infof("Duplicate report written to %s", reportPath)
 	}
 
 	if fix {
-		log.Printf("Dedupe complete; total removed: %d", totalRemoved)
+		log.Infof("Dedupe complete; total removed: %d", totalRemoved)
 	}
 	return nil
 }

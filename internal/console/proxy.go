@@ -4,7 +4,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
-	"log"
+	log "github.com/capsali/virtumancer/internal/logging"
 	"net"
 	"net/http"
 	"strings"
@@ -99,7 +99,7 @@ func HandleConsole(db *gorm.DB, connector *libvirt.Connector, w http.ResponseWri
 
 	wsConn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Printf("Failed to upgrade websocket for console: %v", err)
+		log.Debugf("Failed to upgrade websocket for console: %v", err)
 		return
 	}
 	defer wsConn.Close()
@@ -110,21 +110,21 @@ func HandleConsole(db *gorm.DB, connector *libvirt.Connector, w http.ResponseWri
 	// Get libvirt connection for the host
 	lvConn, err := connector.GetConnection(hostID)
 	if err != nil {
-		log.Printf("Console proxy error: could not get libvirt connection for host %s: %v", hostID, err)
+		log.Verbosef("Console proxy error: could not get libvirt connection for host %s: %v", hostID, err)
 		return
 	}
 
 	// Find the domain (VM)
 	domain, err := lvConn.DomainLookupByName(vmName)
 	if err != nil {
-		log.Printf("Console proxy error: could not find VM %s on host %s: %v", vmName, hostID, err)
+		log.Verbosef("Console proxy error: could not find VM %s on host %s: %v", vmName, hostID, err)
 		return
 	}
 
 	// Get the VM's XML definition to find graphics details
 	xmlDesc, err := lvConn.DomainGetXMLDesc(domain, 0)
 	if err != nil {
-		log.Printf("Console proxy error: failed to get XML for %s: %v", vmName, err)
+		log.Verbosef("Console proxy error: failed to get XML for %s: %v", vmName, err)
 		return
 	}
 
@@ -140,7 +140,7 @@ func HandleConsole(db *gorm.DB, connector *libvirt.Connector, w http.ResponseWri
 
 	var def DomainDef
 	if err := xml.Unmarshal([]byte(xmlDesc), &def); err != nil {
-		log.Printf("Console proxy error: failed to parse XML for %s: %v", vmName, err)
+		log.Verbosef("Console proxy error: failed to parse XML for %s: %v", vmName, err)
 		return
 	}
 
@@ -154,13 +154,13 @@ func HandleConsole(db *gorm.DB, connector *libvirt.Connector, w http.ResponseWri
 	}
 
 	if vncPort == "" {
-		log.Printf("Console proxy error: VNC not configured or enabled for VM %s", vmName)
+		log.Verbosef("Console proxy error: VNC not configured or enabled for VM %s", vmName)
 		return
 	}
 
 	// Libvirt reports -1 for autoport, but we can't connect to that.
 	if vncPort == "-1" {
-		log.Printf("Console proxy error: VNC port is set to autoport (-1), cannot connect for VM %s", vmName)
+		log.Verbosef("Console proxy error: VNC port is set to autoport (-1), cannot connect for VM %s", vmName)
 		return
 	}
 
@@ -168,7 +168,7 @@ func HandleConsole(db *gorm.DB, connector *libvirt.Connector, w http.ResponseWri
 	if vncHost == "" || vncHost == "127.0.0.1" || vncHost == "0.0.0.0" || vncHost == "::" {
 		var host storage.Host
 		if result := db.First(&host, "id = ?", hostID); result.Error != nil {
-			log.Printf("Console proxy error: could not find host %s in DB to determine address: %v", hostID, result.Error)
+			log.Verbosef("Console proxy error: could not find host %s in DB to determine address: %v", hostID, result.Error)
 			return
 		}
 		// A simple way to get hostname from a libvirt URI like qemu+ssh://user@hostname/system
@@ -182,19 +182,19 @@ func HandleConsole(db *gorm.DB, connector *libvirt.Connector, w http.ResponseWri
 				vncHost = hostPart
 			}
 		} else {
-			log.Printf("Console proxy error: could not determine VNC host address from URI %s", host.URI)
+			log.Verbosef("Console proxy error: could not determine VNC host address from URI %s", host.URI)
 			return
 		}
-		log.Printf("VNC listen address was local; resolved to hypervisor address: %s", vncHost)
+		log.Debugf("VNC listen address was local; resolved to hypervisor address: %s", vncHost)
 	}
 
 	targetAddr := fmt.Sprintf("%s:%s", vncHost, vncPort)
-	log.Printf("Proxying console for %s to VNC target %s", vmName, targetAddr)
+	log.Verbosef("Proxying console for %s to VNC target %s", vmName, targetAddr)
 
 	// Dial the actual VNC service on the hypervisor
 	target, err := net.Dial("tcp", targetAddr)
 	if err != nil {
-		log.Printf("Console proxy error: failed to connect to VNC service at %s: %v", targetAddr, err)
+		log.Verbosef("Console proxy error: failed to connect to VNC service at %s: %v", targetAddr, err)
 		return
 	}
 	defer target.Close()
@@ -213,7 +213,7 @@ func HandleConsole(db *gorm.DB, connector *libvirt.Connector, w http.ResponseWri
 	}()
 
 	wg.Wait()
-	log.Printf("VNC console proxy session ended for %s", vmName)
+	log.Verbosef("VNC console proxy session ended for %s", vmName)
 }
 
 // HandleSpiceConsole finds the VM's SPICE console details and proxies the connection.
@@ -223,7 +223,7 @@ func HandleSpiceConsole(db *gorm.DB, connector *libvirt.Connector, w http.Respon
 
 	wsConn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Printf("Failed to upgrade websocket for SPICE console: %v", err)
+		log.Debugf("Failed to upgrade websocket for SPICE console: %v", err)
 		return
 	}
 	defer wsConn.Close()
@@ -235,21 +235,21 @@ func HandleSpiceConsole(db *gorm.DB, connector *libvirt.Connector, w http.Respon
 	// Get libvirt connection for the host
 	lvConn, err := connector.GetConnection(hostID)
 	if err != nil {
-		log.Printf("SPICE proxy error: could not get libvirt connection for host %s: %v", hostID, err)
+		log.Verbosef("SPICE proxy error: could not get libvirt connection for host %s: %v", hostID, err)
 		return
 	}
 
 	// Find the domain (VM)
 	domain, err := lvConn.DomainLookupByName(vmName)
 	if err != nil {
-		log.Printf("SPICE proxy error: could not find VM %s on host %s: %v", vmName, hostID, err)
+		log.Verbosef("SPICE proxy error: could not find VM %s on host %s: %v", vmName, hostID, err)
 		return
 	}
 
 	// Get the VM's XML definition to find graphics details
 	xmlDesc, err := lvConn.DomainGetXMLDesc(domain, 0)
 	if err != nil {
-		log.Printf("SPICE proxy error: failed to get XML for %s: %v", vmName, err)
+		log.Verbosef("SPICE proxy error: failed to get XML for %s: %v", vmName, err)
 		return
 	}
 
@@ -268,7 +268,7 @@ func HandleSpiceConsole(db *gorm.DB, connector *libvirt.Connector, w http.Respon
 
 	var def DomainDef
 	if err := xml.Unmarshal([]byte(xmlDesc), &def); err != nil {
-		log.Printf("SPICE proxy error: failed to parse XML for %s: %v", vmName, err)
+		log.Verbosef("SPICE proxy error: failed to parse XML for %s: %v", vmName, err)
 		return
 	}
 
@@ -287,7 +287,7 @@ func HandleSpiceConsole(db *gorm.DB, connector *libvirt.Connector, w http.Respon
 	}
 
 	if spicePort == "" {
-		log.Printf("SPICE proxy error: SPICE not configured or enabled for VM %s", vmName)
+		log.Verbosef("SPICE proxy error: SPICE not configured or enabled for VM %s", vmName)
 		return
 	}
 
@@ -295,7 +295,7 @@ func HandleSpiceConsole(db *gorm.DB, connector *libvirt.Connector, w http.Respon
 	if spiceHost == "" || spiceHost == "127.0.0.1" || spiceHost == "0.0.0.0" || spiceHost == "::" {
 		var host storage.Host
 		if result := db.First(&host, "id = ?", hostID); result.Error != nil {
-			log.Printf("SPICE proxy error: could not find host %s in DB to determine address: %v", hostID, result.Error)
+			log.Verbosef("SPICE proxy error: could not find host %s in DB to determine address: %v", hostID, result.Error)
 			return
 		}
 		// A simple way to get hostname from a libvirt URI like qemu+ssh://user@hostname/system
@@ -309,21 +309,21 @@ func HandleSpiceConsole(db *gorm.DB, connector *libvirt.Connector, w http.Respon
 				spiceHost = hostPart
 			}
 		} else {
-			log.Printf("SPICE proxy error: could not determine VNC host address from URI %s", host.URI)
+			log.Verbosef("SPICE proxy error: could not determine VNC host address from URI %s", host.URI)
 			return
 		}
-		log.Printf("SPICE listen address was local; resolved to hypervisor address: %s", spiceHost)
+		log.Debugf("SPICE listen address was local; resolved to hypervisor address: %s", spiceHost)
 	}
 
 	targetAddr := fmt.Sprintf("%s:%s", spiceHost, spicePort)
-	log.Printf("Proxying console for %s to SPICE target %s", vmName, targetAddr)
+	log.Verbosef("Proxying console for %s to SPICE target %s", vmName, targetAddr)
 
 	// Dial the actual SPICE service on the hypervisor.
 	// Note: This simple proxy does not handle TLS between the proxy and the SPICE server.
 	// For production, a TLS dialer would be needed if connecting to a TlsPort.
 	target, err := net.Dial("tcp", targetAddr)
 	if err != nil {
-		log.Printf("SPICE proxy error: failed to connect to SPICE service at %s: %v", targetAddr, err)
+		log.Verbosef("SPICE proxy error: failed to connect to SPICE service at %s: %v", targetAddr, err)
 		return
 	}
 	defer target.Close()
@@ -342,7 +342,7 @@ func HandleSpiceConsole(db *gorm.DB, connector *libvirt.Connector, w http.Respon
 	}()
 
 	wg.Wait()
-	log.Printf("SPICE console proxy session ended for %s", vmName)
+	log.Verbosef("SPICE console proxy session ended for %s", vmName)
 }
 
 
