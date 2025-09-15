@@ -1,0 +1,23 @@
+# Go backend
+virtumancer
+virtumancer.db
+virtumancer.db-journal
+
+# SSL Certificates
+localhost.crt
+localhost.key
+
+# Frontend (inside web/ directory)
+web/node_modules
+web/dist
+web/coverage
+web/.env*
+web/npm-debug.log*
+web/yarn-debug.log*
+web/yarn-error.log*
+web/playwright-report/
+web/test-results/
+
+# IDE/Editor specific
+.vscode/
+.idea/

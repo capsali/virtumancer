@@ -149,8 +149,8 @@ type Network struct {
 type Port struct {
 	gorm.Model
 	// VMUUID was removed in favor of explicit PortAttachment records.
-	MACAddress          string // canonical MAC for the resource
-	DeviceName          string // e.g. "vnet0", "eth0" (resource-level default)
+	MACAddress string // canonical MAC for the resource
+	// DeviceName removed from Port; device name is attachment-scoped
 	ModelName           string // e.g., 'virtio', 'e1000'
 	IPAddress           string
 	HostID              string `gorm:"index"`     // optional host scoping for unattached ports
@@ -160,8 +160,8 @@ type Port struct {
 	FilterRefJSON       string `gorm:"type:text"` // serialized <filterref> subelements
 	VlanTagsJSON        string `gorm:"type:text"` // serialized VLAN tags / metadata
 	TrustGuestRxFilters bool
-	PrimaryVlan         *int `gorm:"default:NULL"` // nullable primary VLAN tag
-	AddressJSON         string `gorm:"type:text"` // optional device address (pci/slot/function)
+	PrimaryVlan         *int   `gorm:"default:NULL"` // nullable primary VLAN tag
+	AddressJSON         string `gorm:"type:text"`    // optional device address (pci/slot/function)
 }
 
 // PortBinding links a Port to a Network.
@@ -178,22 +178,23 @@ type PortBinding struct {
 // (for provisioning / pool usage) and then be attached to VMs later.
 type PortAttachment struct {
 	gorm.Model
-	VMUUID     string `gorm:"index"`
-	PortID     uint   `gorm:"index"`
-	Port       Port
-	DeviceName string // per-VM device name (overrides Port.DeviceName)
-	MACAddress string // per-attachment MAC override
-	ModelName  string // per-attachment model, if different
-	Ordinal    int
-	Metadata   string `gorm:"type:text"` // optional JSON for hotplug / per-attachment options
+	VMUUID      string `gorm:"index"`
+	PortID      uint   `gorm:"index"`
+	Port        Port
+	HostID      string `gorm:"index"` // host that the attachment is bound to (if attached)
+	DeviceName  string // per-VM device name (overrides Port.DeviceName)
+	MACAddress  string // per-attachment MAC override
+	ModelName   string // per-attachment model, if different
+	Ordinal     int
+	Metadata    string `gorm:"type:text"` // optional JSON for hotplug / per-attachment options
 	AddressJSON string `gorm:"type:text"` // optional PCI/USB address for this attachment
 }
 
 // FilterRef represents a network filterref applied to a specific port/resource.
 type FilterRef struct {
 	gorm.Model
-	PortID        uint
-	Name          string
+	PortID         uint
+	Name           string
 	ParametersJSON string `gorm:"type:text"`
 }
 
@@ -492,14 +493,14 @@ type Disk struct {
 // DiskAttachment links a Disk (or volume) to a VM and stores per-VM metadata.
 type DiskAttachment struct {
 	gorm.Model
-	VMUUID     string `gorm:"index"`
-	DiskID     uint
-	DeviceName string // e.g., vda
-	BusType    string // virtio/sata/ide
-	ReadOnly   bool
-	Shareable  bool
+	VMUUID      string `gorm:"index"`
+	DiskID      uint
+	DeviceName  string // e.g., vda
+	BusType     string // virtio/sata/ide
+	ReadOnly    bool
+	Shareable   bool
 	AddressJSON string `gorm:"type:text"` // PCI address or target addressing
-	Metadata   string `gorm:"type:text"`
+	Metadata    string `gorm:"type:text"`
 }
 
 // VideoModel represents a virtual display adapter template (shared model).
@@ -514,22 +515,22 @@ type VideoModel struct {
 // VideoAttachment links a Video model to a VM (monitor index / primary flag).
 type VideoAttachment struct {
 	gorm.Model
-	VMUUID        string     `gorm:"index"`
-	VideoModelID  uint
-	VideoModel    VideoModel
-	MonitorIndex  int
-	Primary       bool
+	VMUUID       string `gorm:"index"`
+	VideoModelID uint
+	VideoModel   VideoModel
+	MonitorIndex int
+	Primary      bool
 }
 
 // BootConfig stores loader / nvram / boot-order information for a VM.
 type BootConfig struct {
 	gorm.Model
-	VMUUID       string `gorm:"index;unique"`
-	LoaderPath   string
-	LoaderType   string
-	NVramPath    string
+	VMUUID        string `gorm:"index;unique"`
+	LoaderPath    string
+	LoaderType    string
+	NVramPath     string
 	BootOrderJSON string `gorm:"type:text"`
-	SecureBoot   bool
+	SecureBoot    bool
 }
 
 // VendorOption stores vendor-specific options (e.g., qemu:) for arbitrary owners.
@@ -537,7 +538,7 @@ type VendorOption struct {
 	gorm.Model
 	OwnerType string `gorm:"size:64;index"` // e.g., "disk_attachment", "port"
 	OwnerID   uint   `gorm:"index"`
-	Namespace string `gorm:"size:64"`      // e.g., "qemu"
+	Namespace string `gorm:"size:64"` // e.g., "qemu"
 	Key       string
 	ValueJSON string `gorm:"type:text"`
 }
@@ -554,18 +555,18 @@ type MediatedDevice struct {
 // MediatedDeviceAttachment links a mediated device instance to a VM.
 type MediatedDeviceAttachment struct {
 	gorm.Model
-	VMUUID    string `gorm:"index"`
-	MdevID    uint
-	DeviceName string
+	VMUUID      string `gorm:"index"`
+	MdevID      uint
+	DeviceName  string
 	AddressJSON string `gorm:"type:text"`
 }
 
 // HostCapability stores discovered host capabilities (KVM, qemu features, GPU support, etc.)
 type HostCapability struct {
 	gorm.Model
-	HostID    string `gorm:"index"`
-	Name      string
-	Version   string
+	HostID      string `gorm:"index"`
+	Name        string
+	Version     string
 	DetailsJSON string `gorm:"type:text"`
 }
 
@@ -602,28 +603,28 @@ type GPUDevice struct {
 // GPUAttachment links a GPU device to a VM for passthrough or mediated assignments.
 type GPUAttachment struct {
 	gorm.Model
-	VMUUID     string `gorm:"index"`
+	VMUUID      string `gorm:"index"`
 	GPUDeviceID uint
-	DeviceName string
+	DeviceName  string
 	AddressJSON string `gorm:"type:text"`
 }
 
 // PCIeRootPort represents a PCIe root port configuration (useful for device addressing)
 type PCIeRootPort struct {
 	gorm.Model
-	HostID    string `gorm:"index"`
-	Slot      string
-	Bus       string
-	Function  string
+	HostID     string `gorm:"index"`
+	Slot       string
+	Bus        string
+	Function   string
 	ConfigJSON string `gorm:"type:text"`
 }
 
 // MachineType captures the domain's machine type (pc/q35 etc) and architecture.
 type MachineType struct {
 	gorm.Model
-	Name     string
-	Arch     string
-	Variant  string
+	Name       string
+	Arch       string
+	Variant    string
 	ConfigJSON string `gorm:"type:text"`
 }
 
@@ -661,10 +662,10 @@ type DiskDriverOptions struct {
 // BlockDev represents a qemu blockdev object for advanced block configurations.
 type BlockDev struct {
 	gorm.Model
-	NodeName   string `gorm:"uniqueIndex"`
-	Driver     string
-	FilePath   string
-	Format     string
+	NodeName    string `gorm:"uniqueIndex"`
+	Driver      string
+	FilePath    string
+	Format      string
 	OptionsJSON string `gorm:"type:text"`
 }
 
@@ -707,36 +708,35 @@ type VFIODevice struct {
 // SCSIController represents a SCSI controller device (e.g., virtio-scsi, pci-scsi).
 type SCSIController struct {
 	gorm.Model
-	ModelName string
-	Index     int
-	Type      string // 'virtio-scsi', 'lsi', 'megasas'
+	ModelName  string
+	Index      int
+	Type       string // 'virtio-scsi', 'lsi', 'megasas'
 	ConfigJSON string `gorm:"type:text"`
 }
 
 // SCSIControllerAttachment links a SCSIController to a VM (if controllers are modeled per-VM).
 type SCSIControllerAttachment struct {
 	gorm.Model
-	VMUUID            string `gorm:"index"`
-	SCSIControllerID  uint
-	AddressJSON       string `gorm:"type:text"`
+	VMUUID           string `gorm:"index"`
+	SCSIControllerID uint
+	AddressJSON      string `gorm:"type:text"`
 }
 
 // IOThread represents an I/O thread entity that can be pinned to vcpus and associated with block devices.
 type IOThread struct {
 	gorm.Model
-	Name      string
-	Affinity  string `gorm:"type:text"` // cpuset
+	Name       string
+	Affinity   string `gorm:"type:text"` // cpuset
 	ConfigJSON string `gorm:"type:text"`
 }
 
 // IOThreadAttachment connects an IOThread to an owner (disk/blockdev).
 type IOThreadAttachment struct {
 	gorm.Model
-	OwnerType string `gorm:"size:64;index"`
-	OwnerID   uint   `gorm:"index"`
+	OwnerType  string `gorm:"size:64;index"`
+	OwnerID    uint   `gorm:"index"`
 	IOThreadID uint
 }
-
 
 // DeviceAddress provides a structured representation of a device PCI/USB address.
 type DeviceAddress struct {
@@ -752,14 +752,14 @@ type DeviceAddress struct {
 // HostPCIDevice stores detailed PCI host device info (SR-IOV, capability metadata).
 type HostPCIDevice struct {
 	gorm.Model
-	HostDeviceID uint
-	VendorID     string
-	ProductID    string
-	Slot         string
-	Function     string
+	HostDeviceID  uint
+	VendorID      string
+	ProductID     string
+	Slot          string
+	Function      string
 	SRIOVTotalVFs int
 	SRIOVNumVFs   int
-	ConfigJSON   string `gorm:"type:text"`
+	ConfigJSON    string `gorm:"type:text"`
 }
 
 // CPUTune stores CPU tuning parameters that can be applied to a VM.
@@ -770,20 +770,20 @@ type CPUTune struct {
 	Quota      *int
 	Period     *int
 	EmuThreads *int
-	Vcpus     string `gorm:"type:text"` // CPU pinning set (e.g., "0-3,8-11")
+	Vcpus      string `gorm:"type:text"` // CPU pinning set (e.g., "0-3,8-11")
 }
 
 // IOTune stores I/O throttling parameters (per-VM or per-disk).
 type IOTune struct {
 	gorm.Model
-	OwnerType string `gorm:"size:64;index"` // 'vm'|'disk' etc
-	OwnerID   uint   `gorm:"index"`
-	ReadIOPS  *int
-	WriteIOPS *int
-	ReadBps   *int64
-	WriteBps  *int64
+	OwnerType     string `gorm:"size:64;index"` // 'vm'|'disk' etc
+	OwnerID       uint   `gorm:"index"`
+	ReadIOPS      *int
+	WriteIOPS     *int
+	ReadBps       *int64
+	WriteBps      *int64
 	TotalBytesSec *int64
-	ConfigJSON string `gorm:"type:text"`
+	ConfigJSON    string `gorm:"type:text"`
 }
 
 // QemuArg stores arbitrary qemu commandline/option entries attached to an owner.
@@ -798,7 +798,7 @@ type QemuArg struct {
 // MdevType stores available mediated device types and capability metadata.
 type MdevType struct {
 	gorm.Model
-	TypeName   string
+	TypeName    string
 	Description string
 	Vendor      string
 	ConfigJSON  string `gorm:"type:text"`
@@ -928,12 +928,12 @@ func InitDB(dataSourceName string) (*gorm.DB, error) {
 		&FilterRef{},
 		&VirtualPort{},
 		&DeviceAlias{},
-	&Disk{},
-	&DiskAttachment{},
-	&VideoModel{},
+		&Disk{},
+		&DiskAttachment{},
+		&VideoModel{},
 		&VideoAttachment{},
-        &VideoDevice{},
-        &VideoDeviceAttachment{},
+		&VideoDevice{},
+		&VideoDeviceAttachment{},
 		&BootConfig{},
 		&VendorOption{},
 		&MediatedDevice{},
@@ -990,6 +990,12 @@ func InitDB(dataSourceName string) (*gorm.DB, error) {
 	// are represented as NULL device_id (we changed DeviceID to *uint).
 	if err := db.Exec("UPDATE attachment_indices SET device_id = NULL WHERE device_id = 0").Error; err != nil {
 		log.Verbosef("failed to normalize attachment_indices device_id zeros: %v", err)
+		return nil, err
+	}
+
+	// Index PortAttachment.HostID for efficient host-scoped attachment queries
+	if err := db.Exec("CREATE INDEX IF NOT EXISTS idx_port_attachments_host_id ON port_attachments(host_id);").Error; err != nil {
+		log.Verbosef("failed to create index idx_port_attachments_host_id: %v", err)
 		return nil, err
 	}
 

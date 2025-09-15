@@ -92,14 +92,14 @@ type VMStats struct {
 
 // HardwareInfo holds the hardware configuration of a VM.
 type HardwareInfo struct {
-	Disks    []DiskInfo    `json:"disks"`
-	Networks []NetworkInfo `json:"networks"`
-	Videos   []VideoInfo   `json:"videos,omitempty"`
-	Consoles []ConsoleInfo `json:"consoles,omitempty"`
-	Hostdevs []HostdevInfo `json:"hostdevs,omitempty"`
-	BlockDevs []BlockDev   `json:"blockdevs,omitempty"`
-	IOThreads []IOThread   `json:"iothreads,omitempty"`
-	Mdevs    []MdevInfo    `json:"mdevs,omitempty"`
+	Disks     []DiskInfo     `json:"disks"`
+	Networks  []NetworkInfo  `json:"networks"`
+	Videos    []VideoInfo    `json:"videos,omitempty"`
+	Consoles  []ConsoleInfo  `json:"consoles,omitempty"`
+	Hostdevs  []HostdevInfo  `json:"hostdevs,omitempty"`
+	BlockDevs []BlockDev     `json:"blockdevs,omitempty"`
+	IOThreads []IOThread     `json:"iothreads,omitempty"`
+	Mdevs     []MdevInfo     `json:"mdevs,omitempty"`
 	NUMANodes []NUMANodeInfo `json:"numa_nodes,omitempty"`
 	Boot      []BootEntry    `json:"boot,omitempty"`
 	CPU       *CPUInfo       `json:"cpu,omitempty"`
@@ -144,14 +144,14 @@ type NetworkInfo struct {
 // DomainHardwareXML is used for unmarshalling hardware info from the domain XML.
 type DomainHardwareXML struct {
 	Devices struct {
-		Disks      []DiskInfo    `xml:"disk"`
-		Interfaces []NetworkInfo `xml:"interface"`
-		Videos     []VideoInfo   `xml:"video"`
-		Consoles   []ConsoleInfo `xml:"console"`
-		Hostdevs   []HostdevInfo `xml:"hostdev"`
-		BlockDevs  []BlockDev    `xml:"blockdev"`
-		IOThreads  []IOThread    `xml:"iothread"`
-		Mdevs      []MdevInfo    `xml:"mdev"`
+		Disks      []DiskInfo     `xml:"disk"`
+		Interfaces []NetworkInfo  `xml:"interface"`
+		Videos     []VideoInfo    `xml:"video"`
+		Consoles   []ConsoleInfo  `xml:"console"`
+		Hostdevs   []HostdevInfo  `xml:"hostdev"`
+		BlockDevs  []BlockDev     `xml:"blockdev"`
+		IOThreads  []IOThread     `xml:"iothread"`
+		Mdevs      []MdevInfo     `xml:"mdev"`
 		NUMANodes  []NUMANodeInfo `xml:"numa>cell"`
 		Boot       []BootEntry    `xml:"boot"`
 		CPU        *CPUInfo       `xml:"cpu"`
@@ -161,9 +161,9 @@ type DomainHardwareXML struct {
 // VideoInfo represents a <video> entry in domain XML.
 type VideoInfo struct {
 	Model struct {
-		Type string `xml:"type,attr" json:"type"`
-		VRAM int    `xml:"vram,attr,omitempty" json:"vram,omitempty"`
-		Heads int   `xml:"heads,attr,omitempty" json:"heads,omitempty"`
+		Type  string `xml:"type,attr" json:"type"`
+		VRAM  int    `xml:"vram,attr,omitempty" json:"vram,omitempty"`
+		Heads int    `xml:"heads,attr,omitempty" json:"heads,omitempty"`
 	} `xml:"model" json:"model"`
 }
 
