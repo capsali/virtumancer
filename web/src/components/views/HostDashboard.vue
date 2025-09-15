@@ -1,6 +1,6 @@
 <script setup>
 import { useMainStore } from '@/stores/mainStore';
-import { computed, ref, onMounted } from 'vue';
+import { computed, ref, onMounted, watch } from 'vue';
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router';
 
 const mainStore = useMainStore();
@@ -23,12 +23,70 @@ const vms = computed(() => {
 });
 
 const hostPorts = ref([]);
+const portAttachments = ref([]);
 
 onMounted(async () => {
   if (route.params.hostId) {
-    hostPorts.value = await mainStore.fetchHostPorts(route.params.hostId);
+    await loadHostPortsAndAttachments(route.params.hostId);
   }
 });
+
+const loadHostPortsAndAttachments = async (hostId) => {
+  if (!hostId) {
+    hostPorts.value = [];
+    portAttachments.value = [];
+    return;
+  }
+  try {
+    hostPorts.value = await mainStore.fetchHostPorts(hostId);
+  } catch (e) {
+    console.error('[HostDashboard] failed to fetch host ports', e);
+    hostPorts.value = [];
+  }
+
+  if (selectedHost.value && selectedHost.value.vms && selectedHost.value.vms.length) {
+    const tasks = selectedHost.value.vms.map(vm => (
+      mainStore.fetchVmPortAttachments(hostId, vm.name)
+        .then(list => (list || []).map(a => ({ ...a, vmName: vm.name })))
+        .catch(() => [])
+    ));
+    const settled = await Promise.allSettled(tasks);
+    portAttachments.value = settled.flatMap(s => (s.status === 'fulfilled' ? s.value : []));
+  } else {
+    portAttachments.value = [];
+  }
+}
+
+watch(() => route.params.hostId, async (newId, oldId) => {
+  if (newId === oldId) return;
+  await loadHostPortsAndAttachments(newId);
+  // (re)subscribe to host stats for the new host
+  if (newId) {
+    if (!selectedHost.value) {
+      mainStore.fetchHosts().then(() => {
+        if (newId) mainStore.subscribeHostStats(newId);
+      }).catch(err => console.error('[HostDashboard] fetchHosts failed', err));
+    } else {
+      mainStore.subscribeHostStats(newId);
+    }
+  }
+});
+
+// Re-fetch attachments when VM list changes
+watch(() => selectedHost.value?.vms, async (nv, ov) => {
+  if (!route.params.hostId) return;
+  if (!nv || nv.length === 0) {
+    portAttachments.value = [];
+    return;
+  }
+  const tasks = nv.map(vm => (
+    mainStore.fetchVmPortAttachments(route.params.hostId, vm.name)
+      .then(list => (list || []).map(a => ({ ...a, vmName: vm.name })))
+      .catch(() => [])
+  ));
+  const settled = await Promise.allSettled(tasks);
+  portAttachments.value = settled.flatMap(s => (s.status === 'fulfilled' ? s.value : []));
+}, { immediate: false });
 
 const totalMemory = computed(() => {
     return selectedHost.value?.info?.memory || 0;
@@ -208,6 +266,21 @@ const formatUptime = (sec) => {
             <div class="text-xs text-gray-500">Device: {{ p.device_name || p.DeviceName || '-' }} • Model: {{ p.model_name || p.ModelName || '-' }}</div>
           </div>
           <div class="text-sm text-gray-400">ID: {{ p.id }}</div>
+        </li>
+      </ul>
+    </div>
+
+    <!-- Port Attachments (host-scoped view) -->
+    <div class="mt-6 bg-gray-900 rounded-lg p-4">
+      <h2 class="text-xl font-semibold text-white mb-3">Port Attachments on Host</h2>
+      <div v-if="portAttachments.length === 0" class="text-gray-400">No port attachments found on this host.</div>
+      <ul v-else class="space-y-2">
+        <li v-for="att in portAttachments" :key="att.id" class="bg-gray-800 p-3 rounded flex items-center justify-between">
+          <div>
+            <div class="text-sm text-gray-300">Device: <span class="font-medium text-white">{{ att.device_name || att.DeviceName || '-' }}</span></div>
+            <div class="text-xs text-gray-500">VM: {{ att.vmName || att.vm_name || '-' }} • MAC: <span class="font-mono">{{ att.mac_address || att.MACAddress || (att.port && att.port.MACAddress) || '-' }}</span></div>
+          </div>
+          <div class="text-sm text-gray-400">HostID: {{ att.host_id || '-' }}</div>
         </li>
       </ul>
     </div>

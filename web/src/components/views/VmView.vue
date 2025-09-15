@@ -203,13 +203,13 @@ const formatBps = (bytes) => {
 };
 
 // --- Lifecycle & Data Fetching ---
-watch(activeTab, (newTab) => {
+watch(activeTab, async (newTab) => {
     if (newTab === 'hardware' && vm.value && host.value && !hardware.value) {
-        mainStore.fetchVmHardware(host.value.id, vm.value.name);
+        await mainStore.fetchVmHardware(host.value.id, vm.value.name);
     }
     if (newTab === 'hardware' && vm.value && host.value) {
         // Load port attachments for this VM
-        loadPortAttachments();
+        await loadPortAttachments();
     }
 });
 
@@ -230,7 +230,7 @@ onMounted(() => {
 // Watch for route changes to vmName and hostId
 watch(
     () => [route.params.vmName, host.value?.id],
-    ([newVmName, newHostId], [oldVmName, oldHostId]) => {
+    async ([newVmName, newHostId], [oldVmName, oldHostId]) => {
         if (previousVmName && previousHostId) {
             mainStore.unsubscribeFromVmStats(previousHostId, previousVmName);
         }
@@ -242,7 +242,9 @@ watch(
             previousHostId = newHostId;
             // If the hardware tab is active, immediately fetch hardware for the newly-selected VM
             if (activeTab.value === 'hardware') {
-                mainStore.fetchVmHardware(newHostId, newVmName);
+                await mainStore.fetchVmHardware(newHostId, newVmName);
+                // Also reload the port attachments for this VM so MACs and device names refresh
+                await loadPortAttachments();
             }
         }
     },
@@ -260,6 +262,7 @@ onBeforeRouteLeave((to, from, next) => {
 const portAttachments = ref([]);
 const loadPortAttachments = async () => {
     if (!host.value || !vm.value) return;
+    // Fetch VM-scoped attachments
     portAttachments.value = await mainStore.fetchVmPortAttachments(host.value.id, vm.value.name);
 }
 
@@ -481,54 +484,36 @@ const loadPortAttachments = async () => {
                     </div>
                 </div>
 
-                <!-- Network Adapters -->
+                <!-- Network / Ports -->
                 <div class="bg-gray-900 rounded-lg shadow-lg">
-                    <h3 class="text-xl font-semibold text-white p-4">Network Adapters</h3>
-                     <div class="overflow-x-auto">
-                        <table class="min-w-full divide-y divide-gray-700">
-                            <thead class="bg-gray-800">
-                                <tr>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Device</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">MAC Address</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Source Bridge</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Model</th>
-                                </tr>
-                            </thead>
-                            <tbody class="bg-gray-900 divide-y divide-gray-800">
-                                <tr v-for="net in hardware.networks" :key="net.mac.address">
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">{{ net.target.dev }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300 font-mono">{{ net.mac.address }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ net.source.bridge }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ net.model.type }}</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+                    <h3 class="text-xl font-semibold text-white p-4">Network / Ports</h3>
+                    <div class="p-4 text-sm text-gray-300">
+                        <h4 class="font-semibold mb-2">Attached Ports</h4>
+                        <div v-if="!portAttachments || portAttachments.length === 0" class="text-gray-400 mb-4">No port attachments found for this VM.</div>
+                        <div v-else class="overflow-x-auto mb-4">
+                            <table class="min-w-full divide-y divide-gray-700">
+                                <thead class="bg-gray-800">
+                                    <tr>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Device</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">MAC</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Model</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Network</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Host</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="bg-gray-900 divide-y divide-gray-800">
+                                    <tr v-for="att in portAttachments" :key="att.id">
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">{{ att.device_name || att.DeviceName || '-' }}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300 font-mono">{{ att.mac_address || att.MACAddress || (att.port && att.port.MACAddress) || '-' }}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ att.model_name || att.ModelName || (att.port && att.port.model_name) || '-' }}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ att.network?.bridge_name || att.Network?.BridgeName || (att.network && att.network.bridge_name) || '-' }}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ att.host_id || '-' }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
 
-                <!-- Port Attachments -->
-                <div class="bg-gray-900 rounded-lg shadow-lg">
-                    <h3 class="text-xl font-semibold text-white p-4">Port Attachments</h3>
-                    <div v-if="!portAttachments || portAttachments.length === 0" class="p-4 text-gray-400">No port attachments found for this VM.</div>
-                    <div v-else class="overflow-x-auto">
-                        <table class="min-w-full divide-y divide-gray-700">
-                            <thead class="bg-gray-800">
-                                <tr>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Device</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">MAC</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Model</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Network</th>
-                                </tr>
-                            </thead>
-                            <tbody class="bg-gray-900 divide-y divide-gray-800">
-                                <tr v-for="att in portAttachments" :key="att.id">
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">{{ att.device_name || att.DeviceName || (att.port && att.port.device_name) }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300 font-mono">{{ att.mac_address || att.MACAddress || (att.port && att.port.mac_address) }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ att.model_name || att.ModelName || (att.port && att.port.model_name) }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ att.network?.bridge_name || att.Network?.BridgeName || (att.network && att.network.bridge_name) || '-' }}</td>
-                                </tr>
-                            </tbody>
-                        </table>
+                        <!-- Unattached host ports removed from VM view; host-scoped list is available in Host Dashboard -->
                     </div>
                 </div>
             </div>
