@@ -352,6 +352,41 @@ export const useMainStore = defineStore('main', () => {
         }
     };
 
+        const fetchVideoModels = async () => {
+            try {
+                const res = await fetch('/api/v1/video/models');
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                return await res.json();
+            } catch (e) {
+                console.error('Failed to fetch video models', e);
+                return [];
+            }
+        };
+
+        const fetchHostVideoDevices = async (hostId) => {
+            if (!hostId) return [];
+            try {
+                const res = await fetch(`/api/v1/hosts/${hostId}/video/devices`);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                return await res.json();
+            } catch (e) {
+                console.error('Failed to fetch host video devices', e);
+                return [];
+            }
+        };
+
+        const fetchVmVideoAttachments = async (hostId, vmName) => {
+            if (!hostId || !vmName) return [];
+            try {
+                const res = await fetch(`/api/v1/hosts/${hostId}/vms/${vmName}/video-attachments`);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                return await res.json();
+            } catch (e) {
+                console.error('Failed to fetch VM video attachments', e);
+                return [];
+            }
+        };
+
     const fetchVmPortAttachments = async (hostId, vmName) => {
         if (!hostId || !vmName) return [];
         try {
@@ -546,6 +581,9 @@ export const useMainStore = defineStore('main', () => {
         fetchVmHardware,
     fetchHostPorts,
     fetchVmPortAttachments,
+    fetchVideoModels,
+    fetchHostVideoDevices,
+    fetchVmVideoAttachments,
         startVm,
         gracefulShutdownVm,
         gracefulRebootVm,

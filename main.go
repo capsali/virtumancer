@@ -88,6 +88,11 @@ func main() {
 		r.Get("/hosts/{hostID}/ports", apiHandler.ListHostPorts)
 		r.Get("/hosts/{hostID}/vms/{vmName}/port-attachments", apiHandler.ListVMPortAttachments)
 
+		// Video / GPU routes
+		r.Get("/video/models", apiHandler.ListVideoModels)
+		r.Get("/hosts/{hostID}/video/devices", apiHandler.ListHostVideoDevices)
+		r.Get("/hosts/{hostID}/vms/{vmName}/video-attachments", apiHandler.ListVMVideoAttachments)
+
 		// Console routes
 		r.Get("/hosts/{hostID}/vms/{vmName}/console", apiHandler.HandleVMConsole)
 		r.Get("/hosts/{hostID}/vms/{vmName}/spice", apiHandler.HandleSpiceConsole)

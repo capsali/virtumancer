@@ -88,7 +88,8 @@ func main() {
 		if deviceType == "volume" {
 			deviceID = 0
 		}
-		alloc := storage.AttachmentIndex{VMUUID: vmUUID, DeviceType: deviceType, AttachmentID: attachmentID, DeviceID: deviceID}
+				devID := deviceID
+				alloc := storage.AttachmentIndex{VMUUID: vmUUID, DeviceType: deviceType, AttachmentID: attachmentID, DeviceID: &devID}
 		if *dryRun {
 			log.Verbosef("dry-run: would insert allocation: %+v", alloc)
 			return nil

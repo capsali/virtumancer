@@ -2,7 +2,6 @@ package console
 
 import (
 	"encoding/xml"
-	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -189,7 +188,7 @@ func HandleConsole(db *gorm.DB, connector *libvirt.Connector, w http.ResponseWri
 		log.Debugf("VNC listen address was local; resolved to hypervisor address: %s", vncHost)
 	}
 
-	targetAddr := fmt.Sprintf("%s:%s", vncHost, vncPort)
+	targetAddr := net.JoinHostPort(vncHost, vncPort)
 	log.Verbosef("Proxying console for %s to VNC target %s", vmName, targetAddr)
 
 	// Dial the actual VNC service on the hypervisor
@@ -316,7 +315,7 @@ func HandleSpiceConsole(db *gorm.DB, connector *libvirt.Connector, w http.Respon
 		log.Debugf("SPICE listen address was local; resolved to hypervisor address: %s", spiceHost)
 	}
 
-	targetAddr := fmt.Sprintf("%s:%s", spiceHost, spicePort)
+	targetAddr := net.JoinHostPort(spiceHost, spicePort)
 	log.Verbosef("Proxying console for %s to SPICE target %s", vmName, targetAddr)
 
 	// Dial the actual SPICE service on the hypervisor.

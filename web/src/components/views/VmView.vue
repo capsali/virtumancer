@@ -532,7 +532,25 @@ const loadPortAttachments = async () => {
                     </div>
                 </div>
             </div>
-             <div v-else class="flex items-center justify-center h-48 text-gray-500 bg-gray-900 rounded-lg">
+            <!-- Video Devices -->
+            <div class="bg-gray-900 rounded-lg shadow-lg">
+                <h3 class="text-xl font-semibold text-white p-4">Video / GPU</h3>
+                <div class="p-4 text-sm text-gray-300">
+                    <p class="mb-2">Video models attached to this VM:</p>
+                    <ul class="list-disc pl-6">
+                        <li v-for="va in mainStore.fetchVmVideoAttachments(host.id, vm.name)" :key="va.id">
+                            Model: {{ va.video_model?.model_name || va.VideoModel?.ModelName }} — Monitor: {{ va.monitor_index }} — Primary: {{ va.primary }}
+                        </li>
+                    </ul>
+                    <p class="mt-4 mb-2">Physical video devices on host:</p>
+                    <ul class="list-disc pl-6">
+                        <li v-for="vd in mainStore.fetchHostVideoDevices(host.id)" :key="vd.id">
+                            {{ vd.model_name || vd.ModelName }} ({{ vd.vendor }})
+                        </li>
+                    </ul>
+                </div>
+            </div>
+             <div v-if="!mainStore.isLoading.vmHardware && !hardware" class="flex items-center justify-center h-48 text-gray-500 bg-gray-900 rounded-lg">
                 <p>Could not load hardware information.</p>
             </div>
        </div>

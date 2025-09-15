@@ -178,6 +178,48 @@ func (h *APIHandler) ListHostPorts(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(ports)
 }
 
+// ListVideoModels returns all known VideoModel templates.
+func (h *APIHandler) ListVideoModels(w http.ResponseWriter, r *http.Request) {
+	var models []storage.VideoModel
+	if err := h.DB.Find(&models).Error; err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(models)
+}
+
+// ListHostVideoDevices returns physical video devices discovered on the host.
+func (h *APIHandler) ListHostVideoDevices(w http.ResponseWriter, r *http.Request) {
+	hostID := chi.URLParam(r, "hostID")
+	var devices []storage.VideoDevice
+	if err := h.DB.Where("host_device_id IN (SELECT id FROM host_devices WHERE host_id = ?)", hostID).Find(&devices).Error; err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(devices)
+}
+
+// ListVMVideoAttachments returns video attachments for a VM by name.
+func (h *APIHandler) ListVMVideoAttachments(w http.ResponseWriter, r *http.Request) {
+	hostID := chi.URLParam(r, "hostID")
+	vmName := chi.URLParam(r, "vmName")
+	// Resolve VM to UUID
+	var vm storage.VirtualMachine
+	if err := h.DB.Where("host_id = ? AND name = ?", hostID, vmName).First(&vm).Error; err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	var atts []storage.VideoAttachment
+	if err := h.DB.Preload("VideoModel").Where("vm_uuid = ?", vm.UUID).Find(&atts).Error; err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(atts)
+}
+
 // ListVMPortAttachments returns port attachments for a VM by name (looks up VM UUID).
 func (h *APIHandler) ListVMPortAttachments(w http.ResponseWriter, r *http.Request) {
 	hostID := chi.URLParam(r, "hostID")

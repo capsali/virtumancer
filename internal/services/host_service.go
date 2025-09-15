@@ -693,11 +693,11 @@ func (s *HostService) syncVMHardware(tx *gorm.DB, vmUUID string, hostID string, 
 	}
 
 	for _, net := range hardware.Networks {
-			// Prefer matching by device name (vm-scoped unique). If not present, fall back to MAC address.
-			att, exists := existingByDev[net.Target.Dev]
-			if !exists && net.Mac.Address != "" {
-				att, exists = existingByMAC[net.Mac.Address]
-			}
+		// Prefer matching by device name (vm-scoped unique). If not present, fall back to MAC address.
+		att, exists := existingByDev[net.Target.Dev]
+		if !exists && net.Mac.Address != "" {
+			att, exists = existingByMAC[net.Mac.Address]
+		}
 
 		updates := make(map[string]interface{})
 		if !exists {
@@ -765,7 +765,8 @@ func (s *HostService) syncVMHardware(tx *gorm.DB, vmUUID string, hostID string, 
 			// by attachment_id exists, ensure it matches this VM. Otherwise, check for
 			// an existing index by (device_type, device_id) which would indicate the
 			// device is already allocated to some attachment.
-			alloc := storage.AttachmentIndex{VMUUID: vmUUID, DeviceType: "port", AttachmentID: existingAtt.ID, DeviceID: existingAtt.PortID}
+			devID1 := existingAtt.PortID
+			alloc := storage.AttachmentIndex{VMUUID: vmUUID, DeviceType: "port", AttachmentID: existingAtt.ID, DeviceID: &devID1}
 			var existingAlloc storage.AttachmentIndex
 			// First, try to find by attachment_id (this is the unique index that failed earlier)
 			aerr := tx.Where("device_type = ? AND attachment_id = ?", alloc.DeviceType, alloc.AttachmentID).First(&existingAlloc).Error
@@ -882,7 +883,8 @@ func (s *HostService) syncVMHardware(tx *gorm.DB, vmUUID string, hostID string, 
 			// we do not enforce uniqueness by device_id for device_type == "volume". We still
 			// record the attachment in the index for fast VM-scoped queries, but store DeviceID=0
 			// to avoid conflicts with the unique (device_type, device_id) index.
-			alloc := storage.AttachmentIndex{VMUUID: vmUUID, DeviceType: "volume", AttachmentID: newAttachment.ID, DeviceID: 0}
+			var nilDevID *uint = nil
+			alloc := storage.AttachmentIndex{VMUUID: vmUUID, DeviceType: "volume", AttachmentID: newAttachment.ID, DeviceID: nilDevID}
 			if err := tx.Create(&alloc).Error; err != nil {
 				return false, err
 			}
@@ -937,7 +939,8 @@ func (s *HostService) syncVMHardware(tx *gorm.DB, vmUUID string, hostID string, 
 		}
 
 		// Ensure attachment index references the console instance
-		alloc := storage.AttachmentIndex{VMUUID: vmUUID, DeviceType: "console", AttachmentID: console.ID, DeviceID: console.ID}
+	devID2 := console.ID
+	alloc := storage.AttachmentIndex{VMUUID: vmUUID, DeviceType: "console", AttachmentID: console.ID, DeviceID: &devID2}
 		var existingAlloc storage.AttachmentIndex
 		res := tx.Where("device_type = ? AND device_id = ?", alloc.DeviceType, alloc.DeviceID).First(&existingAlloc)
 		if res.Error == nil {
@@ -953,6 +956,323 @@ func (s *HostService) syncVMHardware(tx *gorm.DB, vmUUID string, hostID string, 
 			}
 		}
 		changed = true
+	}
+
+	// --- Sync Video devices ---
+	var existingVideoAttachments []storage.VideoAttachment
+	if err := tx.Preload("VideoModel").Where("vm_uuid = ?", vmUUID).Find(&existingVideoAttachments).Error; err != nil {
+		return false, err
+	}
+	existingVideoByIndex := make(map[int]storage.VideoAttachment)
+	for _, va := range existingVideoAttachments {
+		existingVideoByIndex[va.MonitorIndex] = va
+	}
+	for _, v := range hardware.Videos {
+		modelType := v.Model.Type
+		// Ensure VideoModel resource exists
+		var vid storage.VideoModel
+		if err := tx.Where("model_name = ?", modelType).First(&vid).Error; err != nil {
+			if err == gorm.ErrRecordNotFound {
+				vid = storage.VideoModel{ModelName: modelType, VRAM: uint(v.Model.VRAM), Heads: v.Model.Heads}
+				if err := tx.Create(&vid).Error; err != nil {
+					return false, err
+				}
+			} else {
+				return false, err
+			}
+		}
+
+		// Use monitor index 0 as default if none provided
+		mi := 0
+		att, exists := existingVideoByIndex[mi]
+		if exists {
+			updates := make(map[string]interface{})
+			if att.VideoModelID != vid.ID {
+				updates["video_model_id"] = vid.ID
+			}
+			if !att.Primary {
+				updates["primary"] = true
+			}
+			if len(updates) > 0 {
+				if err := tx.Model(&att).Updates(updates).Error; err != nil {
+					return false, err
+				}
+			}
+			// ensure attachment index exists
+				// Videos represent logical models, not exclusive host devices.
+				// Treat them like volumes for indexing (DeviceID=nil) so many VMs
+				// can reference the same Video model without causing uniqueness conflicts.
+				var nilDevID *uint = nil
+				alloc := storage.AttachmentIndex{VMUUID: vmUUID, DeviceType: "video", AttachmentID: att.ID, DeviceID: nilDevID}
+			var existingAlloc storage.AttachmentIndex
+			aerr := tx.Where("device_type = ? AND attachment_id = ?", alloc.DeviceType, alloc.AttachmentID).First(&existingAlloc).Error
+			if aerr == gorm.ErrRecordNotFound {
+				derr := tx.Where("device_type = ? AND device_id = ?", alloc.DeviceType, alloc.DeviceID).First(&existingAlloc).Error
+				if derr == gorm.ErrRecordNotFound {
+					if err := tx.Create(&alloc).Error; err != nil {
+						return false, err
+					}
+				} else if derr != nil {
+					return false, derr
+				}
+			} else if aerr != nil {
+				return false, aerr
+			}
+			changed = true
+		} else {
+			// Before creating an attachment, ensure the video device isn't already
+			// allocated to another VM. If it is, log and skip attaching this device
+			// instead of failing the whole sync.
+			// Check whether any attachment_index already claims this device id (only meaningful for exclusive devices)
+			var existingAlloc storage.AttachmentIndex
+			errAlloc := tx.Where("device_type = ? AND device_id = ?", "video", vid.ID).First(&existingAlloc).Error
+			if errAlloc == nil {
+				if existingAlloc.VMUUID != vmUUID {
+					log.Verbosef("video device id=%d already allocated to VM %s (attachment_index id %d); skipping attach for VM %s", vid.ID, existingAlloc.VMUUID, existingAlloc.ID, vmUUID)
+					// don't attach, continue to next video
+					continue
+				}
+				// if it belongs to same VM, proceed to ensure attachment exists below
+			} else if errAlloc != gorm.ErrRecordNotFound {
+				return false, errAlloc
+			}
+
+			newAtt := storage.VideoAttachment{VMUUID: vmUUID, VideoModelID: vid.ID, MonitorIndex: mi, Primary: true}
+			if err := tx.Create(&newAtt).Error; err != nil {
+				return false, err
+			}
+				// Use DeviceID=nil for video model multi-attach semantics.
+				var nilDevID2 *uint = nil
+				alloc := storage.AttachmentIndex{VMUUID: vmUUID, DeviceType: "video", AttachmentID: newAtt.ID, DeviceID: nilDevID2}
+			var existingAlloc2 storage.AttachmentIndex
+			aerr := tx.Where("device_type = ? AND attachment_id = ?", alloc.DeviceType, alloc.AttachmentID).First(&existingAlloc2).Error
+			if aerr == nil {
+				if existingAlloc2.VMUUID != alloc.VMUUID {
+					return false, fmt.Errorf("attachment (id=%d) already indexed for VM %s (index id %d)", alloc.AttachmentID, existingAlloc2.VMUUID, existingAlloc2.ID)
+				}
+			} else if aerr == gorm.ErrRecordNotFound {
+				derr := tx.Where("device_type = ? AND device_id = ?", alloc.DeviceType, alloc.DeviceID).First(&existingAlloc2).Error
+				if derr == gorm.ErrRecordNotFound {
+					if err := tx.Create(&alloc).Error; err != nil {
+						return false, err
+					}
+				} else if derr == nil {
+					if existingAlloc2.AttachmentID != alloc.AttachmentID || existingAlloc2.VMUUID != alloc.VMUUID {
+						return false, fmt.Errorf("device (type=%s id=%d) already allocated to VM %s (attachment_index id %d)", alloc.DeviceType, alloc.DeviceID, existingAlloc2.VMUUID, existingAlloc2.ID)
+					}
+				} else {
+					return false, derr
+				}
+			} else {
+				return false, aerr
+			}
+			changed = true
+		}
+	}
+
+	// --- Sync BootConfig ---
+	if len(hardware.Boot) > 0 {
+		bootJSON, _ := json.Marshal(hardware.Boot)
+		var bc storage.BootConfig
+		if err := tx.Where("vm_uuid = ?", vmUUID).First(&bc).Error; err != nil {
+			if err == gorm.ErrRecordNotFound {
+				bc = storage.BootConfig{VMUUID: vmUUID, BootOrderJSON: string(bootJSON)}
+				if err := tx.Create(&bc).Error; err != nil {
+					return false, err
+				}
+				changed = true
+			} else {
+				return false, err
+			}
+		} else {
+			if bc.BootOrderJSON != string(bootJSON) {
+				if err := tx.Model(&bc).Updates(map[string]interface{}{"boot_order_json": string(bootJSON)}).Error; err != nil {
+					return false, err
+				}
+				changed = true
+			}
+		}
+	}
+
+	// --- Sync Hostdev (PCI/USB passthrough) ---
+	for _, hd := range hardware.Hostdevs {
+		addr := fmt.Sprintf("%s:%s:%s.%s", hd.Source.Address.Domain, hd.Source.Address.Bus, hd.Source.Address.Slot, hd.Source.Address.Function)
+		// find or create HostDevice by host and address
+		var hdResource storage.HostDevice
+		if err := tx.Where("host_id = ? AND address = ?", hostID, addr).First(&hdResource).Error; err != nil {
+			if err == gorm.ErrRecordNotFound {
+				hdResource = storage.HostDevice{HostID: hostID, Type: hd.Type, Address: addr}
+				if err := tx.Create(&hdResource).Error; err != nil {
+					return false, err
+				}
+			} else {
+				return false, err
+			}
+		}
+
+		// ensure attachment exists
+		var hda storage.HostDeviceAttachment
+		if err := tx.Where("vm_uuid = ? AND host_device_id = ?", vmUUID, hdResource.ID).First(&hda).Error; err != nil {
+			if err == gorm.ErrRecordNotFound {
+				hda = storage.HostDeviceAttachment{VMUUID: vmUUID, HostDeviceID: hdResource.ID}
+				if err := tx.Create(&hda).Error; err != nil {
+					return false, err
+				}
+				// create attachment index idempotently
+				devID3 := hdResource.ID
+				alloc := storage.AttachmentIndex{VMUUID: vmUUID, DeviceType: "hostdevice", AttachmentID: hda.ID, DeviceID: &devID3}
+				var existingAlloc storage.AttachmentIndex
+				aerr := tx.Where("device_type = ? AND attachment_id = ?", alloc.DeviceType, alloc.AttachmentID).First(&existingAlloc).Error
+				if aerr == gorm.ErrRecordNotFound {
+					derr := tx.Where("device_type = ? AND device_id = ?", alloc.DeviceType, alloc.DeviceID).First(&existingAlloc).Error
+					if derr == gorm.ErrRecordNotFound {
+						if err := tx.Create(&alloc).Error; err != nil {
+							return false, err
+						}
+					} else if derr != nil {
+						return false, derr
+					}
+				} else if aerr != nil {
+					return false, aerr
+				}
+				changed = true
+			} else {
+				return false, err
+			}
+		}
+	}
+
+	// --- Sync BlockDev (qemu blockdev nodes) ---
+	for _, bd := range hardware.BlockDevs {
+		var b storage.BlockDev
+		if err := tx.Where("node_name = ?", bd.NodeName).First(&b).Error; err != nil {
+			if err == gorm.ErrRecordNotFound {
+				b = storage.BlockDev{NodeName: bd.NodeName, Driver: bd.Driver.Name, Format: bd.Driver.Type}
+				if err := tx.Create(&b).Error; err != nil {
+					return false, err
+				}
+				changed = true
+			} else {
+				return false, err
+			}
+		} else {
+			// could update fields if necessary in future
+		}
+	}
+
+	// --- Sync NUMA Nodes ---
+	var existingNUMA []storage.NUMANode
+	if err := tx.Where("vm_uuid = ?", vmUUID).Find(&existingNUMA).Error; err != nil {
+		return false, err
+	}
+	existingNUMAByID := make(map[int]storage.NUMANode)
+	for _, n := range existingNUMA {
+		existingNUMAByID[n.NodeID] = n
+	}
+	for _, nn := range hardware.NUMANodes {
+		if existing, ok := existingNUMAByID[nn.ID]; ok {
+			updates := make(map[string]interface{})
+			if existing.MemoryKB != nn.MemoryKB {
+				updates["memory_kb"] = nn.MemoryKB
+			}
+			if existing.CPUsJSON != nn.CPUs {
+				updates["cpus_json"] = nn.CPUs
+			}
+			if len(updates) > 0 {
+				if err := tx.Model(&existing).Updates(updates).Error; err != nil {
+					return false, err
+				}
+				changed = true
+			}
+			delete(existingNUMAByID, nn.ID)
+		} else {
+			newN := storage.NUMANode{VMUUID: vmUUID, NodeID: nn.ID, MemoryKB: nn.MemoryKB, CPUsJSON: nn.CPUs}
+			if err := tx.Create(&newN).Error; err != nil {
+				return false, err
+			}
+			changed = true
+		}
+	}
+	if len(existingNUMAByID) > 0 {
+		var idsToDelete []uint
+		for _, d := range existingNUMAByID {
+			idsToDelete = append(idsToDelete, d.ID)
+		}
+		if err := tx.Where("id IN ?", idsToDelete).Delete(&storage.NUMANode{}).Error; err != nil {
+			return false, err
+		}
+		changed = true
+	}
+
+	// --- Sync IOThreads (record only) ---
+	for _, it := range hardware.IOThreads {
+		var thr storage.IOThread
+		if err := tx.Where("name = ?", it.Name).First(&thr).Error; err != nil {
+			if err == gorm.ErrRecordNotFound {
+				thr = storage.IOThread{Name: it.Name}
+				if err := tx.Create(&thr).Error; err != nil {
+					return false, err
+				}
+				changed = true
+			} else {
+				return false, err
+			}
+		}
+	}
+
+	// --- Sync Mediated Devices ---
+	for _, m := range hardware.Mdevs {
+		// create or find MediatedDevice by type+device id
+		var md storage.MediatedDevice
+		if err := tx.Where("type_name = ? AND device_id = ?", m.Type, m.UUID).First(&md).Error; err != nil {
+			if err == gorm.ErrRecordNotFound {
+				md = storage.MediatedDevice{TypeName: m.Type, DeviceID: m.UUID}
+				if err := tx.Create(&md).Error; err != nil {
+					return false, err
+				}
+				changed = true
+			} else {
+				return false, err
+			}
+		}
+		// ensure attachment exists
+		var mda storage.MediatedDeviceAttachment
+		if err := tx.Where("vm_uuid = ? AND mdev_id = ?", vmUUID, md.ID).First(&mda).Error; err != nil {
+			if err == gorm.ErrRecordNotFound {
+				mda = storage.MediatedDeviceAttachment{VMUUID: vmUUID, MdevID: md.ID}
+				if err := tx.Create(&mda).Error; err != nil {
+					return false, err
+				}
+				devID4 := md.ID
+				alloc := storage.AttachmentIndex{VMUUID: vmUUID, DeviceType: "mdev", AttachmentID: mda.ID, DeviceID: &devID4}
+				var existingAlloc storage.AttachmentIndex
+				aerr := tx.Where("device_type = ? AND attachment_id = ?", alloc.DeviceType, alloc.AttachmentID).First(&existingAlloc).Error
+				if aerr == nil {
+					if existingAlloc.VMUUID != alloc.VMUUID {
+						return false, fmt.Errorf("attachment (id=%d) already indexed for VM %s (index id %d)", alloc.AttachmentID, existingAlloc.VMUUID, existingAlloc.ID)
+					}
+					// already indexed correctly
+				} else if aerr == gorm.ErrRecordNotFound {
+					derr := tx.Where("device_type = ? AND device_id = ?", alloc.DeviceType, alloc.DeviceID).First(&existingAlloc).Error
+					if derr == gorm.ErrRecordNotFound {
+						if err := tx.Create(&alloc).Error; err != nil {
+							return false, err
+						}
+					} else if derr == nil {
+						if existingAlloc.AttachmentID != alloc.AttachmentID || existingAlloc.VMUUID != alloc.VMUUID {
+							return false, fmt.Errorf("device (type=%s id=%d) already allocated to VM %s (attachment_index id %d)", alloc.DeviceType, alloc.DeviceID, existingAlloc.VMUUID, existingAlloc.ID)
+						}
+					} else {
+						return false, derr
+					}
+				} else {
+					return false, aerr
+				}
+				changed = true
+			} else {
+				return false, err
+			}
+		}
 	}
 
 	return changed, nil

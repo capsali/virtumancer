@@ -94,6 +94,15 @@ type VMStats struct {
 type HardwareInfo struct {
 	Disks    []DiskInfo    `json:"disks"`
 	Networks []NetworkInfo `json:"networks"`
+	Videos   []VideoInfo   `json:"videos,omitempty"`
+	Consoles []ConsoleInfo `json:"consoles,omitempty"`
+	Hostdevs []HostdevInfo `json:"hostdevs,omitempty"`
+	BlockDevs []BlockDev   `json:"blockdevs,omitempty"`
+	IOThreads []IOThread   `json:"iothreads,omitempty"`
+	Mdevs    []MdevInfo    `json:"mdevs,omitempty"`
+	NUMANodes []NUMANodeInfo `json:"numa_nodes,omitempty"`
+	Boot      []BootEntry    `json:"boot,omitempty"`
+	CPU       *CPUInfo       `json:"cpu,omitempty"`
 }
 
 // DiskInfo represents a virtual disk.
@@ -137,7 +146,84 @@ type DomainHardwareXML struct {
 	Devices struct {
 		Disks      []DiskInfo    `xml:"disk"`
 		Interfaces []NetworkInfo `xml:"interface"`
+		Videos     []VideoInfo   `xml:"video"`
+		Consoles   []ConsoleInfo `xml:"console"`
+		Hostdevs   []HostdevInfo `xml:"hostdev"`
+		BlockDevs  []BlockDev    `xml:"blockdev"`
+		IOThreads  []IOThread    `xml:"iothread"`
+		Mdevs      []MdevInfo    `xml:"mdev"`
+		NUMANodes  []NUMANodeInfo `xml:"numa>cell"`
+		Boot       []BootEntry    `xml:"boot"`
+		CPU        *CPUInfo       `xml:"cpu"`
 	} `xml:"devices"`
+}
+
+// VideoInfo represents a <video> entry in domain XML.
+type VideoInfo struct {
+	Model struct {
+		Type string `xml:"type,attr" json:"type"`
+		VRAM int    `xml:"vram,attr,omitempty" json:"vram,omitempty"`
+		Heads int   `xml:"heads,attr,omitempty" json:"heads,omitempty"`
+	} `xml:"model" json:"model"`
+}
+
+// ConsoleInfo represents a <console> entry (serial/graphics consoles may use <console> too).
+type ConsoleInfo struct {
+	Type   string `xml:"type,attr" json:"type"`
+	Target struct {
+		Dev string `xml:"dev,attr" json:"dev"`
+	} `xml:"target" json:"target"`
+}
+
+// HostdevInfo represents a <hostdev> passthrough device (PCI/USB) in domain XML.
+type HostdevInfo struct {
+	Mode   string `xml:"mode,attr" json:"mode"`
+	Type   string `xml:"type,attr" json:"type"`
+	Source struct {
+		Address struct {
+			Domain   string `xml:"domain,attr" json:"domain"`
+			Bus      string `xml:"bus,attr" json:"bus"`
+			Slot     string `xml:"slot,attr" json:"slot"`
+			Function string `xml:"function,attr" json:"function"`
+		} `xml:"address" json:"address"`
+	} `xml:"source" json:"source"`
+}
+
+// BlockDev is a lightweight representation of a <blockdev> element.
+type BlockDev struct {
+	NodeName string `xml:"node-name,attr" json:"node_name"`
+	Driver   struct {
+		Name string `xml:"name,attr" json:"name"`
+		Type string `xml:"type,attr" json:"type"`
+	} `xml:"driver" json:"driver"`
+}
+
+// IOThread represents an <iothread> element when present.
+type IOThread struct {
+	Name string `xml:"name,attr" json:"name"`
+}
+
+// MdevInfo represents a mediated device entry (<mdev> or <mdev:...> structures).
+type MdevInfo struct {
+	Type string `xml:"type,attr" json:"type"`
+	UUID string `xml:"uuid,attr,omitempty" json:"uuid,omitempty"`
+}
+
+// NUMANodeInfo represents a <numa><cell>...</cell></numa> cell entry.
+type NUMANodeInfo struct {
+	ID       int    `xml:"id,attr" json:"id"`
+	MemoryKB uint64 `xml:"memory,attr" json:"memory_kb"`
+	CPUs     string `xml:"cpus" json:"cpus"`
+}
+
+// BootEntry represents <boot dev="..."/> entries.
+type BootEntry struct {
+	Dev string `xml:"dev,attr" json:"dev"`
+}
+
+// CPUInfo is a minimal representation of <cpu> subtree for parsing features/topology.
+type CPUInfo struct {
+	Mode string `xml:"mode,attr" json:"mode"`
 }
 
 // HostInfo holds basic information and statistics about a hypervisor host.
@@ -974,8 +1060,17 @@ func (c *Connector) GetDomainHardware(hostID, vmName string) (*HardwareInfo, err
 	}
 
 	hardware := &HardwareInfo{
-		Disks:    def.Devices.Disks,
-		Networks: def.Devices.Interfaces,
+		Disks:     def.Devices.Disks,
+		Networks:  def.Devices.Interfaces,
+		Videos:    def.Devices.Videos,
+		Consoles:  def.Devices.Consoles,
+		Hostdevs:  def.Devices.Hostdevs,
+		BlockDevs: def.Devices.BlockDevs,
+		IOThreads: def.Devices.IOThreads,
+		Mdevs:     def.Devices.Mdevs,
+		NUMANodes: def.Devices.NUMANodes,
+		Boot:      def.Devices.Boot,
+		CPU:       def.Devices.CPU,
 	}
 
 	// Post-process disks to populate the unified 'Path' field.
@@ -985,6 +1080,11 @@ func (c *Connector) GetDomainHardware(hostID, vmName string) (*HardwareInfo, err
 		} else if hardware.Disks[i].Source.Dev != "" {
 			hardware.Disks[i].Path = hardware.Disks[i].Source.Dev
 		}
+	}
+
+	// Normalize NUMA CPU lists (if present) by trimming whitespace.
+	for i := range hardware.NUMANodes {
+		hardware.NUMANodes[i].CPUs = strings.TrimSpace(hardware.NUMANodes[i].CPUs)
 	}
 
 	return hardware, nil
