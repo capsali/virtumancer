@@ -337,6 +337,36 @@ export const useMainStore = defineStore('main', () => {
         }
     };
 
+    const fetchHostPorts = async (hostId) => {
+        if (!hostId) return [];
+        try {
+            const controller = new AbortController();
+            const id = setTimeout(() => controller.abort(), 5000);
+            const response = await fetch(`/api/v1/hosts/${hostId}/ports`, { signal: controller.signal });
+            clearTimeout(id);
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            return await response.json() || [];
+        } catch (error) {
+            console.error(`Failed to fetch ports for ${hostId}:`, error);
+            return [];
+        }
+    };
+
+    const fetchVmPortAttachments = async (hostId, vmName) => {
+        if (!hostId || !vmName) return [];
+        try {
+            const controller = new AbortController();
+            const id = setTimeout(() => controller.abort(), 5000);
+            const response = await fetch(`/api/v1/hosts/${hostId}/vms/${vmName}/port-attachments`, { signal: controller.signal });
+            clearTimeout(id);
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            return await response.json() || [];
+        } catch (error) {
+            console.error(`Failed to fetch port attachments for ${hostId}/${vmName}:`, error);
+            return [];
+        }
+    };
+
     const subscribeToVmStats = (hostId, vmName) => {
         console.log(`[mainStore] subscribeToVmStats: Attempting to subscribe to ${hostId}/${vmName}`);
         console.log(`[mainStore] Current VM subscription: ${currentlySubscribedHostId.value}/${currentlySubscribedVmName.value}`);
@@ -514,6 +544,8 @@ export const useMainStore = defineStore('main', () => {
         deleteHost,
         selectHost,
         fetchVmHardware,
+    fetchHostPorts,
+    fetchVmPortAttachments,
         startVm,
         gracefulShutdownVm,
         gracefulRebootVm,

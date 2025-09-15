@@ -1,6 +1,6 @@
 <script setup>
 import { useMainStore } from '@/stores/mainStore';
-import { computed, onMounted } from 'vue';
+import { computed, ref, onMounted } from 'vue';
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router';
 
 const mainStore = useMainStore();
@@ -20,6 +20,14 @@ const hostStats = computed(() => {
 
 const vms = computed(() => {
     return selectedHost.value?.vms || [];
+});
+
+const hostPorts = ref([]);
+
+onMounted(async () => {
+  if (route.params.hostId) {
+    hostPorts.value = await mainStore.fetchHostPorts(route.params.hostId);
+  }
 });
 
 const totalMemory = computed(() => {
@@ -188,6 +196,20 @@ const formatUptime = (sec) => {
         <span class="text-sm font-semibold px-3 py-1 rounded-full" :class="hostStateColor(selectedHost)">{{ hostStateText(selectedHost) }}</span>
       </div>
       <p class="text-gray-400 font-mono mt-1">{{ selectedHost.uri }}</p>
+    </div>
+    <!-- Unattached Ports -->
+    <div class="mt-6 bg-gray-900 rounded-lg p-4">
+      <h2 class="text-xl font-semibold text-white mb-3">Unattached Ports (Port Pool)</h2>
+      <div v-if="hostPorts.length === 0" class="text-gray-400">No unattached ports found for this host.</div>
+      <ul v-else class="space-y-2">
+        <li v-for="p in hostPorts" :key="p.id" class="bg-gray-800 p-3 rounded flex items-center justify-between">
+          <div>
+            <div class="text-sm text-gray-300">MAC: <span class="font-mono">{{ p.mac_address || p.MACAddress || p.MAC }}</span></div>
+            <div class="text-xs text-gray-500">Device: {{ p.device_name || p.DeviceName || '-' }} • Model: {{ p.model_name || p.ModelName || '-' }}</div>
+          </div>
+          <div class="text-sm text-gray-400">ID: {{ p.id }}</div>
+        </li>
+      </ul>
     </div>
     
     <!-- Summary Section -->
