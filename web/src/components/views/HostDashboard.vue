@@ -24,10 +24,13 @@ const vms = computed(() => {
 
 const hostPorts = ref([]);
 const portAttachments = ref([]);
+const discoveredVMs = computed(() => mainStore.discoveredByHost[route.params.hostId] || []);
 
 onMounted(async () => {
   if (route.params.hostId) {
     await loadHostPortsAndAttachments(route.params.hostId);
+  // Prime centralized discovered cache for this host
+  mainStore.refreshDiscoveredVMs(route.params.hostId).catch(() => {});
   }
 });
 
@@ -60,6 +63,8 @@ const loadHostPortsAndAttachments = async (hostId) => {
 watch(() => route.params.hostId, async (newId, oldId) => {
   if (newId === oldId) return;
   await loadHostPortsAndAttachments(newId);
+  // Prime/refresh centralized cache
+  mainStore.refreshDiscoveredVMs(newId).catch(() => {});
   // (re)subscribe to host stats for the new host
   if (newId) {
     if (!selectedHost.value) {
@@ -86,6 +91,13 @@ watch(() => selectedHost.value?.vms, async (nv, ov) => {
   ));
   const settled = await Promise.allSettled(tasks);
   portAttachments.value = settled.flatMap(s => (s.status === 'fulfilled' ? s.value : []));
+}, { immediate: false });
+
+// Refresh discovered VM list when host VMs change
+watch(() => selectedHost.value?.vms, async (nv, ov) => {
+  if (!route.params.hostId) return;
+  // refresh centralized cache and update local view
+  discoveredVMs.value = await mainStore.refreshDiscoveredVMs(route.params.hostId);
 }, { immediate: false });
 
 const totalMemory = computed(() => {
@@ -281,6 +293,28 @@ const formatUptime = (sec) => {
             <div class="text-xs text-gray-500">VM: {{ att.vmName || att.vm_name || '-' }} • MAC: <span class="font-mono">{{ att.mac_address || att.MACAddress || (att.port && att.port.MACAddress) || '-' }}</span></div>
           </div>
           <div class="text-sm text-gray-400">HostID: {{ att.host_id || '-' }}</div>
+        </li>
+      </ul>
+    </div>
+
+    <!-- Discovered VMs (not yet managed) -->
+    <div class="mt-6 bg-gray-900 rounded-lg p-4">
+      <div class="flex items-center justify-between">
+        <h2 class="text-xl font-semibold text-white mb-3">Discovered VMs (Not Managed)</h2>
+        <div>
+          <button @click="mainStore.importAllVMs(selectedHost.id)" class="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded mr-2">Import All</button>
+        </div>
+      </div>
+      <div v-if="discoveredVMs.length === 0" class="text-gray-400">No discovered VMs found for this host.</div>
+      <ul v-else class="space-y-2">
+        <li v-for="d in discoveredVMs" :key="d.uuid" class="bg-gray-800 p-3 rounded flex items-center justify-between">
+          <div>
+            <div class="text-sm text-gray-300">Name: <span class="font-medium text-white">{{ d.name }}</span></div>
+            <div class="text-xs text-gray-500">UUID: <span class="font-mono">{{ d.uuid }}</span></div>
+          </div>
+          <div class="flex items-center gap-2">
+            <button @click="mainStore.importVm(selectedHost.id, d.name)" class="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded">Import</button>
+          </div>
         </li>
       </ul>
     </div>

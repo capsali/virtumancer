@@ -122,6 +122,10 @@ type HostServiceProvider interface {
 	GetPortsForHostFromDB(hostID string) ([]storage.Port, error)
 	GetPortAttachmentsForVM(vmUUID string) ([]PortAttachmentView, error)
 	SyncVMsForHost(hostID string)
+	// Discovery and import helpers
+	ListDiscoveredVMs(hostID string) ([]libvirt.VMInfo, error)
+	ImportVM(hostID, vmName string) error
+	ImportAllVMs(hostID string) error
 	SyncVMFromLibvirt(hostID, vmName string) error
 	RebuildVMFromDB(hostID, vmName string) error
 	StartVM(hostID, vmName string) error
@@ -182,6 +186,30 @@ func (s *HostService) EnsureHostConnected(hostID string) error {
 	// Notify clients that the host is now connected
 	s.broadcastHostConnectionChanged(hostID, true)
 	return nil
+}
+
+// AddHost creates a new Host record and triggers a background connection attempt.
+func (s *HostService) AddHost(host storage.Host) (*storage.Host, error) {
+	if host.ID == "" {
+		host.ID = uuid.New().String()
+	}
+
+	if err := s.db.Create(&host).Error; err != nil {
+		return nil, fmt.Errorf("failed to create host: %w", err)
+	}
+
+	// Notify clients that hosts changed
+	s.broadcastHostsChanged()
+
+	// Attempt to connect in background so API returns fast. EnsureHostConnected
+	// will update DB task_state/state appropriately.
+	go func(id string) {
+		if err := s.EnsureHostConnected(id); err != nil {
+			log.Verbosef("AddHost: background connect failed for host %s: %v", id, err)
+		}
+	}(host.ID)
+
+	return &host, nil
 }
 
 func (s *HostService) broadcastHostsChanged() {
@@ -326,94 +354,14 @@ func (s *HostService) ensureAttachmentIndex(tx *gorm.DB, alloc storage.Attachmen
 	return fmt.Errorf("ensureAttachmentIndex: exhausted retries")
 }
 
-// --- Host Management ---
-
-func (s *HostService) GetAllHosts() ([]storage.Host, error) {
-	var hosts []storage.Host
-	if err := s.db.Find(&hosts).Error; err != nil {
-		return nil, err
-	}
-	return hosts, nil
-}
-
-func (s *HostService) GetHostInfo(hostID string) (*libvirt.HostInfo, error) {
-	return s.connector.GetHostInfo(hostID)
-}
-
-// GetPortsForHostFromDB returns ports scoped to a host that are not currently attached to any VM.
-func (s *HostService) GetPortsForHostFromDB(hostID string) ([]storage.Port, error) {
-	var ports []storage.Port
-	// subquery for attached port ids
-	sub := s.db.Model(&storage.PortAttachment{}).Select("port_id")
-	if err := s.db.Where("host_id = ? AND id NOT IN (?)", hostID, sub).Find(&ports).Error; err != nil {
-		return nil, err
-	}
-	return ports, nil
-}
-
-// GetPortAttachmentsForVM returns structured port attachments for a VM UUID.
-func (s *HostService) GetPortAttachmentsForVM(vmUUID string) ([]PortAttachmentView, error) {
-	var atts []storage.PortAttachment
-	if err := s.db.Preload("Port").Where("vm_uuid = ?", vmUUID).Find(&atts).Error; err != nil {
-		return nil, err
-	}
-	var out []PortAttachmentView
-	for _, a := range atts {
-		var pb storage.PortBinding
-		var net *storage.Network
-		if err := s.db.Preload("Network").Where("port_id = ?", a.PortID).First(&pb).Error; err == nil {
-			net = &pb.Network
-		}
-		out = append(out, PortAttachmentView{
-			ID:         a.ID,
-			VMUUID:     a.VMUUID,
-			DeviceName: a.DeviceName,
-			MACAddress: a.MACAddress,
-			HostID:     a.HostID,
-			ModelName:  a.ModelName,
-			Ordinal:    a.Ordinal,
-			Metadata:   a.Metadata,
-			Port:       a.Port,
-			Network:    net,
-		})
-	}
-	return out, nil
-}
-
-func (s *HostService) AddHost(host storage.Host) (*storage.Host, error) {
-	if err := s.db.Create(&host).Error; err != nil {
-		return nil, fmt.Errorf("failed to save host to database: %w", err)
-	}
-	// Mark host as connecting in DB
-	s.db.Model(&storage.Host{}).Where("id = ?", host.ID).Updates(map[string]interface{}{"task_state": storage.HostTaskStateConnecting})
-	log.Verbosef("AddHost: saved host %s (uri=%s)", host.ID, host.URI)
-
-	err := s.connector.AddHost(host)
-	if err != nil {
-		if delErr := s.db.Delete(&host).Error; delErr != nil {
-			log.Debugf("CRITICAL: Failed to rollback host creation for %s after connection failure. DB Error: %v", host.ID, delErr)
-		}
-		return nil, fmt.Errorf("failed to connect to host: %w", err)
-	}
-
-	// Initial sync after adding a host
-	go s.SyncVMsForHost(host.ID)
-
-	log.Verbosef("AddHost: starting initial sync for host %s", host.ID)
-	// Mark connected in DB and clear task state
-	s.db.Model(&storage.Host{}).Where("id = ?", host.ID).Updates(map[string]interface{}{"task_state": "", "state": storage.HostStateConnected})
-	// Notify clients both that hosts changed and that this host is connected
-	s.broadcastHostConnectionChanged(host.ID, true)
-	s.broadcastHostsChanged()
-	return &host, nil
-}
-
+// RemoveHost removes a host from the system: disconnects the connector and
+// removes associated VMs and attachment indices transactionally.
 func (s *HostService) RemoveHost(hostID string) error {
-	// Mark as disconnecting
+	// Mark as disconnecting in DB
 	s.db.Model(&storage.Host{}).Where("id = ?", hostID).Updates(map[string]interface{}{"task_state": storage.HostTaskStateDisconnecting})
+
 	if err := s.connector.RemoveHost(hostID); err != nil {
 		log.Verbosef("RemoveHost: failed to disconnect from host %s during removal: %v", hostID, err)
-		// If removal failed, mark error
 		s.db.Model(&storage.Host{}).Where("id = ?", hostID).Updates(map[string]interface{}{"task_state": "", "state": storage.HostStateError})
 	}
 
@@ -423,31 +371,32 @@ func (s *HostService) RemoveHost(hostID string) error {
 	if err := tx.Where("host_id = ?", hostID).Find(&vms).Error; err != nil {
 		tx.Rollback()
 		log.Verbosef("Warning: failed to query VMs for host %s: %v", hostID, err)
-	} else {
-		for _, vm := range vms {
-			if err := tx.Where("vm_uuid = ?", vm.UUID).Delete(&storage.AttachmentIndex{}).Error; err != nil {
-				tx.Rollback()
-				log.Verbosef("Warning: failed to delete attachment indices for VM %s: %v", vm.UUID, err)
-				break
-			}
-		}
-		// delete VMs
-		if err := tx.Where("host_id = ?", hostID).Delete(&storage.VirtualMachine{}).Error; err != nil {
+		return err
+	}
+
+	for _, vm := range vms {
+		if err := tx.Where("vm_uuid = ?", vm.UUID).Delete(&storage.AttachmentIndex{}).Error; err != nil {
 			tx.Rollback()
-			log.Verbosef("Warning: failed to delete VMs for host %s from database: %v", hostID, err)
-		} else {
-			if err := tx.Commit().Error; err != nil {
-				log.Verbosef("Warning: failed to commit VM deletion transaction for host %s: %v", hostID, err)
-			}
+			log.Verbosef("Warning: failed to delete attachment indices for VM %s: %v", vm.Name, err)
+			return err
+		}
+		if err := tx.Delete(&vm).Error; err != nil {
+			tx.Rollback()
+			log.Verbosef("Warning: failed to delete VM %s: %v", vm.Name, err)
+			return err
 		}
 	}
 
+	if err := tx.Commit().Error; err != nil {
+		log.Verbosef("Warning: failed to commit host removal transaction for %s: %v", hostID, err)
+		return err
+	}
+
+	// Finally remove the host row and clear task state
 	if err := s.db.Where("id = ?", hostID).Delete(&storage.Host{}).Error; err != nil {
 		return fmt.Errorf("failed to delete host from database: %w", err)
 	}
 
-	// Mark disconnected and clear task state
-	s.db.Model(&storage.Host{}).Where("id = ?", hostID).Updates(map[string]interface{}{"task_state": "", "state": storage.HostStateDisconnected})
 	// Broadcast host removal and disconnected status
 	s.broadcastHostConnectionChanged(hostID, false)
 	s.broadcastHostsChanged()
@@ -469,6 +418,75 @@ func (s *HostService) ConnectToAllHosts() {
 			go s.SyncVMsForHost(host.ID)
 		}
 	}
+}
+
+// GetAllHosts returns all stored hosts.
+func (s *HostService) GetAllHosts() ([]storage.Host, error) {
+	var hosts []storage.Host
+	if err := s.db.Find(&hosts).Error; err != nil {
+		return nil, err
+	}
+	return hosts, nil
+}
+
+// GetHostInfo returns host information from the connector, ensuring the host
+// is connected first.
+func (s *HostService) GetHostInfo(hostID string) (*libvirt.HostInfo, error) {
+	if err := s.EnsureHostConnected(hostID); err != nil {
+		return nil, err
+	}
+	return s.connector.GetHostInfo(hostID)
+}
+
+// GetPortsForHostFromDB returns ports scoped to the given host (the host's
+// port pool / unattached ports).
+func (s *HostService) GetPortsForHostFromDB(hostID string) ([]storage.Port, error) {
+	var ports []storage.Port
+	if err := s.db.Where("host_id = ?", hostID).Find(&ports).Error; err != nil {
+		return nil, err
+	}
+	return ports, nil
+}
+
+// GetPortAttachmentsForVM returns port attachments for a VM UUID with the
+// underlying Port and (optional) Network preloaded into the view.
+func (s *HostService) GetPortAttachmentsForVM(vmUUID string) ([]PortAttachmentView, error) {
+	var atts []storage.PortAttachment
+	if err := s.db.Preload("Port").Where("vm_uuid = ?", vmUUID).Find(&atts).Error; err != nil {
+		return nil, err
+	}
+
+	var out []PortAttachmentView
+	for _, a := range atts {
+		var binding storage.PortBinding
+		var network *storage.Network
+		if err := s.db.Preload("Network").Where("port_id = ?", a.PortID).First(&binding).Error; err == nil {
+			network = &binding.Network
+		}
+
+		modelType := a.ModelName
+		if modelType == "" {
+			modelType = a.Port.ModelName
+		}
+		mac := a.MACAddress
+		if mac == "" {
+			mac = a.Port.MACAddress
+		}
+
+		out = append(out, PortAttachmentView{
+			ID:         a.ID,
+			VMUUID:     a.VMUUID,
+			DeviceName: a.DeviceName,
+			MACAddress: mac,
+			ModelName:  modelType,
+			HostID:     a.HostID,
+			Ordinal:    a.Ordinal,
+			Metadata:   a.Metadata,
+			Port:       a.Port,
+			Network:    network,
+		})
+	}
+	return out, nil
 }
 
 // --- VM Management ---
@@ -612,6 +630,179 @@ func (s *HostService) SyncVMsForHost(hostID string) {
 	}
 }
 
+// ListDiscoveredVMs returns VMs reported by libvirt on the host that are not
+// currently present in our database (i.e., discovered but not managed).
+func (s *HostService) ListDiscoveredVMs(hostID string) ([]libvirt.VMInfo, error) {
+	vms, err := s.connector.ListAllDomains(hostID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build a set of domain_uuids present in DB for this host
+	var dbVMs []storage.VirtualMachine
+	if err := s.db.Where("host_id = ?", hostID).Find(&dbVMs).Error; err != nil {
+		return nil, err
+	}
+	dbSet := make(map[string]bool)
+	for _, v := range dbVMs {
+		dbSet[v.DomainUUID] = true
+	}
+
+	var out []libvirt.VMInfo
+	for _, vm := range vms {
+		if !dbSet[vm.UUID] {
+			out = append(out, vm)
+		}
+	}
+	return out, nil
+}
+
+// ImportVM imports a single discovered VM into the database by name.
+func (s *HostService) ImportVM(hostID, vmName string) error {
+	changed, err := s.ingestVMFromLibvirt(hostID, vmName)
+	if err != nil {
+		return err
+	}
+	if changed {
+		// Notify clients that the managed VM list changed for this host
+		s.broadcastVMsChanged(hostID)
+	}
+	return nil
+}
+
+// ImportAllVMs imports all discovered VMs on the host.
+func (s *HostService) ImportAllVMs(hostID string) error {
+	vms, err := s.connector.ListAllDomains(hostID)
+	if err != nil {
+		return err
+	}
+	anyImported := false
+	for _, vm := range vms {
+		// Skip if already in DB
+		var existing storage.VirtualMachine
+		if err := s.db.Where("host_id = ? AND domain_uuid = ?", hostID, vm.UUID).First(&existing).Error; err == nil {
+			continue
+		}
+		if changed, ierr := s.ingestVMFromLibvirt(hostID, vm.Name); ierr != nil {
+			log.Verbosef("ImportAllVMs: failed to import VM %s on host %s: %v", vm.Name, hostID, ierr)
+		} else if changed {
+			anyImported = true
+		}
+	}
+	if anyImported {
+		s.broadcastVMsChanged(hostID)
+	}
+	return nil
+}
+
+// ingestVMFromLibvirt performs the actual DB creation/restore for a VM found
+// in libvirt. It encapsulates the previous ingestion logic that used to live
+// in detectDriftOrIngestVM.
+func (s *HostService) ingestVMFromLibvirt(hostID, vmName string) (bool, error) {
+	vmInfo, err := s.connector.GetDomainInfo(hostID, vmName)
+	if err != nil {
+		return false, err
+	}
+
+	tx := s.db.Begin()
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+		}
+	}()
+
+	// Attempt to restore soft-deleted VM with same domain_uuid
+	var softVM storage.VirtualMachine
+	if sErr := tx.Unscoped().Where("domain_uuid = ?", vmInfo.UUID).First(&softVM).Error; sErr == nil {
+		if softVM.DeletedAt.Valid {
+			softVM.HostID = hostID
+			softVM.Name = vmInfo.Name
+			softVM.DomainUUID = vmInfo.UUID
+			softVM.State = mapLibvirtStateToVMState(vmInfo.State)
+			softVM.VCPUCount = vmInfo.Vcpu
+			softVM.MemoryBytes = vmInfo.MaxMem * 1024
+			softVM.SyncStatus = storage.StatusSynced
+			if uerr := tx.Unscoped().Model(&softVM).Updates(map[string]interface{}{
+				"host_id":      softVM.HostID,
+				"name":         softVM.Name,
+				"domain_uuid":  softVM.DomainUUID,
+				"state":        softVM.State,
+				"v_cpu_count":  softVM.VCPUCount,
+				"memory_bytes": softVM.MemoryBytes,
+				"sync_status":  softVM.SyncStatus,
+				"deleted_at":   nil,
+			}).Error; uerr != nil {
+				tx.Rollback()
+				return false, fmt.Errorf("failed to restore soft-deleted VM row during ingestion: %w", uerr)
+			}
+			// Also ingest hardware for the restored VM
+			if hw, hwErr := s.connector.GetDomainHardware(hostID, vmName); hwErr == nil {
+				if _, err := s.syncVMHardware(tx, softVM.UUID, hostID, hw, &vmInfo.Graphics); err != nil {
+					tx.Rollback()
+					return false, fmt.Errorf("failed to sync hardware for restored VM during ingestion: %w", err)
+				}
+			}
+			if cerr := tx.Commit().Error; cerr != nil {
+				return false, cerr
+			}
+			return true, nil
+		}
+	} else if sErr != nil && sErr != gorm.ErrRecordNotFound {
+		tx.Rollback()
+		return false, sErr
+	}
+
+	// Check conflict where domain_uuid exists on different host
+	var conflicting storage.VirtualMachine
+	if cerr := tx.Where("domain_uuid = ? AND host_id != ?", vmInfo.UUID, hostID).First(&conflicting).Error; cerr != nil && cerr != gorm.ErrRecordNotFound {
+		tx.Rollback()
+		return false, cerr
+	}
+
+	newVM := storage.VirtualMachine{
+		HostID:      hostID,
+		Name:        vmInfo.Name,
+		DomainUUID:  vmInfo.UUID,
+		State:       mapLibvirtStateToVMState(vmInfo.State),
+		VCPUCount:   vmInfo.Vcpu,
+		MemoryBytes: vmInfo.MaxMem * 1024,
+		SyncStatus:  storage.StatusSynced,
+		Source:      "managed",
+	}
+	if cerr := tx.Where("domain_uuid = ?", vmInfo.UUID).First(&storage.VirtualMachine{}).Error; cerr == gorm.ErrRecordNotFound {
+		newVM.UUID = vmInfo.UUID
+	} else {
+		newVM.UUID = uuid.New().String()
+	}
+
+	if ierr := tx.Create(&newVM).Error; ierr != nil {
+		if strings.Contains(ierr.Error(), "UNIQUE constraint failed: virtual_machines.host_id, virtual_machines.name") {
+			origName := newVM.Name
+			newVM.Name = fmt.Sprintf("%s-%s", origName, uuid.New().String()[:8])
+			if ierr2 := tx.Create(&newVM).Error; ierr2 != nil {
+				tx.Rollback()
+				return false, ierr2
+			}
+		} else {
+			tx.Rollback()
+			return false, ierr
+		}
+	}
+
+	// Ingest hardware for the new VM
+	if hw, hwErr := s.connector.GetDomainHardware(hostID, vmName); hwErr == nil {
+		if _, err := s.syncVMHardware(tx, newVM.UUID, hostID, hw, &vmInfo.Graphics); err != nil {
+			tx.Rollback()
+			return false, fmt.Errorf("failed to sync hardware during ingestion: %w", err)
+		}
+	}
+
+	if cerr := tx.Commit().Error; cerr != nil {
+		return false, cerr
+	}
+	return true, nil
+}
+
 func (s *HostService) detectDriftOrIngestVM(hostID, vmName string, isInitialSync bool) (bool, error) {
 	vmInfo, err := s.connector.GetDomainInfo(hostID, vmName)
 	if err != nil {
@@ -664,118 +855,11 @@ func (s *HostService) detectDriftOrIngestVM(hostID, vmName string, isInitialSync
 		return false, err
 	}
 
-	// --- Case 1: New VM found, perform initial ingestion ---
+	// --- Case 1: New VM found — treat as discovered (do not auto-create DB rows).
 	if err == gorm.ErrRecordNotFound {
-		log.Infof("New VM '%s' detected on host '%s'. Performing initial ingestion.", vmName, hostID)
-
-		// Before attempting to create a new VM record, check whether a soft-deleted
-		// VM exists with the same DomainUUID. If so, restore it to avoid UNIQUE
-		// constraint failures on domain_uuid during re-ingestion.
-		var softVM storage.VirtualMachine
-		if sErr := tx.Unscoped().Where("domain_uuid = ?", vmInfo.UUID).First(&softVM).Error; sErr == nil {
-			if softVM.DeletedAt.Valid {
-				log.Infof("Found soft-deleted VM with DomainUUID %s during initial ingestion; restoring record for host %s.", vmInfo.UUID, hostID)
-				softVM.HostID = hostID
-				softVM.Name = vmInfo.Name
-				softVM.DomainUUID = vmInfo.UUID
-				softVM.State = mapLibvirtStateToVMState(vmInfo.State)
-				softVM.VCPUCount = vmInfo.Vcpu
-				softVM.MemoryBytes = vmInfo.MaxMem * 1024
-				softVM.SyncStatus = storage.StatusSynced
-				if uerr := tx.Unscoped().Model(&softVM).Updates(map[string]interface{}{
-					"host_id":      softVM.HostID,
-					"name":         softVM.Name,
-					"domain_uuid":  softVM.DomainUUID,
-					"state":        softVM.State,
-					"v_cpu_count":  softVM.VCPUCount,
-					"memory_bytes": softVM.MemoryBytes,
-					"sync_status":  softVM.SyncStatus,
-					"deleted_at":   nil,
-				}).Error; uerr != nil {
-					tx.Rollback()
-					return false, fmt.Errorf("failed to restore soft-deleted VM row during ingestion: %w", uerr)
-				}
-				changed = true
-				existingVM = softVM
-				// Also ingest hardware for the restored VM
-				hardwareInfo, hwErr := s.connector.GetDomainHardware(hostID, vmName)
-				if hwErr != nil {
-					log.Verbosef("Warning: could not fetch hardware for restored VM %s: %v", vmInfo.Name, hwErr)
-				} else {
-					if _, err := s.syncVMHardware(tx, existingVM.UUID, hostID, hardwareInfo, &vmInfo.Graphics); err != nil {
-						tx.Rollback()
-						return false, fmt.Errorf("failed to sync hardware for restored VM during ingestion: %w", err)
-					}
-				}
-				if cerr := tx.Commit().Error; cerr != nil {
-					return false, cerr
-				}
-				return changed, nil
-			}
-		}
-
-		// Check if this VM's UUID exists on a *different* host. This is a conflict.
-		var conflictingVM storage.VirtualMachine
-		err := tx.Where("domain_uuid = ? AND host_id != ?", vmInfo.UUID, hostID).First(&conflictingVM).Error
-
-		// This is not an error, just informational. It means the VM is new to this host.
-		// We log it at a debug/info level instead of treating it as a query failure.
-		if err == nil {
-			log.Infof("VM with DomainUUID %s was previously on host %s, now detected on %s; treating as new on this host.", vmInfo.UUID, conflictingVM.HostID, hostID)
-		} else if err != gorm.ErrRecordNotFound {
-			// An actual database error occurred.
-			tx.Rollback()
-			return false, fmt.Errorf("error checking for conflicting VM: %w", err)
-		}
-
-		newVMRecord := storage.VirtualMachine{
-			HostID:      hostID,
-			Name:        vmInfo.Name,
-			DomainUUID:  vmInfo.UUID,
-			State:       mapLibvirtStateToVMState(vmInfo.State),
-			VCPUCount:   vmInfo.Vcpu,
-			MemoryBytes: vmInfo.MaxMem * 1024,
-			SyncStatus:  storage.StatusSynced, // New VMs are synced by definition
-		}
-
-		// If no conflict was found (err was gorm.ErrRecordNotFound), we can safely use the DomainUUID as our primary UUID.
-		// Otherwise, we generate a new internal UUID to avoid primary key collision.
-		if err == gorm.ErrRecordNotFound {
-			newVMRecord.UUID = vmInfo.UUID
-		} else {
-			log.Infof("UUID conflict detected for DomainUUID %s; assigning new internal UUID.", vmInfo.UUID)
-			newVMRecord.UUID = uuid.New().String()
-		}
-
-		if err := tx.Create(&newVMRecord).Error; err != nil {
-			// If insertion failed due to a name conflict on (host_id, name), attempt
-			// to disambiguate the VM name by appending a short suffix and retry.
-			if strings.Contains(err.Error(), "UNIQUE constraint failed: virtual_machines.host_id, virtual_machines.name") {
-				origName := newVMRecord.Name
-				newVMRecord.Name = fmt.Sprintf("%s-%s", origName, uuid.New().String()[:8])
-				log.Verbosef("Name conflict for VM '%s' on host %s — retrying insert as '%s'", origName, hostID, newVMRecord.Name)
-				if ierr := tx.Create(&newVMRecord).Error; ierr != nil {
-					tx.Rollback()
-					return false, fmt.Errorf("failed to create VM record after disambiguating name: %w", ierr)
-				}
-			} else {
-				tx.Rollback()
-				return false, err
-			}
-		}
-		changed = true
-		existingVM = newVMRecord
-
-		// Also ingest hardware on initial sync
-		hardwareInfo, hwErr := s.connector.GetDomainHardware(hostID, vmName)
-		if hwErr != nil {
-			log.Verbosef("Warning: could not fetch hardware for new VM %s: %v", vmInfo.Name, hwErr)
-		} else {
-			if _, err := s.syncVMHardware(tx, existingVM.UUID, hostID, hardwareInfo, &vmInfo.Graphics); err != nil {
-				tx.Rollback()
-				return false, fmt.Errorf("failed to sync hardware for new VM: %w", err)
-			}
-		}
+		log.Infof("Discovered new VM '%s' on host '%s' (not managed). To import, call ImportVM or ImportAllVMs.", vmName, hostID)
+		tx.Rollback()
+		return false, nil
 	} else { // --- Case 2: Existing VM, perform drift detection ---
 		updates := make(map[string]interface{})
 		driftDetails := make(map[string]map[string]interface{})

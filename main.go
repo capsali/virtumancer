@@ -74,6 +74,10 @@ func main() {
 
 		// VM routes
 		r.Get("/hosts/{hostID}/vms", apiHandler.ListVMsFromLibvirt)
+		// Discovered/Import routes
+		r.Get("/hosts/{hostID}/discovered-vms", apiHandler.ListDiscoveredVMs)
+		r.Post("/hosts/{hostID}/vms/{vmName}/import", apiHandler.ImportVM)
+		r.Post("/hosts/{hostID}/vms/import-all", apiHandler.ImportAllVMs)
 		r.Post("/hosts/{hostID}/vms/{vmName}/start", apiHandler.StartVM)
 		r.Post("/hosts/{hostID}/vms/{vmName}/shutdown", apiHandler.ShutdownVM)
 		r.Post("/hosts/{hostID}/vms/{vmName}/reboot", apiHandler.RebootVM)

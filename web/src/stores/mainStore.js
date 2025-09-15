@@ -13,12 +13,42 @@ export const useMainStore = defineStore('main', () => {
         vmAction: null,
         vmHardware: false,
         vmReconcile: null,
+        vmImport: null, // e.g. "vmName:import"
+        hostImportAll: null,
     });
 
     const activeVmStats = ref(null);
     const activeVmHardware = ref(null);
     const hostStats = ref({}); // New state for host stats
     const hostConnecting = ref({}); // map hostId -> bool when we're connecting / fetching VMs
+    const discoveredByHost = ref({}); // cache discovered VMs keyed by hostId
+
+    const refreshDiscoveredVMs = async (hostId) => {
+        if (!hostId) return [];
+        try {
+            hostConnecting.value[hostId] = true;
+            const list = await fetchDiscoveredVMs(hostId);
+            // If fetch returned empty but we already have a non-empty cache, keep the old cache
+            const hadPrev = Array.isArray(discoveredByHost.value[hostId]) && discoveredByHost.value[hostId].length > 0;
+            if ((!list || list.length === 0) && hadPrev) {
+                console.warn(`[mainStore] refreshDiscoveredVMs: fetched empty list for ${hostId}, preserving existing cache`);
+                return discoveredByHost.value[hostId];
+            }
+            discoveredByHost.value = { ...discoveredByHost.value, [hostId]: list };
+            return list;
+        } catch (e) {
+            console.error('[mainStore] refreshDiscoveredVMs failed for', hostId, e);
+            return discoveredByHost.value[hostId] || [];
+        } finally {
+            if (hostConnecting.value[hostId]) delete hostConnecting.value[hostId];
+        }
+    };
+
+    const getDiscoveredVMs = async (hostId) => {
+        if (!hostId) return [];
+        if (discoveredByHost.value[hostId]) return discoveredByHost.value[hostId];
+        return await refreshDiscoveredVMs(hostId);
+    };
 
     // New state for tracking active subscriptions
     const currentlySubscribedHostId = ref(null);
@@ -98,8 +128,10 @@ export const useMainStore = defineStore('main', () => {
                         }
                         break;
                     case 'vms-changed':
-                        console.log(`WebSocket received vms-changed for host ${message.payload.hostId}, refreshing host data.`);
+                        console.log(`WebSocket received vms-changed for host ${message.payload.hostId}, refreshing host data and discovered list.`);
                         refreshHostData(message.payload.hostId);
+                        // Refresh discovered list for this host as live vms changed
+                        refreshDiscoveredVMs(message.payload.hostId).catch(() => {});
                         break;
                     case 'vm-stats-updated':
                         // Directly update the stats ref. The component will check if it's for the current VM.
@@ -107,6 +139,10 @@ export const useMainStore = defineStore('main', () => {
                         break;
                     case 'host-stats-updated':
                         hostStats.value[message.payload.hostId] = message.payload.stats;
+                        // If the host just connected, refresh its discovered list
+                        if (message.payload && message.payload.connected) {
+                            refreshDiscoveredVMs(message.payload.hostId).catch(() => {});
+                        }
                         break;
                     default:
                         console.log('Received unhandled WebSocket message type:', message.type);
@@ -402,6 +438,70 @@ export const useMainStore = defineStore('main', () => {
         }
     };
 
+    // --- Discovery / Import ---
+    const fetchDiscoveredVMs = async (hostId) => {
+        if (!hostId) return [];
+        try {
+            const controller = new AbortController();
+            const id = setTimeout(() => controller.abort(), 5000);
+            const response = await fetch(`/api/v1/hosts/${hostId}/discovered-vms`, { signal: controller.signal });
+            clearTimeout(id);
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            return await response.json() || [];
+        } catch (error) {
+            console.error(`Failed to fetch discovered VMs for ${hostId}:`, error);
+            return [];
+        }
+    };
+
+    const importVm = async (hostId, vmName) => {
+        if (!hostId || !vmName) return false;
+        isLoading.value.vmImport = `${vmName}:import`;
+        errorMessage.value = '';
+        try {
+            const res = await fetch(`/api/v1/hosts/${hostId}/vms/${encodeURIComponent(vmName)}/import`, { method: 'POST' });
+            if (!res.ok) {
+                const txt = await res.text();
+                throw new Error(txt || `HTTP ${res.status}`);
+            }
+            // Trigger a refresh for the host; the websocket will update when import completes
+            // Optimistically clear discovered cache for this host so UI updates immediately
+            discoveredByHost.value = { ...discoveredByHost.value, [hostId]: [] };
+            refreshHostData(hostId);
+            return true;
+        } catch (e) {
+            errorMessage.value = `Failed to import VM ${vmName}: ${e.message}`;
+            console.error(e);
+            return false;
+        } finally {
+            isLoading.value.vmImport = null;
+        }
+    };
+
+    const importAllVMs = async (hostId) => {
+        if (!hostId) return false;
+        isLoading.value.hostImportAll = `host:${hostId}:import-all`;
+        errorMessage.value = '';
+        try {
+            const res = await fetch(`/api/v1/hosts/${hostId}/vms/import-all`, { method: 'POST' });
+            if (!res.ok) {
+                const txt = await res.text();
+                throw new Error(txt || `HTTP ${res.status}`);
+            }
+            // Request a host refresh; the backend will broadcast when done
+            // Clear discovered cache optimistically
+            discoveredByHost.value = { ...discoveredByHost.value, [hostId]: [] };
+            refreshHostData(hostId);
+            return true;
+        } catch (e) {
+            errorMessage.value = `Failed to import all VMs for host ${hostId}: ${e.message}`;
+            console.error(e);
+            return false;
+        } finally {
+            isLoading.value.hostImportAll = null;
+        }
+    };
+
     const subscribeToVmStats = (hostId, vmName) => {
         console.log(`[mainStore] subscribeToVmStats: Attempting to subscribe to ${hostId}/${vmName}`);
         console.log(`[mainStore] Current VM subscription: ${currentlySubscribedHostId.value}/${currentlySubscribedVmName.value}`);
@@ -573,6 +673,9 @@ export const useMainStore = defineStore('main', () => {
         activeVmHardware,
         hostStats, // Export hostStats
         hostConnecting,
+        discoveredByHost,
+        refreshDiscoveredVMs,
+        getDiscoveredVMs,
         initializeRealtime,
         fetchHosts,
         addHost,
@@ -584,6 +687,9 @@ export const useMainStore = defineStore('main', () => {
     fetchVideoModels,
     fetchHostVideoDevices,
     fetchVmVideoAttachments,
+    fetchDiscoveredVMs,
+    importVm,
+    importAllVMs,
         startVm,
         gracefulShutdownVm,
         gracefulRebootVm,

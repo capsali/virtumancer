@@ -2,6 +2,7 @@
 import { useUiStore } from '@/stores/uiStore';
 import { useMainStore } from '@/stores/mainStore';
 import { onMounted, ref } from 'vue';
+import { watch } from 'vue';
 import { useRouter } from 'vue-router';
 
 const uiStore = useUiStore();
@@ -16,9 +17,20 @@ onMounted(() => {
     // Automatically expand all hosts on load
     mainStore.hosts.forEach(host => {
       expandedHosts.value[host.id] = true;
+      // prime discovered cache for each host
+      mainStore.refreshDiscoveredVMs(host.id).catch(() => {});
     });
   });
 });
+
+// When hosts list changes, ensure discovered cache updates for new hosts
+watch(() => mainStore.hosts, (nv, ov) => {
+  nv.forEach(host => {
+    if (!mainStore.discoveredByHost || !mainStore.discoveredByHost[host.id]) {
+      mainStore.refreshDiscoveredVMs(host.id).catch(() => {});
+    }
+  });
+}, { deep: true });
 
 function selectDatacenter() {
     mainStore.selectHost(null);
@@ -128,22 +140,49 @@ const hostStateColor = (host) => {
             </span>
           </div>
 
-          <!-- VMs -->
-          <ul v-if="uiStore.isSidebarOpen && expandedHosts[host.id] && host.vms && host.vms.length" class="mt-1 space-y-1" :class="uiStore.isSidebarOpen ? 'ml-6 border-l-2 border-gray-700 pl-4' : ''">
-            <li v-for="vm in host.vms" :key="vm.name">
-              <div @click="selectVm(vm)" class="flex items-center p-1.5 text-sm rounded-md cursor-pointer hover:bg-gray-700" :class="{'bg-gray-700/50': $route.params.vmName === vm.name}">
-                <span class="h-2 w-2 rounded-full mr-2 flex-shrink-0" :class="{
-                  'bg-green-500': vm.state === 'ACTIVE' && !vm.task_state, 
-                  'bg-red-500': (vm.state === 'STOPPED' || vm.state === 'ERROR') && !vm.task_state,
-                  'bg-yellow-500': vm.state === 'PAUSED' && !vm.task_state,
-                  'bg-blue-500': vm.state === 'SUSPENDED' && !vm.task_state,
-                  'bg-orange-500 animate-pulse': vm.task_state,
-                  'bg-gray-500': !['ACTIVE', 'STOPPED', 'ERROR', 'PAUSED', 'SUSPENDED'].includes(vm.state) && !vm.task_state
-                }"></span>
-                <span class="truncate">{{ vm.name }}</span>
+          <!-- VMs grouped: Managed then Discovered -->
+          <div v-if="uiStore.isSidebarOpen && expandedHosts[host.id]" class="mt-1 ml-6 border-l-2 border-gray-700 pl-4">
+            <div v-if="host.vms && host.vms.length" class="mb-2">
+              <div class="text-xs text-gray-400 uppercase font-semibold mb-1">Managed</div>
+              <ul class="space-y-1">
+                <li v-for="vm in host.vms" :key="vm.name">
+                  <div @click="selectVm(vm)" class="flex items-center p-1.5 text-sm rounded-md cursor-pointer hover:bg-gray-700" :class="{'bg-gray-700/50': $route.params.vmName === vm.name}">
+                    <span class="h-2 w-2 rounded-full mr-2 flex-shrink-0" :class="{
+                      'bg-green-500': vm.state === 'ACTIVE' && !vm.task_state, 
+                      'bg-red-500': (vm.state === 'STOPPED' || vm.state === 'ERROR') && !vm.task_state,
+                      'bg-yellow-500': vm.state === 'PAUSED' && !vm.task_state,
+                      'bg-blue-500': vm.state === 'SUSPENDED' && !vm.task_state,
+                      'bg-orange-500 animate-pulse': vm.task_state,
+                      'bg-gray-500': !['ACTIVE', 'STOPPED', 'ERROR', 'PAUSED', 'SUSPENDED'].includes(vm.state) && !vm.task_state
+                    }"></span>
+                    <span class="truncate">{{ vm.name }}</span>
+                  </div>
+                </li>
+              </ul>
+            </div>
+
+            <div v-if="mainStore.discoveredByHost[host.id] && mainStore.discoveredByHost[host.id].length" class="mb-2">
+              <div class="flex items-center justify-between">
+                <div class="text-xs text-gray-400 uppercase font-semibold mb-1">Discovered</div>
+                <div>
+                  <button @click.stop="(async ()=>{ await mainStore.importAllVMs(host.id); })()" class="text-xs px-2 py-0.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded">Import All</button>
+                </div>
               </div>
-            </li>
-          </ul>
+              <ul class="space-y-1">
+                <li v-for="d in mainStore.discoveredByHost[host.id]" :key="d.uuid">
+                  <div class="flex items-center justify-between p-1.5 text-sm rounded-md">
+                    <div class="flex items-center cursor-pointer" @click="selectVm({ name: d.name })">
+                      <svg class="h-3 w-3 mr-2 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3"/></svg>
+                      <span class="truncate">{{ d.name }}</span>
+                    </div>
+                    <div>
+                      <button @click.stop="(async ()=>{ await mainStore.importVm(host.id, d.name); })()" class="text-xs px-2 py-0.5 bg-green-600 hover:bg-green-700 text-white rounded">Import</button>
+                    </div>
+                  </div>
+                </li>
+              </ul>
+            </div>
+          </div>
         </li>
       </ul>
     </nav>

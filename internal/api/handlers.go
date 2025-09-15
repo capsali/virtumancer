@@ -139,6 +139,39 @@ func (h *APIHandler) ListVMsFromLibvirt(w http.ResponseWriter, r *http.Request) 
 	json.NewEncoder(w).Encode(vms)
 }
 
+// ListDiscoveredVMs lists libvirt-only VMs for a host that are not in our DB.
+func (h *APIHandler) ListDiscoveredVMs(w http.ResponseWriter, r *http.Request) {
+	hostID := chi.URLParam(r, "hostID")
+	vms, err := h.HostService.ListDiscoveredVMs(hostID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(vms)
+}
+
+// ImportVM imports a single discovered VM into the DB.
+func (h *APIHandler) ImportVM(w http.ResponseWriter, r *http.Request) {
+	hostID := chi.URLParam(r, "hostID")
+	vmName := chi.URLParam(r, "vmName")
+	if err := h.HostService.ImportVM(hostID, vmName); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusAccepted)
+}
+
+// ImportAllVMs imports all discovered VMs on a host.
+func (h *APIHandler) ImportAllVMs(w http.ResponseWriter, r *http.Request) {
+	hostID := chi.URLParam(r, "hostID")
+	if err := h.HostService.ImportAllVMs(hostID); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusAccepted)
+}
+
 func (h *APIHandler) GetVMStats(w http.ResponseWriter, r *http.Request) {
 	hostID := chi.URLParam(r, "hostID")
 	vmName := chi.URLParam(r, "vmName")

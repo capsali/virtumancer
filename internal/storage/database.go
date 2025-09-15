@@ -79,10 +79,14 @@ const (
 // VirtualMachine is Virtumancer's canonical definition of a VM's intended state.
 type VirtualMachine struct {
 	gorm.Model
-	HostID          string `gorm:"uniqueIndex:idx_vm_host_name"`
-	Name            string `gorm:"uniqueIndex:idx_vm_host_name"`
-	UUID            string `gorm:"primaryKey"`  // Virtumancer's internal, guaranteed-unique UUID
-	DomainUUID      string `gorm:"uniqueIndex"` // The UUID as reported by libvirt
+	HostID     string `gorm:"uniqueIndex:idx_vm_host_name"`
+	Name       string `gorm:"uniqueIndex:idx_vm_host_name"`
+	UUID       string `gorm:"primaryKey"`  // Virtumancer's internal, guaranteed-unique UUID
+	DomainUUID string `gorm:"uniqueIndex"` // The UUID as reported by libvirt
+	// Source indicates whether this VM was created/managed by Virtumancer
+	// ('managed') or imported from libvirt ('imported'). Discovered VMs are
+	// not persisted until explicitly imported.
+	Source          string `gorm:"size:32;default:'managed'"`
 	Description     string
 	State           VMState     `gorm:"default:'INITIALIZED'"` // Stable state
 	TaskState       VMTaskState // Transient state during operations
