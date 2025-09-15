@@ -48,6 +48,20 @@ type VMView struct {
 	Uptime  int64  `json:"uptime"`
 }
 
+// PortAttachmentView is a transport-friendly view of a PortAttachment including
+// the underlying Port and (optional) Network information for the UI.
+type PortAttachmentView struct {
+	ID         uint             `json:"id"`
+	VMUUID     string           `json:"vm_uuid"`
+	DeviceName string           `json:"device_name"`
+	MACAddress string           `json:"mac_address"`
+	ModelName  string           `json:"model_name"`
+	Ordinal    int              `json:"ordinal"`
+	Metadata   string           `json:"metadata"`
+	Port       storage.Port     `json:"port"`
+	Network    *storage.Network `json:"network,omitempty"`
+}
+
 // VmSubscription holds the clients subscribed to a VM's stats and a channel to stop polling.
 type VmSubscription struct {
 	clients        map[*ws.Client]bool
@@ -104,6 +118,8 @@ type HostServiceProvider interface {
 	GetVMsForHostFromDB(hostID string) ([]VMView, error)
 	GetVMStats(hostID, vmName string) (*libvirt.VMStats, error)
 	GetVMHardwareAndDetectDrift(hostID, vmName string) (*libvirt.HardwareInfo, error)
+	GetPortsForHostFromDB(hostID string) ([]storage.Port, error)
+	GetPortAttachmentsForVM(vmUUID string) ([]PortAttachmentView, error)
 	SyncVMsForHost(hostID string)
 	SyncVMFromLibvirt(hostID, vmName string) error
 	RebuildVMFromDB(hostID, vmName string) error
@@ -213,6 +229,45 @@ func (s *HostService) GetAllHosts() ([]storage.Host, error) {
 
 func (s *HostService) GetHostInfo(hostID string) (*libvirt.HostInfo, error) {
 	return s.connector.GetHostInfo(hostID)
+}
+
+// GetPortsForHostFromDB returns ports scoped to a host that are not currently attached to any VM.
+func (s *HostService) GetPortsForHostFromDB(hostID string) ([]storage.Port, error) {
+	var ports []storage.Port
+	// subquery for attached port ids
+	sub := s.db.Model(&storage.PortAttachment{}).Select("port_id")
+	if err := s.db.Where("host_id = ? AND id NOT IN (?)", hostID, sub).Find(&ports).Error; err != nil {
+		return nil, err
+	}
+	return ports, nil
+}
+
+// GetPortAttachmentsForVM returns structured port attachments for a VM UUID.
+func (s *HostService) GetPortAttachmentsForVM(vmUUID string) ([]PortAttachmentView, error) {
+	var atts []storage.PortAttachment
+	if err := s.db.Preload("Port").Where("vm_uuid = ?", vmUUID).Find(&atts).Error; err != nil {
+		return nil, err
+	}
+	var out []PortAttachmentView
+	for _, a := range atts {
+		var pb storage.PortBinding
+		var net *storage.Network
+		if err := s.db.Preload("Network").Where("port_id = ?", a.PortID).First(&pb).Error; err == nil {
+			net = &pb.Network
+		}
+		out = append(out, PortAttachmentView{
+			ID:         a.ID,
+			VMUUID:     a.VMUUID,
+			DeviceName: a.DeviceName,
+			MACAddress: a.MACAddress,
+			ModelName:  a.ModelName,
+			Ordinal:    a.Ordinal,
+			Metadata:   a.Metadata,
+			Port:       a.Port,
+			Network:    net,
+		})
+	}
+	return out, nil
 }
 
 func (s *HostService) AddHost(host storage.Host) (*storage.Host, error) {
@@ -380,18 +435,30 @@ func (s *HostService) getVMHardwareFromDB(hostID, vmName string) (*libvirt.Hardw
 		})
 	}
 
-	// Retrieve and populate networks
-	var ports []storage.Port
-	err := s.db.Where("vm_uuid = ?", vm.UUID).Find(&ports).Error
-	if err == nil {
-		for _, port := range ports {
+	// Retrieve and populate networks using PortAttachment records.
+	var attachments []storage.PortAttachment
+	if err := s.db.Preload("Port").Where("vm_uuid = ?", vm.UUID).Find(&attachments).Error; err == nil {
+		for _, a := range attachments {
 			var binding storage.PortBinding
-			if err := s.db.Preload("Network").Where("port_id = ?", port.ID).First(&binding).Error; err == nil {
+			if err := s.db.Preload("Network").Where("port_id = ?", a.PortID).First(&binding).Error; err == nil {
+				modelType := a.ModelName
+				if modelType == "" {
+					modelType = a.Port.ModelName
+				}
+				devName := a.DeviceName
+				if devName == "" {
+					devName = a.Port.DeviceName
+				}
+				mac := a.MACAddress
+				if mac == "" {
+					mac = a.Port.MACAddress
+				}
+
 				hardware.Networks = append(hardware.Networks, libvirt.NetworkInfo{
 					Mac: struct {
 						Address string `xml:"address,attr" json:"address"`
 					}{
-						Address: port.MACAddress,
+						Address: mac,
 					},
 					Source: struct {
 						Bridge string `xml:"bridge,attr" json:"bridge"`
@@ -401,12 +468,12 @@ func (s *HostService) getVMHardwareFromDB(hostID, vmName string) (*libvirt.Hardw
 					Model: struct {
 						Type string `xml:"type,attr" json:"type"`
 					}{
-						Type: port.ModelName,
+						Type: modelType,
 					},
 					Target: struct {
 						Dev string `xml:"dev,attr" json:"dev"`
 					}{
-						Dev: port.DeviceName,
+						Dev: devName,
 					},
 				})
 			}
@@ -609,29 +676,42 @@ func (s *HostService) syncVMHardware(tx *gorm.DB, vmUUID string, hostID string, 
 	defer log.Debugf("syncVMHardware: vm=%s host=%s finished", vmUUID, hostID)
 
 	// --- Sync Networks / Ports ---
-	var existingPorts []storage.Port
-	if err := tx.Where("vm_uuid = ?", vmUUID).Find(&existingPorts).Error; err != nil {
+	// Fetch existing attachments for this VM (if any) and map by MAC
+	var existingPortAttachments []storage.PortAttachment
+	if err := tx.Preload("Port").Where("vm_uuid = ?", vmUUID).Find(&existingPortAttachments).Error; err != nil {
 		return false, err
 	}
-	existingPortsMap := make(map[string]storage.Port)
-	for _, p := range existingPorts {
-		existingPortsMap[p.MACAddress] = p
+	existingByMAC := make(map[string]storage.PortAttachment)
+	existingByDev := make(map[string]storage.PortAttachment)
+	for _, a := range existingPortAttachments {
+		if a.MACAddress != "" {
+			existingByMAC[a.MACAddress] = a
+		}
+		if a.DeviceName != "" {
+			existingByDev[a.DeviceName] = a
+		}
 	}
 
 	for _, net := range hardware.Networks {
-		dbPort, exists := existingPortsMap[net.Mac.Address]
+			// Prefer matching by device name (vm-scoped unique). If not present, fall back to MAC address.
+			att, exists := existingByDev[net.Target.Dev]
+			if !exists && net.Mac.Address != "" {
+				att, exists = existingByMAC[net.Mac.Address]
+			}
 
 		updates := make(map[string]interface{})
 		if !exists {
-			// This is a new port, create it
+			// Create or find network
 			var network storage.Network
 			networkUUID := uuid.NewSHA1(uuid.Nil, []byte(fmt.Sprintf("%s:%s", hostID, net.Source.Bridge)))
 			tx.FirstOrCreate(&network, storage.Network{UUID: networkUUID.String()}, storage.Network{
 				HostID: hostID, Name: net.Source.Bridge, BridgeName: net.Source.Bridge, Mode: "bridged", UUID: networkUUID.String(),
 			})
 
+			// Create the port resource (unattached) and then attach it to the VM
 			newPort := storage.Port{
-				VMUUID: vmUUID, MACAddress: net.Mac.Address, DeviceName: net.Target.Dev, ModelName: net.Model.Type,
+				MACAddress: net.Mac.Address, DeviceName: net.Target.Dev, ModelName: net.Model.Type,
+				HostID: hostID,
 			}
 			if err := tx.Create(&newPort).Error; err != nil {
 				return false, err
@@ -641,35 +721,120 @@ func (s *HostService) syncVMHardware(tx *gorm.DB, vmUUID string, hostID string, 
 				binding := storage.PortBinding{PortID: newPort.ID, NetworkID: network.ID}
 				tx.Create(&binding)
 			}
+
+			// Create or reuse an attachment row linking the port to the VM.
+			var existingAtt storage.PortAttachment
+			attErr := tx.Where("vm_uuid = ? AND device_name = ?", vmUUID, net.Target.Dev).First(&existingAtt).Error
+			if attErr == nil {
+				// Attachment exists; ensure it references the correct port and metadata
+				updates := make(map[string]interface{})
+				if existingAtt.PortID != newPort.ID {
+					updates["port_id"] = newPort.ID
+				}
+				if net.Mac.Address != "" && existingAtt.MACAddress != net.Mac.Address {
+					updates["mac_address"] = net.Mac.Address
+				}
+				if net.Model.Type != "" && existingAtt.ModelName != net.Model.Type {
+					updates["model_name"] = net.Model.Type
+				}
+				if len(updates) > 0 {
+					if err := tx.Model(&existingAtt).Updates(updates).Error; err != nil {
+						return false, err
+					}
+					// Refresh existingAtt.PortID if changed
+					if v, ok := updates["port_id"]; ok {
+						if id, ok2 := v.(uint); ok2 {
+							existingAtt.PortID = id
+						}
+					}
+				}
+			} else if attErr == gorm.ErrRecordNotFound {
+				// Create new attachment
+				newAttachment := storage.PortAttachment{VMUUID: vmUUID, PortID: newPort.ID, DeviceName: net.Target.Dev, MACAddress: net.Mac.Address, ModelName: net.Model.Type}
+				if err := tx.Create(&newAttachment).Error; err != nil {
+					return false, err
+				}
+				existingAtt = newAttachment
+			} else {
+				return false, attErr
+			}
+
+			// Ensure the AttachmentIndex references this attachment/device.
+			// Check for an existing index by (device_type, attachment_id) first to avoid
+			// violating the unique index on (device_type, attachment_id). If an index
+			// by attachment_id exists, ensure it matches this VM. Otherwise, check for
+			// an existing index by (device_type, device_id) which would indicate the
+			// device is already allocated to some attachment.
+			alloc := storage.AttachmentIndex{VMUUID: vmUUID, DeviceType: "port", AttachmentID: existingAtt.ID, DeviceID: existingAtt.PortID}
+			var existingAlloc storage.AttachmentIndex
+			// First, try to find by attachment_id (this is the unique index that failed earlier)
+			aerr := tx.Where("device_type = ? AND attachment_id = ?", alloc.DeviceType, alloc.AttachmentID).First(&existingAlloc).Error
+			if aerr == nil {
+				// An index already exists for this attachment. Ensure it belongs to the same VM.
+				if existingAlloc.VMUUID != alloc.VMUUID {
+					return false, fmt.Errorf("attachment (id=%d) already indexed for VM %s (index id %d)", alloc.AttachmentID, existingAlloc.VMUUID, existingAlloc.ID)
+				}
+				// Already correctly indexed; nothing to do.
+			} else if aerr == gorm.ErrRecordNotFound {
+				// No index by attachment_id exists; ensure device_id isn't already allocated
+				derr := tx.Where("device_type = ? AND device_id = ?", alloc.DeviceType, alloc.DeviceID).First(&existingAlloc).Error
+				if derr == nil {
+					// Device is already allocated to some attachment_id; conflict unless it's the same attachment
+					if existingAlloc.AttachmentID != alloc.AttachmentID || existingAlloc.VMUUID != alloc.VMUUID {
+						return false, fmt.Errorf("device (type=%s id=%d) already allocated to VM %s (attachment_index id %d)", alloc.DeviceType, alloc.DeviceID, existingAlloc.VMUUID, existingAlloc.ID)
+					}
+					// otherwise matches — nothing to do
+				} else if derr == gorm.ErrRecordNotFound {
+					// Safe to create a new allocation
+					if err := tx.Create(&alloc).Error; err != nil {
+						return false, err
+					}
+				} else {
+					return false, derr
+				}
+			} else {
+				return false, aerr
+			}
+
 			changed = true
 		} else {
-			// Port exists, check for changes
-			if dbPort.DeviceName != net.Target.Dev {
+			// Attachment exists, check for updates on attachment-level and port-level
+			if att.DeviceName != net.Target.Dev {
 				updates["device_name"] = net.Target.Dev
 			}
-			if dbPort.ModelName != net.Model.Type {
+			modelType := att.ModelName
+			if modelType == "" {
+				modelType = att.Port.ModelName
+			}
+			if modelType != net.Model.Type {
 				updates["model_name"] = net.Model.Type
 			}
 
 			if len(updates) > 0 {
-				if err := tx.Model(&dbPort).Updates(updates).Error; err != nil {
+				if err := tx.Model(&att).Updates(updates).Error; err != nil {
 					return false, err
 				}
 				changed = true
 			}
 			// Remove from map so it's not deleted later
-			delete(existingPortsMap, net.Mac.Address)
+			delete(existingByMAC, net.Mac.Address)
 		}
 	}
 
-	// Any ports left in existingPortsMap are stale and should be deleted
-	if len(existingPortsMap) > 0 {
+	// Any attachments left are stale and should be removed along with their ports
+	if len(existingByMAC) > 0 {
 		var portIDsToDelete []uint
-		for _, port := range existingPortsMap {
-			portIDsToDelete = append(portIDsToDelete, port.ID)
+		var attachmentIDs []uint
+		for _, att := range existingByMAC {
+			portIDsToDelete = append(portIDsToDelete, att.PortID)
+			attachmentIDs = append(attachmentIDs, att.ID)
 		}
+		// Remove binding rows, attachments, and port resources
 		tx.Where("port_id IN ?", portIDsToDelete).Delete(&storage.PortBinding{})
+		tx.Where("id IN ?", attachmentIDs).Delete(&storage.PortAttachment{})
 		tx.Where("id IN ?", portIDsToDelete).Delete(&storage.Port{})
+		// Also remove any attachment index entries for these attachments
+		tx.Where("device_type = ? AND attachment_id IN ?", "port", attachmentIDs).Delete(&storage.AttachmentIndex{})
 		changed = true
 	}
 

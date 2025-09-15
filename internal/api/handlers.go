@@ -166,6 +166,37 @@ func (h *APIHandler) GetVMHardware(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(hardware)
 }
 
+// ListHostPorts returns unattached ports for a host (port pool).
+func (h *APIHandler) ListHostPorts(w http.ResponseWriter, r *http.Request) {
+	hostID := chi.URLParam(r, "hostID")
+	ports, err := h.HostService.GetPortsForHostFromDB(hostID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(ports)
+}
+
+// ListVMPortAttachments returns port attachments for a VM by name (looks up VM UUID).
+func (h *APIHandler) ListVMPortAttachments(w http.ResponseWriter, r *http.Request) {
+	hostID := chi.URLParam(r, "hostID")
+	vmName := chi.URLParam(r, "vmName")
+	// Resolve VM to UUID
+	var vm storage.VirtualMachine
+	if err := h.DB.Where("host_id = ? AND name = ?", hostID, vmName).First(&vm).Error; err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	atts, err := h.HostService.GetPortAttachmentsForVM(vm.UUID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(atts)
+}
+
 // --- VM Actions ---
 
 func (h *APIHandler) StartVM(w http.ResponseWriter, r *http.Request) {

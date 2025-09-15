@@ -148,11 +148,19 @@ type Network struct {
 // Port represents a virtual Network Interface Card (vNIC) belonging to a VM.
 type Port struct {
 	gorm.Model
-	VMUUID     string `gorm:"uniqueIndex:idx_port_vm_mac"`
-	MACAddress string `gorm:"uniqueIndex:idx_port_vm_mac"`
-	DeviceName string // e.g. "vnet0", "eth0"
-	ModelName  string // e.g., 'virtio', 'e1000'
-	IPAddress  string
+	// VMUUID was removed in favor of explicit PortAttachment records.
+	MACAddress        string // canonical MAC for the resource
+	DeviceName        string // e.g. "vnet0", "eth0" (resource-level default)
+	ModelName         string // e.g., 'virtio', 'e1000'
+	IPAddress         string
+	HostID            string `gorm:"index"`         // optional host scoping for unattached ports
+	SourceType        string `gorm:"size:32"`       // 'network'|'bridge'|'hostdev'|'vhostuser'|'null'|'vdpa'
+	SourceRef         string `gorm:"type:text"`     // network name, hostdev address, or vhost socket path
+	VirtualPortJSON   string `gorm:"type:text"`     // serialized <virtualport> subelements
+	FilterRefJSON     string `gorm:"type:text"`     // serialized <filterref> subelements
+	VlanTagsJSON      string `gorm:"type:text"`     // serialized VLAN tags / metadata
+	TrustGuestRxFilters bool
+	PrimaryVlan       *int   `gorm:"default:NULL"` // nullable primary VLAN tag
 }
 
 // PortBinding links a Port to a Network.
@@ -162,6 +170,21 @@ type PortBinding struct {
 	Port      Port
 	NetworkID uint
 	Network   Network
+}
+
+// PortAttachment links a Port to a VirtualMachine and stores per-VM attachment metadata.
+// This is intentionally separate from Port/PortBinding so ports can exist unattached
+// (for provisioning / pool usage) and then be attached to VMs later.
+type PortAttachment struct {
+	gorm.Model
+	VMUUID     string `gorm:"index"`
+	PortID     uint   `gorm:"index"`
+	Port       Port
+	DeviceName string // per-VM device name (overrides Port.DeviceName)
+	MACAddress string // per-attachment MAC override
+	ModelName  string // per-attachment model, if different
+	Ordinal    int
+	Metadata   string `gorm:"type:text"` // optional JSON for hotplug / per-attachment options
 }
 
 // --- Virtual Hardware Management ---
@@ -545,6 +568,7 @@ func InitDB(dataSourceName string) (*gorm.DB, error) {
 		&ShmemDeviceAttachment{},
 		&IOMMUDevice{},
 		&IOMMUDeviceAttachment{},
+		&PortAttachment{},
 		&VMSnapshot{},
 		&AttachmentIndex{},
 		&Console{},
@@ -574,6 +598,22 @@ func InitDB(dataSourceName string) (*gorm.DB, error) {
 	// Volumes can be multi-attached so exclude them from this unique constraint using a partial index.
 	if err := db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS uniq_attachment_index_device ON attachment_indices(device_type, device_id) WHERE device_type != 'volume' AND device_id IS NOT NULL;").Error; err != nil {
 		log.Verbosef("failed to create unique index uniq_attachment_index_device: %v", err)
+		return nil, err
+	}
+
+	// Create partial indexes useful for fast lookups on ports and attachments.
+	if err := db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS uniq_port_host_mac ON ports(host_id, mac_address) WHERE host_id IS NOT NULL;").Error; err != nil {
+		log.Verbosef("failed to create unique index uniq_port_host_mac: %v", err)
+		return nil, err
+	}
+
+	if err := db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS uniq_port_attachment_vm_dev ON port_attachments(vm_uuid, device_name) WHERE vm_uuid IS NOT NULL AND device_name IS NOT NULL;").Error; err != nil {
+		log.Verbosef("failed to create unique index uniq_port_attachment_vm_dev: %v", err)
+		return nil, err
+	}
+
+	if err := db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS uniq_port_attachment_vm_mac ON port_attachments(vm_uuid, mac_address) WHERE vm_uuid IS NOT NULL AND mac_address IS NOT NULL;").Error; err != nil {
+		log.Verbosef("failed to create unique index uniq_port_attachment_vm_mac: %v", err)
 		return nil, err
 	}
 
