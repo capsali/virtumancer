@@ -47,6 +47,33 @@ function toggleHost(hostId) {
 const runningVmsCount = (host) => {
     return host.vms ? host.vms.filter(vm => vm.state === 'ACTIVE').length : 0;
 }
+
+const hostStateText = (host) => {
+    if (!host) return 'Unknown';
+    if (host.task_state) {
+        const task = host.task_state.toLowerCase().replace(/_/g, ' ');
+        return task.charAt(0).toUpperCase() + task.slice(1);
+    }
+    const states = {
+        'CONNECTED': 'Connected',
+        'DISCONNECTED': 'Disconnected',
+        'ERROR': 'Error'
+    };
+    if (host.state && states[host.state]) return states[host.state];
+    return host.connected ? 'Connected' : 'Disconnected';
+};
+
+const hostStateColor = (host) => {
+  if (!host) return 'text-gray-400 bg-gray-700';
+  if (host.task_state) return 'text-orange-300 bg-orange-900/50 animate-pulse';
+  const colors = {
+    'CONNECTED': 'text-green-400 bg-green-900/50',
+    'DISCONNECTED': 'text-gray-400 bg-gray-700',
+    'ERROR': 'text-red-400 bg-red-900/50 font-bold'
+  };
+  if (host.state && colors[host.state]) return colors[host.state];
+  return host.connected ? 'text-green-400 bg-green-900/50' : 'text-gray-400 bg-gray-700';
+};
 </script>
 
 <template>
@@ -93,9 +120,9 @@ const runningVmsCount = (host) => {
             <svg class="h-6 w-6 flex-shrink-0" :class="{'text-indigo-400': mainStore.selectedHostId === host.id}" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"/></svg>
             <span class="ml-3 font-semibold truncate" v-show="uiStore.isSidebarOpen">{{ host.id }}</span>
       <div v-show="uiStore.isSidebarOpen" class="ml-2 mr-auto flex items-center space-x-2">
-  <span v-if="mainStore.hostConnecting && mainStore.hostConnecting[host.id]" class="text-xs px-2 py-0.5 rounded-full bg-yellow-500 text-white">connecting...</span>
-  <span v-else class="text-xs px-2 py-0.5 rounded-full" :class="host.connected ? 'bg-green-600 text-white' : 'bg-gray-700 text-gray-300'">{{ host.connected ? 'connected' : 'disconnected' }}</span>
-      </div>
+      <span v-if="mainStore.hostConnecting && mainStore.hostConnecting[host.id]" class="text-xs px-2 py-0.5 rounded-full bg-yellow-500 text-white">connecting...</span>
+      <span v-else class="text-xs px-2 py-0.5 rounded-full" :class="hostStateColor(host)">{{ hostStateText(host) }}</span>
+        </div>
              <span v-if="uiStore.isSidebarOpen && host.vms" class="ml-auto text-xs font-mono bg-gray-800 px-2 py-0.5 rounded-full">
               {{ runningVmsCount(host) }}/{{ host.vms.length }}
             </span>

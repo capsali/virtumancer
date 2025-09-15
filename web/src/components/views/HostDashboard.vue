@@ -61,9 +61,17 @@ const selectVm = (vmName) => {
 
 
 onMounted(() => {
-    if (route.params.hostId) {
-        mainStore.subscribeHostStats(route.params.hostId);
+  console.log('[HostDashboard] mounted, route hostId=', route.params.hostId);
+  if (route.params.hostId) {
+    if (!selectedHost.value) {
+      console.log('[HostDashboard] selectedHost not found, fetching hosts to populate data');
+      mainStore.fetchHosts().then(() => {
+        if (route.params.hostId) mainStore.subscribeHostStats(route.params.hostId);
+      }).catch(err => console.error('[HostDashboard] fetchHosts failed', err));
+    } else {
+      mainStore.subscribeHostStats(route.params.hostId);
     }
+  }
 });
 
 onBeforeRouteLeave((to, from, next) => {
@@ -109,6 +117,34 @@ const stateColor = (vm) => {
   return colors[vm.state] || 'text-gray-400 bg-gray-700';
 };
 
+// Host state helpers (mirror VM helpers)
+const hostStateText = (host) => {
+    if (!host) return 'Unknown';
+    if (host.task_state) {
+        const task = host.task_state.toLowerCase().replace(/_/g, ' ');
+        return task.charAt(0).toUpperCase() + task.slice(1);
+    }
+    const states = {
+        'CONNECTED': 'Connected',
+        'DISCONNECTED': 'Disconnected',
+        'ERROR': 'Error'
+    };
+    if (host.state && states[host.state]) return states[host.state];
+    return host && host.info ? (host.connected ? 'Connected' : 'Disconnected') : (host.connected ? 'Connected' : 'Disconnected');
+};
+
+const hostStateColor = (host) => {
+  if (!host) return 'text-gray-400 bg-gray-700';
+  if (host.task_state) return 'text-orange-300 bg-orange-900/50 animate-pulse';
+  const colors = {
+    'CONNECTED': 'text-green-400 bg-green-900/50',
+    'DISCONNECTED': 'text-gray-400 bg-gray-700',
+    'ERROR': 'text-red-400 bg-red-900/50 font-bold'
+  };
+  if (host.state && colors[host.state]) return colors[host.state];
+  return host.connected ? 'text-green-400 bg-green-900/50' : 'text-gray-400 bg-gray-700';
+};
+
 const formatMemory = (kb) => {
     if (kb === 0) return '0 MB';
     if (!kb) return 'N/A';
@@ -147,7 +183,10 @@ const formatUptime = (sec) => {
   <div v-if="selectedHost">
     <!-- Header -->
     <div class="mb-6">
-      <h1 class="text-3xl font-bold text-white">Host: {{ selectedHost.id }}</h1>
+      <div class="flex items-center gap-4">
+        <h1 class="text-3xl font-bold text-white">Host: {{ selectedHost.id }}</h1>
+        <span class="text-sm font-semibold px-3 py-1 rounded-full" :class="hostStateColor(selectedHost)">{{ hostStateText(selectedHost) }}</span>
+      </div>
       <p class="text-gray-400 font-mono mt-1">{{ selectedHost.uri }}</p>
     </div>
     

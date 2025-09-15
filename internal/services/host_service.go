@@ -151,11 +151,17 @@ func (s *HostService) EnsureHostConnected(hostID string) error {
 	}
 
 	log.Verbosef("EnsureHostConnected: connecting to host %s (uri=%s)", hostID, host.URI)
+	// Mark host as connecting in DB so UI and API can reflect transient state
+	s.db.Model(&storage.Host{}).Where("id = ?", hostID).Updates(map[string]interface{}{"task_state": storage.HostTaskStateConnecting, "state": storage.HostStateDisconnected})
 	if err := s.connector.AddHost(host); err != nil {
 		log.Debugf("EnsureHostConnected: failed to connect to host %s: %v", hostID, err)
+		// Set task_state to empty and mark as error
+		s.db.Model(&storage.Host{}).Where("id = ?", hostID).Updates(map[string]interface{}{"task_state": "", "state": storage.HostStateError})
 		return fmt.Errorf("failed to connect to host %s: %w", hostID, err)
 	}
 	log.Verbosef("EnsureHostConnected: connection established for host %s", hostID)
+	// Clear task state and mark connected
+	s.db.Model(&storage.Host{}).Where("id = ?", hostID).Updates(map[string]interface{}{"task_state": "", "state": storage.HostStateConnected})
 	// Notify clients that the host is now connected
 	s.broadcastHostConnectionChanged(hostID, true)
 	return nil
@@ -213,6 +219,8 @@ func (s *HostService) AddHost(host storage.Host) (*storage.Host, error) {
 	if err := s.db.Create(&host).Error; err != nil {
 		return nil, fmt.Errorf("failed to save host to database: %w", err)
 	}
+	// Mark host as connecting in DB
+	s.db.Model(&storage.Host{}).Where("id = ?", host.ID).Updates(map[string]interface{}{"task_state": storage.HostTaskStateConnecting})
 	log.Verbosef("AddHost: saved host %s (uri=%s)", host.ID, host.URI)
 
 	err := s.connector.AddHost(host)
@@ -227,15 +235,21 @@ func (s *HostService) AddHost(host storage.Host) (*storage.Host, error) {
 	go s.SyncVMsForHost(host.ID)
 
 	log.Verbosef("AddHost: starting initial sync for host %s", host.ID)
+	// Mark connected in DB and clear task state
+	s.db.Model(&storage.Host{}).Where("id = ?", host.ID).Updates(map[string]interface{}{"task_state": "", "state": storage.HostStateConnected})
 	// Notify clients both that hosts changed and that this host is connected
-	s.broadcastHostsChanged()
 	s.broadcastHostConnectionChanged(host.ID, true)
+	s.broadcastHostsChanged()
 	return &host, nil
 }
 
 func (s *HostService) RemoveHost(hostID string) error {
+	// Mark as disconnecting
+	s.db.Model(&storage.Host{}).Where("id = ?", hostID).Updates(map[string]interface{}{"task_state": storage.HostTaskStateDisconnecting})
 	if err := s.connector.RemoveHost(hostID); err != nil {
 		log.Verbosef("RemoveHost: failed to disconnect from host %s during removal: %v", hostID, err)
+		// If removal failed, mark error
+		s.db.Model(&storage.Host{}).Where("id = ?", hostID).Updates(map[string]interface{}{"task_state": "", "state": storage.HostStateError})
 	}
 
 	// Remove VMs and their attachment indices transactionally
@@ -267,9 +281,11 @@ func (s *HostService) RemoveHost(hostID string) error {
 		return fmt.Errorf("failed to delete host from database: %w", err)
 	}
 
+	// Mark disconnected and clear task state
+	s.db.Model(&storage.Host{}).Where("id = ?", hostID).Updates(map[string]interface{}{"task_state": "", "state": storage.HostStateDisconnected})
 	// Broadcast host removal and disconnected status
-	s.broadcastHostsChanged()
 	s.broadcastHostConnectionChanged(hostID, false)
+	s.broadcastHostsChanged()
 	return nil
 }
 

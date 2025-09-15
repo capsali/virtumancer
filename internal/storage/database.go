@@ -53,7 +53,28 @@ const (
 type Host struct {
 	ID  string `gorm:"primaryKey" json:"id"`
 	URI string `json:"uri"`
+	// State reflects the stable connection state of the host.
+	State string `gorm:"size:32;default:'DISCONNECTED'" json:"state"`
+	// TaskState reflects transient work being performed on the host (e.g., connecting)
+	TaskState string `gorm:"size:32" json:"task_state"`
 }
+
+// HostState defines allowed host states to mirror VM state behavior.
+type HostState string
+
+const (
+	HostStateConnected    HostState = "CONNECTED"
+	HostStateDisconnected HostState = "DISCONNECTED"
+	HostStateError        HostState = "ERROR"
+)
+
+// HostTaskState defines transient host task states.
+type HostTaskState string
+
+const (
+	HostTaskStateConnecting    HostTaskState = "CONNECTING"
+	HostTaskStateDisconnecting HostTaskState = "DISCONNECTING"
+)
 
 // VirtualMachine is Virtumancer's canonical definition of a VM's intended state.
 type VirtualMachine struct {
