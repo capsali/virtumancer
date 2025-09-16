@@ -69,6 +69,8 @@ func main() {
 		// Host routes
 		r.Get("/hosts", apiHandler.GetHosts)
 		r.Post("/hosts", apiHandler.CreateHost)
+		r.Post("/hosts/{hostID}/connect", apiHandler.ConnectHost)
+		r.Post("/hosts/{hostID}/disconnect", apiHandler.DisconnectHost)
 		r.Get("/hosts/{hostID}/info", apiHandler.GetHostInfo)
 		r.Delete("/hosts/{hostID}", apiHandler.DeleteHost)
 

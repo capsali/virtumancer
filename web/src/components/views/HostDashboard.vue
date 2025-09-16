@@ -1,6 +1,6 @@
 <script setup>
 import { useMainStore } from '@/stores/mainStore';
-import { computed, ref, onMounted, watch, defineProps } from 'vue';
+import { computed, ref, onMounted, watch, defineProps, nextTick } from 'vue';
 import ConfirmModal from '@/components/modals/ConfirmModal.vue';
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router';
 
@@ -32,6 +32,11 @@ const discoveredVMs = computed(() => mainStore.discoveredByHost[route.params.hos
 const showConfirm = ref(false);
 const confirmPayload = ref({});
 const confirmLoading = ref(false);
+
+// Connect/disconnect confirmation modal state
+const showConnectConfirm = ref(false);
+const connectConfirmPayload = ref({});
+const connectConfirmLoading = ref(false);
 
 const openConfirmAll = () => {
   const hostId = selectedHost.value?.id || props.hostId || route.params.hostId;
@@ -73,11 +78,55 @@ const handleCancel = () => {
   confirmPayload.value = {};
 };
 
+const openConnectConfirm = (action) => {
+  const hid = selectedHost.value?.id || props.hostId || route.params.hostId;
+  connectConfirmPayload.value = { action, hostId: hid };
+  showConnectConfirm.value = true;
+};
+
+const connectAction = computed(() => {
+  if (!selectedHost.value) return 'connect';
+  return (selectedHost.value.state === 'CONNECTED' || (selectedHost.value.info && selectedHost.value.info.connected)) ? 'disconnect' : 'connect';
+});
+
+const handleHeaderConnectClick = (ev) => {
+  openConnectConfirm(connectAction.value);
+};
+
+const handleConnectConfirm = async () => {
+  if (!connectConfirmPayload.value) return;
+  connectConfirmLoading.value = true;
+  const { action, hostId } = connectConfirmPayload.value;
+  // proceed with requested action
+  try {
+    if (action === 'connect') {
+  await mainStore.connectHost(hostId);
+    } else if (action === 'disconnect') {
+  await mainStore.disconnectHost(hostId);
+    }
+  } catch (e) {
+    console.error('Connect/Disconnect action failed', e);
+  } finally {
+    connectConfirmLoading.value = false;
+    showConnectConfirm.value = false;
+    connectConfirmPayload.value = {};
+  }
+};
+
+const handleConnectCancel = () => {
+  showConnectConfirm.value = false;
+  connectConfirmPayload.value = {};
+};
+
+// (removed pointer debug handler)
+
 onMounted(async () => {
   if (route.params.hostId) {
     await loadHostPortsAndAttachments(route.params.hostId);
   // Prime centralized discovered cache for this host
   mainStore.refreshDiscoveredVMs(route.params.hostId).catch(() => {});
+  // Mark this host as selected in the central store so subscription/connect logic can use it
+  if (route.params.hostId) mainStore.selectHost(route.params.hostId);
   }
 });
 
@@ -110,6 +159,8 @@ const loadHostPortsAndAttachments = async (hostId) => {
 watch(() => route.params.hostId, async (newId, oldId) => {
   if (newId === oldId) return;
   await loadHostPortsAndAttachments(newId);
+  // Update central selected host so store knows which host is active
+  if (newId) mainStore.selectHost(newId);
   // Prime/refresh centralized cache
   mainStore.refreshDiscoveredVMs(newId).catch(() => {});
   // (re)subscribe to host stats for the new host
@@ -146,6 +197,11 @@ watch(() => selectedHost.value?.vms, async (nv, ov) => {
   // refresh centralized cache
   await mainStore.refreshDiscoveredVMs(route.params.hostId);
 }, { immediate: false });
+
+// Debug: log when discoveredVMs updates and after DOM updates
+watch(discoveredVMs, (nv) => {
+  nextTick(() => console.log('[HostDashboard] discoveredVMs rendered, count=', (nv && nv.length) || 0));
+}, { immediate: true });
 
 const totalMemory = computed(() => {
     return selectedHost.value?.info?.memory || 0;
@@ -306,13 +362,30 @@ const formatUptime = (sec) => {
 
 <template>
   <div v-if="selectedHost">
-    <!-- Header -->
-    <div class="mb-6">
-      <div class="flex items-center gap-4">
-  <h1 class="text-3xl font-bold text-white">Host: {{ hostId }}</h1>
-        <span class="text-sm font-semibold px-3 py-1 rounded-full" :class="hostStateColor(selectedHost)">{{ hostStateText(selectedHost) }}</span>
+  <!-- Header -->
+  <div class="mb-6 relative z-20">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-4">
+          <h1 class="text-3xl font-bold text-white">Host: {{ hostId }}</h1>
+          <span class="text-sm font-semibold px-3 py-1 rounded-full" :class="hostStateColor(selectedHost)">{{ hostStateText(selectedHost) }}</span>
+        </div>
+        <div class="flex items-center">
+          <p class="text-gray-400 font-mono mr-4">{{ selectedHost.uri }}</p>
+          <div>
+            <button
+              v-if="selectedHost"
+              @click.prevent="handleHeaderConnectClick"
+              :disabled="mainStore.isLoading.connectHost && mainStore.isLoading.connectHost[hostId]"
+              :aria-disabled="mainStore.isLoading.connectHost && mainStore.isLoading.connectHost[hostId] ? 'true' : 'false'"
+              :aria-busy="mainStore.isLoading.connectHost && mainStore.isLoading.connectHost[hostId] ? 'true' : 'false'"
+              :class="(selectedHost && (selectedHost.state === 'CONNECTED' || (selectedHost.info && selectedHost.info.connected))) ? 'relative z-50 pointer-events-auto px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed' : 'relative z-50 pointer-events-auto px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed'"
+            >
+              <span v-if="mainStore.isLoading.connectHost && mainStore.isLoading.connectHost[hostId]" class="inline-block animate-spin w-4 h-4 border-2 border-white rounded-full border-t-transparent mr-2" aria-hidden="true"></span>
+              {{ (selectedHost && (selectedHost.state === 'CONNECTED' || (selectedHost.info && selectedHost.info.connected))) ? 'Disconnect' : 'Connect' }}
+            </button>
+          </div>
+        </div>
       </div>
-      <p class="text-gray-400 font-mono mt-1">{{ selectedHost.uri }}</p>
     </div>
     <!-- Unattached Ports -->
     <div class="mt-6 bg-gray-900 rounded-lg p-4">
@@ -369,6 +442,7 @@ const formatUptime = (sec) => {
           <ul v-else class="space-y-2">
         <li v-for="d in discoveredVMs" :key="d.uuid" class="bg-gray-800 p-3 rounded flex items-center justify-between">
           <div>
+          <ConfirmModal v-if="showConnectConfirm" :title="connectConfirmPayload.action === 'disconnect' ? 'Disconnect host?' : 'Connect host?'" :message="connectConfirmPayload.action === 'disconnect' ? 'Disconnecting will close the libvirt connection for this host. Open consoles and live stats may stop working.' : 'Attempt to establish a libvirt connection to this host now?'" confirmText="Confirm" cancelText="Cancel" :loading="connectConfirmLoading" @confirm="handleConnectConfirm" @cancel="handleConnectCancel" />
             <div class="text-sm text-gray-300">Name: <span class="font-medium text-white">{{ d.name }}</span></div>
             <div class="text-xs text-gray-500">UUID: <span class="font-mono">{{ d.uuid }}</span></div>
           </div>
@@ -494,7 +568,8 @@ const formatUptime = (sec) => {
   <div v-else class="flex items-center justify-center h-full text-gray-500">
     <p>Select a host from the sidebar to view details.</p>
   </div>
-  <ConfirmModal v-if="showConfirm" :title="confirmPayload.type === 'all' ? 'Import all VMs?' : 'Import VM?'" :message="confirmPayload.type === 'all' ? 'Import all discovered VMs on this host into management. This will create DB records for each VM.' : `Import VM '${confirmPayload.vmName || ''}' into management?`" confirmText="Import" cancelText="Cancel" :loading="confirmLoading" @confirm="handleConfirm" @cancel="handleCancel" />
-</template>
+  <ConfirmModal v-if="showConfirm" :title="confirmPayload.type === 'all' ? 'Import all VMs?' : 'Import VM?'" :message="confirmPayload.type === 'all' ? 'Import all discovered VMs on this host into management. This will create DB records for each VM.' : `Import VM \'${confirmPayload.vmName || ''}\' into management?`" confirmText="Import" cancelText="Cancel" :loading="confirmLoading" @confirm="handleConfirm" @cancel="handleCancel" />
 
+
+</template>
 

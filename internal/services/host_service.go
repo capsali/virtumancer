@@ -112,6 +112,8 @@ func NewHostMonitoringManager(service *HostService) *HostMonitoringManager {
 type HostServiceProvider interface {
 	ws.InboundMessageHandler
 	GetAllHosts() ([]storage.Host, error)
+	EnsureHostConnected(hostID string) error
+	DisconnectHost(hostID string) error
 	GetHostInfo(hostID string) (*libvirt.HostInfo, error)
 	AddHost(host storage.Host) (*storage.Host, error)
 	RemoveHost(hostID string) error
@@ -185,6 +187,28 @@ func (s *HostService) EnsureHostConnected(hostID string) error {
 	s.db.Model(&storage.Host{}).Where("id = ?", hostID).Updates(map[string]interface{}{"task_state": "", "state": storage.HostStateConnected})
 	// Notify clients that the host is now connected
 	s.broadcastHostConnectionChanged(hostID, true)
+	return nil
+}
+
+// DisconnectHost disconnects an active libvirt connection for the host and
+// updates DB state. It's safe to call even if no connection exists.
+func (s *HostService) DisconnectHost(hostID string) error {
+	log.Debugf("DisconnectHost: disconnecting host %s", hostID)
+	// If there's no connection, return nil
+	if _, err := s.connector.GetConnection(hostID); err != nil {
+		log.Debugf("DisconnectHost: no active connection for host %s", hostID)
+		return nil
+	}
+
+	if err := s.connector.RemoveHost(hostID); err != nil {
+		// Mark host state as error
+		s.db.Model(&storage.Host{}).Where("id = ?", hostID).Updates(map[string]interface{}{"task_state": "", "state": storage.HostStateError})
+		return fmt.Errorf("failed to disconnect host %s: %w", hostID, err)
+	}
+
+	// Mark host as disconnected
+	s.db.Model(&storage.Host{}).Where("id = ?", hostID).Updates(map[string]interface{}{"task_state": "", "state": storage.HostStateDisconnected})
+	s.broadcastHostConnectionChanged(hostID, false)
 	return nil
 }
 
@@ -1901,14 +1925,13 @@ func (s *HostService) HandleClientDisconnect(client *ws.Client) {
 // --- Monitoring Goroutine Logic ---
 
 func (m *MonitoringManager) Subscribe(client *ws.Client, hostID, vmName string) {
-	// Ensure the host connection exists before starting monitoring. Do this
-	// without holding the monitoring mutex because EnsureHostConnected may
-	// attempt network I/O and we don't want to block other subscribe/unsubscribe operations.
-	if err := m.service.EnsureHostConnected(hostID); err != nil {
-		log.Debugf("Warning: could not ensure host %s connected: %v", hostID, err)
-		// Continue: we'll still start monitoring which will report errors
-		// when attempting to fetch stats if the host is unavailable.
-	}
+	// NOTE: Previously we attempted to call EnsureHostConnected here to lazily
+	// establish a libvirt connection when a client subscribed. That had the
+	// side-effect of setting DB task_state to CONNECTING on each subscribe and
+	// caused the UI to flash a transient "connecting..." status when a user
+	// merely clicked a host in the sidebar. The libvirt connection should be
+	// managed separately (e.g. on host add or via a background reconnect loop),
+	// so avoid attempting to connect here to prevent spurious UI state changes.
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -1944,6 +1967,11 @@ func (m *MonitoringManager) Subscribe(client *ws.Client, hostID, vmName string) 
 }
 
 func (m *MonitoringManager) Unsubscribe(client *ws.Client, hostID, vmName string) {
+	// Do not call EnsureHostConnected here. Attempting to connect on every
+	// subscribe caused the server to set transient task_state values which
+	// the UI then displayed as "connecting..." when users clicked hosts/VMs.
+	// Connection lifecycle should be handled by host add and background
+	// reconnection logic instead.
 	m.mu.Lock()
 	defer m.mu.Unlock()
 

@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 
 export const useMainStore = defineStore('main', () => {
     // State
@@ -15,12 +15,20 @@ export const useMainStore = defineStore('main', () => {
         vmReconcile: null,
         vmImport: null, // e.g. "vmName:import"
         hostImportAll: null,
+        connectHost: {}, // map hostId -> bool
     });
 
     const activeVmStats = ref(null);
     const activeVmHardware = ref(null);
     const hostStats = ref({}); // New state for host stats
-    const hostConnecting = ref({}); // map hostId -> bool when we're connecting / fetching VMs
+    // map hostId -> bool indicating an ongoing host connection/handshake.
+    // This should only be set when the UI initiates a host connection (e.g. addHost)
+    // or when the server is performing an active connect; lightweight fetches like
+    // refreshing discovered VMs should NOT toggle this flag.
+    const hostConnecting = ref({});
+    // Visible, debounced connecting indicator to avoid UI flicker on short-lived CONNECTING states.
+    const visibleConnecting = ref({});
+    const _connectDebounceTimers = {};
     const discoveredByHost = ref({}); // cache discovered VMs keyed by hostId
     const toasts = ref([]);
     const nextToastId = { v: 1 };
@@ -29,12 +37,9 @@ export const useMainStore = defineStore('main', () => {
     const addToast = (message, type = 'success', timeout = 8000) => {
         const id = nextToastId.v++;
         toasts.value.push({ id, message, type, timeout });
-        console.log(`[mainStore] addToast id=${id} message="${message}" type=${type} timeout=${timeout}`);
         if (timeout > 0) {
             // store timer so we can cancel it if the toast is manually dismissed
-            console.log(`[mainStore] Scheduling auto-dismiss for toast ${id} in ${timeout}ms`);
             _toastTimers[id] = setTimeout(() => {
-                console.log(`[mainStore] Auto-dismiss timer firing for toast ${id}`);
                 removeToast(id);
             }, timeout);
         }
@@ -43,23 +48,16 @@ export const useMainStore = defineStore('main', () => {
 
     const removeToast = (id) => {
         // clear any pending auto-dismiss timer
-        try {
-            if (_toastTimers[id]) {
-                clearTimeout(_toastTimers[id]);
-                delete _toastTimers[id];
-            }
-        } catch (e) {
-            // ignore timer cleanup errors
+        if (_toastTimers[id]) {
+            clearTimeout(_toastTimers[id]);
+            delete _toastTimers[id];
         }
-        console.log(`[mainStore] removeToast called for id=${id}. Current count=${toasts.value.length}`);
         toasts.value = toasts.value.filter(t => t.id !== id);
-        console.log(`[mainStore] removeToast completed for id=${id}. New count=${toasts.value.length}`);
     };
 
     const refreshDiscoveredVMs = async (hostId) => {
         if (!hostId) return [];
         try {
-            hostConnecting.value[hostId] = true;
             const list = await fetchDiscoveredVMs(hostId);
             // If fetch returned empty but we already have a non-empty cache, keep the old cache
             const hadPrev = Array.isArray(discoveredByHost.value[hostId]) && discoveredByHost.value[hostId].length > 0;
@@ -73,9 +71,57 @@ export const useMainStore = defineStore('main', () => {
             console.error('[mainStore] refreshDiscoveredVMs failed for', hostId, e);
             return discoveredByHost.value[hostId] || [];
         } finally {
-            if (hostConnecting.value[hostId]) delete hostConnecting.value[hostId];
+            // Note: do not toggle `hostConnecting` here — that flag indicates
+            // an actual host connection/handshake (used during addHost or when
+            // the server is establishing a libvirt connection). Refreshing the
+            // discovered-VMs list is a lightweight data fetch and should not
+            // affect the host connection badge in the sidebar.
         }
     };
+
+    // Watch hosts' task_state changes to debounce short CONNECTING appearances.
+    watch(
+        () => hosts.value.map(h => ({ id: h.id, task_state: h.task_state })),
+        (newVal) => {
+            const seen = new Set();
+            // For each host entry, if task_state === 'CONNECTING' schedule a short timer to show it.
+            newVal.forEach(({ id, task_state }) => {
+                seen.add(id);
+                const isConnecting = task_state && String(task_state).toUpperCase() === 'CONNECTING';
+                if (isConnecting) {
+                    // If we already show it, nothing to do
+                    if (visibleConnecting.value[id]) return;
+                    // If a timer already scheduled, keep it
+                    if (_connectDebounceTimers[id]) return;
+                    // Schedule debounce (300ms) before showing connecting badge
+                    _connectDebounceTimers[id] = setTimeout(() => {
+                        visibleConnecting.value = { ...visibleConnecting.value, [id]: true };
+                        delete _connectDebounceTimers[id];
+                    }, 300);
+                } else {
+                    // Not connecting: clear any timer and ensure badge hidden
+                    if (_connectDebounceTimers[id]) {
+                        clearTimeout(_connectDebounceTimers[id]);
+                        delete _connectDebounceTimers[id];
+                    }
+                    if (visibleConnecting.value[id]) {
+                        const copy = { ...visibleConnecting.value };
+                        delete copy[id];
+                        visibleConnecting.value = copy;
+                    }
+                }
+            });
+            // Any hosts previously showing connecting but no longer present should be cleared
+            Object.keys(visibleConnecting.value).forEach(existingId => {
+                if (!seen.has(existingId)) {
+                    const copy = { ...visibleConnecting.value };
+                    delete copy[existingId];
+                    visibleConnecting.value = copy;
+                }
+            });
+        },
+        { deep: false }
+    );
 
     const getDiscoveredVMs = async (hostId) => {
         if (!hostId) return [];
@@ -140,21 +186,56 @@ export const useMainStore = defineStore('main', () => {
                         // Update local host entry if present
                         const idx = hosts.value.findIndex(h => h.id === message.payload.hostId);
                         if (idx !== -1) {
-                            const updatedHost = { ...hosts.value[idx], connected: message.payload.connected };
-                            hosts.value.splice(idx, 1, updatedHost);
-                            // If it just connected, proactively refresh its VMs and info
-                            if (message.payload.connected) {
-                                (async () => {
-                                    const [vms, info] = await Promise.all([fetchVmsForHost(message.payload.hostId), fetchHostInfo(message.payload.hostId)]);
-                                    const refreshed = { ...updatedHost, vms, info, connected: true };
-                                    const curIdx = hosts.value.findIndex(h => h.id === message.payload.hostId);
-                                        if (curIdx !== -1) hosts.value.splice(curIdx, 1, refreshed);
-                                        // Clear any connecting indicator
-                                        if (hostConnecting.value[message.payload.hostId]) {
-                                            delete hostConnecting.value[message.payload.hostId];
+                                // Update host connected flag immediately
+                                const updatedHost = { ...hosts.value[idx], connected: message.payload.connected };
+                                // If disconnected, clear info and stop monitoring immediately
+                                if (!message.payload.connected) {
+                                    updatedHost.info = null;
+                                    // Replace host entry
+                                    hosts.value.splice(idx, 1, updatedHost);
+                                    // Clear any host stats and active VM stats
+                                    if (hostStats && hostStats.value) {
+                                        const copy = { ...hostStats.value };
+                                        delete copy[message.payload.hostId];
+                                        hostStats.value = copy;
+                                    }
+                                    activeVmStats.value = null;
+                                    // Unsubscribe any active subscriptions for this host so we stop polling
+                                    try {
+                                        if (currentlySubscribedHostId.value === message.payload.hostId) {
+                                            unsubscribeHostStats(message.payload.hostId);
                                         }
+                                        if (currentlySubscribedHostId.value === message.payload.hostId && currentlySubscribedVmName.value) {
+                                            unsubscribeFromVmStats(message.payload.hostId, currentlySubscribedVmName.value);
+                                        }
+                                    } catch (e) {
+                                        console.warn('[mainStore] error while unsubscribing after disconnect', e);
+                                    }
+                                    // Clear any connecting indicator
+                                    if (hostConnecting.value[message.payload.hostId]) {
+                                        delete hostConnecting.value[message.payload.hostId];
+                                    }
+                                    break;
+                                }
+                                // If it just connected, proactively refresh its VMs and info and subscribe
+                                (async () => {
+                                    const [vms, infoFull] = await Promise.all([fetchVmsForHost(message.payload.hostId), fetchHostInfoFull(message.payload.hostId)]);
+                                    const refreshed = { ...updatedHost, vms, info: (infoFull && infoFull.info) ? infoFull.info : null, connected: !!(infoFull && typeof infoFull.connected !== 'undefined' ? infoFull.connected : true) };
+                                    const curIdx = hosts.value.findIndex(h => h.id === message.payload.hostId);
+                                    if (curIdx !== -1) hosts.value.splice(curIdx, 1, refreshed);
+                                    // Clear connecting indicator
+                                    if (hostConnecting.value[message.payload.hostId]) {
+                                        delete hostConnecting.value[message.payload.hostId];
+                                    }
+                                    // If the UI is currently viewing this host, subscribe to host stats
+                                    try {
+                                        if (currentlySubscribedHostId.value === message.payload.hostId || selectedHostId.value === message.payload.hostId) {
+                                            subscribeHostStats(message.payload.hostId);
+                                        }
+                                    } catch (e) {
+                                        console.warn('[mainStore] error while subscribing after connect', e);
+                                    }
                                 })();
-                            }
                         } else if (message.payload.connected) {
                             // If host connected but not present, refetch all hosts
                             fetchHosts();
@@ -217,16 +298,17 @@ export const useMainStore = defineStore('main', () => {
         }
 
         // Fetch new data for the specific host
-        const [vms, info] = await Promise.all([
+        const [vms, infoFull] = await Promise.all([
             fetchVmsForHost(hostId),
-            fetchHostInfo(hostId)
+            fetchHostInfoFull(hostId)
         ]);
         
         // Create a new host object to ensure reactivity
         const updatedHost = {
             ...hosts.value[hostIndex],
             vms,
-            info,
+            info: (infoFull && infoFull.info) ? infoFull.info : null,
+            connected: (infoFull && typeof infoFull.connected !== 'undefined') ? !!infoFull.connected : hosts.value[hostIndex].connected,
         };
 
         // Replace the old host object with the new one
@@ -273,11 +355,12 @@ export const useMainStore = defineStore('main', () => {
 
                         // Per-host VM/info fetch with AbortController timeout
                         const vmPromise = fetchVmsForHost(host.id);
-                        const infoPromise = fetchHostInfo(host.id);
+                        const infoPromise = fetchHostInfoFull(host.id);
 
                         const [vms, info] = await Promise.all([vmPromise, infoPromise]);
                         host.vms = vms || [];
-                        host.info = info || null;
+                        host.info = (info && info.info) ? info.info : null;
+                        host.connected = (info && typeof info.connected !== 'undefined') ? !!info.connected : host.connected;
                         return host;
                     } catch (err) {
                         console.warn('[mainStore] fetchHosts: host fetch failed', item, err && err.message ? err.message : err);
@@ -332,6 +415,24 @@ export const useMainStore = defineStore('main', () => {
         }
     };
 
+    // Return the full host info envelope including the `connected` boolean and `info` payload.
+    const fetchHostInfoFull = async (hostId) => {
+        if (!hostId) return null;
+        try {
+            const controller = new AbortController();
+            const id = setTimeout(() => controller.abort(), 5000);
+            const response = await fetch(`/api/v1/hosts/${hostId}/info`, { signal: controller.signal });
+            clearTimeout(id);
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            const data = await response.json();
+            // Expecting { connected: bool, info: {...} }
+            return data || null;
+        } catch (error) {
+            console.error(`Error fetching full info for host ${hostId}:`, error);
+            return null;
+        }
+    };
+
     const addHost = async (hostData) => {
         isLoading.value.addHost = true;
         errorMessage.value = '';
@@ -348,15 +449,52 @@ export const useMainStore = defineStore('main', () => {
             const newHost = await response.json();
 
             // Optimistically add the new host to the local state.
-            // The websocket will later trigger a full refresh to sync VMs and other info.
-            hosts.value.push({
-                ...newHost,
-                connected: false,
-                vms: [], // Initialize with empty VMs
-                info: null, // Info will be fetched by the full sync
-            });
-            // Mark as connecting while backend attempts to connect and sync
+            // We'll then fetch authoritative info/vms for this host and update the entry so the UI
+            // (sidebar status) reflects the server-side connection status without a full page refresh.
+            // Mark as connecting while we synchronously fetch authoritative info so the UI
+            // shows the server state immediately when the host is added.
             hostConnecting.value[newHost.id] = true;
+            try {
+                const [vms, infoFull] = await Promise.all([fetchVmsForHost(newHost.id), fetchHostInfoFull(newHost.id)]);
+                const entry = {
+                    ...newHost,
+                    connected: infoFull && typeof infoFull.connected !== 'undefined' ? !!infoFull.connected : ((newHost && typeof newHost.connected !== 'undefined') ? !!newHost.connected : false),
+                    vms: vms || [],
+                    info: (infoFull && infoFull.info) ? infoFull.info : null,
+                };
+                hosts.value.push(entry);
+                // Also refresh discovered VMs cache so the Sidebar's Discovered list appears without a page reload.
+                try { await refreshDiscoveredVMs(newHost.id); } catch (e) { console.warn('[mainStore] refreshDiscoveredVMs failed for new host', newHost.id, e); }
+            } catch (err) {
+                // If the sync fails, fall back to optimistic add and schedule a background refresh
+                console.warn('[mainStore] sync-on-add failed, falling back to optimistic add for', newHost.id, err);
+                hosts.value.push({
+                    ...newHost,
+                    connected: (newHost && typeof newHost.connected !== 'undefined') ? !!newHost.connected : false,
+                    vms: [],
+                    info: null,
+                });
+                (async () => {
+                    try {
+                        const [vms, infoFull] = await Promise.all([fetchVmsForHost(newHost.id), fetchHostInfoFull(newHost.id)]);
+                        const refreshed = {
+                            ...newHost,
+                            connected: infoFull && typeof infoFull.connected !== 'undefined' ? !!infoFull.connected : ((newHost && typeof newHost.connected !== 'undefined') ? !!newHost.connected : false),
+                            vms: vms || [],
+                            info: (infoFull && infoFull.info) ? infoFull.info : null,
+                        };
+                        const idx = hosts.value.findIndex(h => h.id === newHost.id);
+                        if (idx !== -1) hosts.value.splice(idx, 1, refreshed);
+                        try { await refreshDiscoveredVMs(newHost.id); } catch (e) { console.warn('[mainStore] refreshDiscoveredVMs failed for new host', newHost.id, e); }
+                    } catch (err2) {
+                        console.warn('[mainStore] post-add host refresh failed for', newHost.id, err2);
+                    } finally {
+                        if (hostConnecting.value[newHost.id]) delete hostConnecting.value[newHost.id];
+                    }
+                })();
+            } finally {
+                if (hostConnecting.value[newHost.id]) delete hostConnecting.value[newHost.id];
+            }
 
         } catch (error) {
             errorMessage.value = `Failed to add host: ${error.message}`;
@@ -365,7 +503,6 @@ export const useMainStore = defineStore('main', () => {
             isLoading.value.addHost = false;
         }
     };
-
     const deleteHost = async (hostId) => {
         errorMessage.value = '';
         try {
@@ -482,6 +619,11 @@ export const useMainStore = defineStore('main', () => {
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             return await response.json() || [];
         } catch (error) {
+            // AbortErrors are expected when a request times out or is superseded; avoid noisy logs.
+            if (error && error.name === 'AbortError') {
+                // Silently return empty list for aborted requests.
+                return [];
+            }
             console.error(`Failed to fetch discovered VMs for ${hostId}:`, error);
             return [];
         }
@@ -538,6 +680,98 @@ export const useMainStore = defineStore('main', () => {
             return false;
         } finally {
             isLoading.value.hostImportAll = null;
+        }
+    };
+
+    // Connect / Disconnect actions (manual trigger)
+    const connectHost = async (hostId) => {
+        if (!hostId) return false;
+        isLoading.value.connectHost = { ...isLoading.value.connectHost, [hostId]: true };
+        try {
+            const res = await fetch(`/api/v1/hosts/${hostId}/connect`, { method: 'POST' });
+            if (!res.ok) {
+                const txt = await res.text().catch(() => '');
+                throw new Error(txt || `HTTP ${res.status}`);
+            }
+            addToast(`Connection requested for host ${hostId}`, 'success');
+            // Refresh authoritative host list so UI shows server-side state
+            try {
+                await fetchHosts();
+            } catch (e) {
+                console.warn('[mainStore] fetchHosts after connect failed', e);
+            }
+            // clear connecting indicator
+            if (hostConnecting.value[hostId]) {
+                const copy = { ...hostConnecting.value };
+                delete copy[hostId];
+                hostConnecting.value = copy;
+            }
+            // If user is viewing this host, subscribe to host stats
+            try {
+                if (selectedHostId.value === hostId) {
+                    subscribeHostStats(hostId);
+                }
+            } catch (e) {
+                console.warn('[mainStore] subscribe after connect failed', e);
+            }
+            return true;
+        } catch (e) {
+            console.error('connectHost failed', e);
+            addToast(`Failed to request connect for host ${hostId}: ${e.message}`, 'error');
+            return false;
+        } finally {
+            const copy = { ...isLoading.value.connectHost };
+            delete copy[hostId];
+            isLoading.value.connectHost = copy;
+        }
+    };
+
+    const disconnectHost = async (hostId) => {
+        if (!hostId) return false;
+        isLoading.value.connectHost = { ...isLoading.value.connectHost, [hostId]: true };
+        try {
+            // If currently subscribed to this host or a VM on it, unsubscribe first so polling stops immediately
+            try {
+                if (currentlySubscribedHostId.value === hostId) {
+                    unsubscribeHostStats(hostId);
+                }
+                if (currentlySubscribedHostId.value === hostId && currentlySubscribedVmName.value) {
+                    unsubscribeFromVmStats(hostId, currentlySubscribedVmName.value);
+                }
+            } catch (e) {
+                console.warn('[mainStore] error unsubscribing before disconnect', e);
+            }
+            const res = await fetch(`/api/v1/hosts/${hostId}/disconnect`, { method: 'POST' });
+            if (!res.ok) {
+                const txt = await res.text().catch(() => '');
+                throw new Error(txt || `HTTP ${res.status}`);
+            }
+            addToast(`Disconnect requested for host ${hostId}`, 'success');
+            // Update local host entry immediately so UI shows disconnected without manual refresh
+            const idx = hosts.value.findIndex(h => h.id === hostId);
+            if (idx !== -1) {
+                const updated = { ...hosts.value[idx], connected: false, info: null };
+                hosts.value.splice(idx, 1, updated);
+            } else {
+                // ensure we still try to refresh hosts list if host not present
+                fetchHosts();
+            }
+            // Clear any host stats for this host
+            if (hostStats && hostStats.value) {
+                const copy = { ...hostStats.value };
+                delete copy[hostId];
+                hostStats.value = copy;
+            }
+            activeVmStats.value = null;
+            return true;
+        } catch (e) {
+            console.error('disconnectHost failed', e);
+            addToast(`Failed to request disconnect for host ${hostId}: ${e.message}`, 'error');
+            return false;
+        } finally {
+            const copy = { ...isLoading.value.connectHost };
+            delete copy[hostId];
+            isLoading.value.connectHost = copy;
         }
     };
 
@@ -712,6 +946,7 @@ export const useMainStore = defineStore('main', () => {
         activeVmHardware,
         hostStats, // Export hostStats
         hostConnecting,
+        visibleConnecting,
         discoveredByHost,
         toasts,
         addToast,
@@ -732,6 +967,8 @@ export const useMainStore = defineStore('main', () => {
     fetchDiscoveredVMs,
     importVm,
     importAllVMs,
+    connectHost,
+    disconnectHost,
         startVm,
         gracefulShutdownVm,
         gracefulRebootVm,

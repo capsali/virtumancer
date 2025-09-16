@@ -111,6 +111,26 @@ func (h *APIHandler) GetHostInfo(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(resp)
 }
 
+// ConnectHost triggers a connection attempt for the given host id.
+func (h *APIHandler) ConnectHost(w http.ResponseWriter, r *http.Request) {
+	hostID := chi.URLParam(r, "hostID")
+	if err := h.HostService.EnsureHostConnected(hostID); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// DisconnectHost requests a disconnect for the given host id.
+func (h *APIHandler) DisconnectHost(w http.ResponseWriter, r *http.Request) {
+	hostID := chi.URLParam(r, "hostID")
+	if err := h.HostService.DisconnectHost(hostID); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *APIHandler) DeleteHost(w http.ResponseWriter, r *http.Request) {
 	hostID := chi.URLParam(r, "hostID")
 	if err := h.HostService.RemoveHost(hostID); err != nil {
@@ -142,6 +162,14 @@ func (h *APIHandler) ListVMsFromLibvirt(w http.ResponseWriter, r *http.Request) 
 // ListDiscoveredVMs lists libvirt-only VMs for a host that are not in our DB.
 func (h *APIHandler) ListDiscoveredVMs(w http.ResponseWriter, r *http.Request) {
 	hostID := chi.URLParam(r, "hostID")
+	// If we don't have an active libvirt connection for this host, return an empty list.
+	// Discovered-VMs is a lightweight UI-only fetch; a disconnected host shouldn't produce a 500.
+	if _, err := h.Connector.GetConnection(hostID); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode([]interface{}{})
+		return
+	}
+
 	vms, err := h.HostService.ListDiscoveredVMs(hostID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
