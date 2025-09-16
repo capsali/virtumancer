@@ -6,7 +6,7 @@ import ToastContainer from '@/components/ui/ToastContainer.vue';
 <template>
   <div class="h-screen w-screen bg-gray-900 text-gray-100">
     <RouterView />
-    <ToastContainer />
+  <ToastContainer />
   </div>
 </template>
 

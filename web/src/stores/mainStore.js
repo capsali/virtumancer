@@ -24,16 +24,36 @@ export const useMainStore = defineStore('main', () => {
     const discoveredByHost = ref({}); // cache discovered VMs keyed by hostId
     const toasts = ref([]);
     const nextToastId = { v: 1 };
+    const _toastTimers = {};
 
-    const addToast = (message, type = 'success', timeout = 5000) => {
+    const addToast = (message, type = 'success', timeout = 8000) => {
         const id = nextToastId.v++;
-        toasts.value.push({ id, message, type });
-        if (timeout > 0) setTimeout(() => removeToast(id), timeout);
+        toasts.value.push({ id, message, type, timeout });
+        console.log(`[mainStore] addToast id=${id} message="${message}" type=${type} timeout=${timeout}`);
+        if (timeout > 0) {
+            // store timer so we can cancel it if the toast is manually dismissed
+            console.log(`[mainStore] Scheduling auto-dismiss for toast ${id} in ${timeout}ms`);
+            _toastTimers[id] = setTimeout(() => {
+                console.log(`[mainStore] Auto-dismiss timer firing for toast ${id}`);
+                removeToast(id);
+            }, timeout);
+        }
         return id;
     };
 
     const removeToast = (id) => {
+        // clear any pending auto-dismiss timer
+        try {
+            if (_toastTimers[id]) {
+                clearTimeout(_toastTimers[id]);
+                delete _toastTimers[id];
+            }
+        } catch (e) {
+            // ignore timer cleanup errors
+        }
+        console.log(`[mainStore] removeToast called for id=${id}. Current count=${toasts.value.length}`);
         toasts.value = toasts.value.filter(t => t.id !== id);
+        console.log(`[mainStore] removeToast completed for id=${id}. New count=${toasts.value.length}`);
     };
 
     const refreshDiscoveredVMs = async (hostId) => {
