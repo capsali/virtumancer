@@ -3,6 +3,7 @@ import { useUiStore } from '@/stores/uiStore';
 import { useMainStore } from '@/stores/mainStore';
 import { onMounted, ref } from 'vue';
 import { watch } from 'vue';
+import ConfirmModal from '@/components/modals/ConfirmModal.vue';
 import { useRouter } from 'vue-router';
 
 const uiStore = useUiStore();
@@ -10,6 +11,47 @@ const mainStore = useMainStore();
 const router = useRouter();
 
 const expandedHosts = ref({});
+const showConfirm = ref(false);
+const confirmPayload = ref({});
+const confirmLoading = ref(false);
+
+const openConfirmAll = (hostId) => {
+  confirmPayload.value = { type: 'all', hostId };
+  showConfirm.value = true;
+};
+
+const openConfirmOne = (hostId, vmName) => {
+  confirmPayload.value = { type: 'one', hostId, vmName };
+  showConfirm.value = true;
+};
+
+const handleConfirm = async () => {
+    try {
+    console.log('[Sidebar] handleConfirm invoked, payload=', confirmPayload.value);
+    if (!confirmPayload.value) return;
+    confirmLoading.value = true;
+    if (confirmPayload.value.type === 'all') {
+      console.log('[Sidebar] calling importAllVMs for host', confirmPayload.value.hostId);
+      mainStore.addToast(`Starting import of all discovered VMs on ${confirmPayload.value.hostId}`, 'success');
+      await mainStore.importAllVMs(confirmPayload.value.hostId);
+    } else if (confirmPayload.value.type === 'one') {
+      console.log('[Sidebar] calling importVm for', confirmPayload.value.vmName, 'on host', confirmPayload.value.hostId);
+      mainStore.addToast(`Starting import of ${confirmPayload.value.vmName}`, 'success');
+      await mainStore.importVm(confirmPayload.value.hostId, confirmPayload.value.vmName);
+    }
+  } catch (e) {
+    console.error('Import failed', e);
+  } finally {
+    confirmLoading.value = false;
+    showConfirm.value = false;
+    confirmPayload.value = {};
+  }
+};
+
+const handleCancel = () => {
+  showConfirm.value = false;
+  confirmPayload.value = {};
+};
 
 onMounted(() => {
   mainStore.initializeRealtime();
@@ -162,10 +204,23 @@ const hostStateColor = (host) => {
             </div>
 
             <div v-if="mainStore.discoveredByHost[host.id] && mainStore.discoveredByHost[host.id].length" class="mb-2">
-              <div class="flex items-center justify-between">
+                <div class="flex items-center justify-between">
                 <div class="text-xs text-gray-400 uppercase font-semibold mb-1">Discovered</div>
                 <div>
-                  <button @click.stop="(async ()=>{ await mainStore.importAllVMs(host.id); })()" class="text-xs px-2 py-0.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded">Import All</button>
+                  <button
+                    :disabled="mainStore.isLoading.hostImportAll === `host:${host.id}:import-all`"
+                    @click.stop.prevent="() => openConfirmAll(host.id)"
+                    :aria-disabled="mainStore.isLoading.hostImportAll === `host:${host.id}:import-all` ? 'true' : 'false'"
+                    :aria-busy="mainStore.isLoading.hostImportAll === `host:${host.id}:import-all` ? 'true' : 'false'"
+                    :aria-label="`Import all discovered VMs on host ${host.id}`"
+                    :class="[
+                      'text-xs px-2 py-0.5 rounded text-white',
+                      mainStore.isLoading.hostImportAll === `host:${host.id}:import-all` ? 'bg-indigo-600 opacity-50 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'
+                    ]"
+                  >
+                    <span v-if="mainStore.isLoading.hostImportAll === `host:${host.id}:import-all`" class="inline-block animate-spin w-3 h-3 border-2 border-white rounded-full border-t-transparent mr-1" aria-hidden="true"></span>
+                    Import All
+                  </button>
                 </div>
               </div>
               <ul class="space-y-1">
@@ -176,7 +231,20 @@ const hostStateColor = (host) => {
                       <span class="truncate">{{ d.name }}</span>
                     </div>
                     <div>
-                      <button @click.stop="(async ()=>{ await mainStore.importVm(host.id, d.name); })()" class="text-xs px-2 py-0.5 bg-green-600 hover:bg-green-700 text-white rounded">Import</button>
+                      <button
+                        :disabled="mainStore.isLoading.vmImport === `${d.name}:import`"
+                        @click.stop.prevent="() => openConfirmOne(host.id, d.name)"
+                        :aria-disabled="mainStore.isLoading.vmImport === `${d.name}:import` ? 'true' : 'false'"
+                        :aria-busy="mainStore.isLoading.vmImport === `${d.name}:import` ? 'true' : 'false'"
+                        :aria-label="`Import discovered VM ${d.name} on host ${host.id}`"
+                        :class="[
+                          'text-xs px-2 py-0.5 rounded text-white',
+                          mainStore.isLoading.vmImport === `${d.name}:import` ? 'bg-green-600 opacity-50 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'
+                        ]"
+                      >
+                        <span v-if="mainStore.isLoading.vmImport === `${d.name}:import`" class="inline-block animate-spin w-3 h-3 border-2 border-white rounded-full border-t-transparent mr-1" aria-hidden="true"></span>
+                        Import
+                      </button>
                     </div>
                   </div>
                 </li>
@@ -200,6 +268,7 @@ const hostStateColor = (host) => {
              <div class="text-xs text-gray-400">Hosts</div>
         </div>
     </div>
+  <ConfirmModal v-if="showConfirm" :title="confirmPayload.type === 'all' ? 'Import all VMs?' : 'Import VM?'" :message="confirmPayload.type === 'all' ? 'Import all discovered VMs on this host into management. This will create DB records for each VM.' : `Import VM '${confirmPayload.vmName || ''}' into management?`" confirmText="Import" cancelText="Cancel" :loading="confirmLoading" @confirm="handleConfirm" @cancel="handleCancel" />
   </aside>
 </template>
 

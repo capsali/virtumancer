@@ -1,11 +1,13 @@
 <script setup>
 import { useMainStore } from '@/stores/mainStore';
-import { computed, ref, onMounted, watch } from 'vue';
+import { computed, ref, onMounted, watch, defineProps } from 'vue';
+import ConfirmModal from '@/components/modals/ConfirmModal.vue';
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router';
 
 const mainStore = useMainStore();
 const route = useRoute();
 const router = useRouter();
+const props = defineProps({ hostId: { type: String, default: null } });
 
 const selectedHost = computed(() => {
   const hostId = route.params.hostId;
@@ -18,6 +20,8 @@ const hostStats = computed(() => {
     return mainStore.hostStats[selectedHost.value.id];
 });
 
+const hostId = computed(() => selectedHost.value?.id || props.hostId || route.params.hostId || '');
+
 const vms = computed(() => {
     return selectedHost.value?.vms || [];
 });
@@ -25,6 +29,49 @@ const vms = computed(() => {
 const hostPorts = ref([]);
 const portAttachments = ref([]);
 const discoveredVMs = computed(() => mainStore.discoveredByHost[route.params.hostId] || []);
+const showConfirm = ref(false);
+const confirmPayload = ref({});
+const confirmLoading = ref(false);
+
+const openConfirmAll = () => {
+  const hostId = selectedHost.value?.id || props.hostId || route.params.hostId;
+  confirmPayload.value = { type: 'all', hostId };
+  showConfirm.value = true;
+};
+
+const openConfirmOne = (vmName) => {
+  const hostId = selectedHost.value?.id || props.hostId || route.params.hostId;
+  confirmPayload.value = { type: 'one', hostId, vmName };
+  showConfirm.value = true;
+};
+
+const handleConfirm = async () => {
+    try {
+    console.log('[HostDashboard] handleConfirm invoked, payload=', confirmPayload.value);
+    if (!confirmPayload.value) return;
+    confirmLoading.value = true;
+    if (confirmPayload.value.type === 'all') {
+      console.log('[HostDashboard] calling importAllVMs for host', confirmPayload.value.hostId);
+      mainStore.addToast(`Starting import of all discovered VMs on ${confirmPayload.value.hostId}`, 'success');
+      await mainStore.importAllVMs(confirmPayload.value.hostId);
+    } else if (confirmPayload.value.type === 'one') {
+      console.log('[HostDashboard] calling importVm for', confirmPayload.value.vmName, 'on host', confirmPayload.value.hostId);
+      mainStore.addToast(`Starting import of ${confirmPayload.value.vmName}`, 'success');
+      await mainStore.importVm(confirmPayload.value.hostId, confirmPayload.value.vmName);
+    }
+  } catch (e) {
+    console.error('Import failed', e);
+  } finally {
+    confirmLoading.value = false;
+    showConfirm.value = false;
+    confirmPayload.value = {};
+  }
+};
+
+const handleCancel = () => {
+  showConfirm.value = false;
+  confirmPayload.value = {};
+};
 
 onMounted(async () => {
   if (route.params.hostId) {
@@ -96,8 +143,8 @@ watch(() => selectedHost.value?.vms, async (nv, ov) => {
 // Refresh discovered VM list when host VMs change
 watch(() => selectedHost.value?.vms, async (nv, ov) => {
   if (!route.params.hostId) return;
-  // refresh centralized cache and update local view
-  discoveredVMs.value = await mainStore.refreshDiscoveredVMs(route.params.hostId);
+  // refresh centralized cache
+  await mainStore.refreshDiscoveredVMs(route.params.hostId);
 }, { immediate: false });
 
 const totalMemory = computed(() => {
@@ -262,7 +309,7 @@ const formatUptime = (sec) => {
     <!-- Header -->
     <div class="mb-6">
       <div class="flex items-center gap-4">
-        <h1 class="text-3xl font-bold text-white">Host: {{ selectedHost.id }}</h1>
+  <h1 class="text-3xl font-bold text-white">Host: {{ hostId }}</h1>
         <span class="text-sm font-semibold px-3 py-1 rounded-full" :class="hostStateColor(selectedHost)">{{ hostStateText(selectedHost) }}</span>
       </div>
       <p class="text-gray-400 font-mono mt-1">{{ selectedHost.uri }}</p>
@@ -299,21 +346,47 @@ const formatUptime = (sec) => {
 
     <!-- Discovered VMs (not yet managed) -->
     <div class="mt-6 bg-gray-900 rounded-lg p-4">
-      <div class="flex items-center justify-between">
+        <div class="flex items-center justify-between">
         <h2 class="text-xl font-semibold text-white mb-3">Discovered VMs (Not Managed)</h2>
         <div>
-          <button @click="mainStore.importAllVMs(selectedHost.id)" class="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded mr-2">Import All</button>
+          <button
+            :disabled="mainStore.isLoading.hostImportAll === `host:${hostId}:import-all`"
+            @click.prevent="openConfirmAll"
+            :aria-disabled="mainStore.isLoading.hostImportAll === `host:${hostId}:import-all` ? 'true' : 'false'"
+            :aria-busy="mainStore.isLoading.hostImportAll === `host:${hostId}:import-all` ? 'true' : 'false'"
+            :aria-label="`Import all discovered VMs on host ${hostId}`"
+            :class="[
+              'px-3 py-1 rounded text-white mr-2',
+              mainStore.isLoading.hostImportAll === `host:${hostId}:import-all` ? 'bg-indigo-600 opacity-50 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'
+            ]"
+          >
+            <span v-if="mainStore.isLoading.hostImportAll === `host:${hostId}:import-all`" class="inline-block animate-spin w-4 h-4 border-2 border-white rounded-full border-t-transparent mr-1" aria-hidden="true"></span>
+            Import All
+          </button>
         </div>
       </div>
       <div v-if="discoveredVMs.length === 0" class="text-gray-400">No discovered VMs found for this host.</div>
-      <ul v-else class="space-y-2">
+          <ul v-else class="space-y-2">
         <li v-for="d in discoveredVMs" :key="d.uuid" class="bg-gray-800 p-3 rounded flex items-center justify-between">
           <div>
             <div class="text-sm text-gray-300">Name: <span class="font-medium text-white">{{ d.name }}</span></div>
             <div class="text-xs text-gray-500">UUID: <span class="font-mono">{{ d.uuid }}</span></div>
           </div>
           <div class="flex items-center gap-2">
-            <button @click="mainStore.importVm(selectedHost.id, d.name)" class="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded">Import</button>
+            <button
+              :disabled="mainStore.isLoading.vmImport === `${d.name}:import`"
+              @click.prevent="() => openConfirmOne(d.name)"
+              :aria-disabled="mainStore.isLoading.vmImport === `${d.name}:import` ? 'true' : 'false'"
+              :aria-busy="mainStore.isLoading.vmImport === `${d.name}:import` ? 'true' : 'false'"
+              :aria-label="`Import discovered VM ${d.name} on host ${hostId}`"
+              :class="[
+                'px-3 py-1 rounded text-white',
+                mainStore.isLoading.vmImport === `${d.name}:import` ? 'bg-green-600 opacity-50 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'
+              ]"
+            >
+              <span v-if="mainStore.isLoading.vmImport === `${d.name}:import`" class="inline-block animate-spin w-4 h-4 border-2 border-white rounded-full border-t-transparent mr-1" aria-hidden="true"></span>
+              Import
+            </button>
           </div>
         </li>
       </ul>
@@ -421,6 +494,7 @@ const formatUptime = (sec) => {
   <div v-else class="flex items-center justify-center h-full text-gray-500">
     <p>Select a host from the sidebar to view details.</p>
   </div>
+  <ConfirmModal v-if="showConfirm" :title="confirmPayload.type === 'all' ? 'Import all VMs?' : 'Import VM?'" :message="confirmPayload.type === 'all' ? 'Import all discovered VMs on this host into management. This will create DB records for each VM.' : `Import VM '${confirmPayload.vmName || ''}' into management?`" confirmText="Import" cancelText="Cancel" :loading="confirmLoading" @confirm="handleConfirm" @cancel="handleCancel" />
 </template>
 
 

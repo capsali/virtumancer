@@ -22,6 +22,19 @@ export const useMainStore = defineStore('main', () => {
     const hostStats = ref({}); // New state for host stats
     const hostConnecting = ref({}); // map hostId -> bool when we're connecting / fetching VMs
     const discoveredByHost = ref({}); // cache discovered VMs keyed by hostId
+    const toasts = ref([]);
+    const nextToastId = { v: 1 };
+
+    const addToast = (message, type = 'success', timeout = 5000) => {
+        const id = nextToastId.v++;
+        toasts.value.push({ id, message, type });
+        if (timeout > 0) setTimeout(() => removeToast(id), timeout);
+        return id;
+    };
+
+    const removeToast = (id) => {
+        toasts.value = toasts.value.filter(t => t.id !== id);
+    };
 
     const refreshDiscoveredVMs = async (hostId) => {
         if (!hostId) return [];
@@ -459,6 +472,7 @@ export const useMainStore = defineStore('main', () => {
         isLoading.value.vmImport = `${vmName}:import`;
         errorMessage.value = '';
         try {
+            console.log('[mainStore] importVm: POST', `/api/v1/hosts/${hostId}/vms/${encodeURIComponent(vmName)}/import`);
             const res = await fetch(`/api/v1/hosts/${hostId}/vms/${encodeURIComponent(vmName)}/import`, { method: 'POST' });
             if (!res.ok) {
                 const txt = await res.text();
@@ -468,10 +482,12 @@ export const useMainStore = defineStore('main', () => {
             // Optimistically clear discovered cache for this host so UI updates immediately
             discoveredByHost.value = { ...discoveredByHost.value, [hostId]: [] };
             refreshHostData(hostId);
+            addToast(`Imported VM ${vmName}`, 'success');
             return true;
         } catch (e) {
             errorMessage.value = `Failed to import VM ${vmName}: ${e.message}`;
             console.error(e);
+            addToast(`Failed to import VM ${vmName}: ${e.message}`, 'error');
             return false;
         } finally {
             isLoading.value.vmImport = null;
@@ -483,6 +499,7 @@ export const useMainStore = defineStore('main', () => {
         isLoading.value.hostImportAll = `host:${hostId}:import-all`;
         errorMessage.value = '';
         try {
+            console.log('[mainStore] importAllVMs: POST', `/api/v1/hosts/${hostId}/vms/import-all`);
             const res = await fetch(`/api/v1/hosts/${hostId}/vms/import-all`, { method: 'POST' });
             if (!res.ok) {
                 const txt = await res.text();
@@ -492,10 +509,12 @@ export const useMainStore = defineStore('main', () => {
             // Clear discovered cache optimistically
             discoveredByHost.value = { ...discoveredByHost.value, [hostId]: [] };
             refreshHostData(hostId);
+            addToast(`Imported all discovered VMs on host ${hostId}`, 'success');
             return true;
         } catch (e) {
             errorMessage.value = `Failed to import all VMs for host ${hostId}: ${e.message}`;
             console.error(e);
+            addToast(`Failed to import all VMs for host ${hostId}: ${e.message}`, 'error');
             return false;
         } finally {
             isLoading.value.hostImportAll = null;
@@ -674,6 +693,9 @@ export const useMainStore = defineStore('main', () => {
         hostStats, // Export hostStats
         hostConnecting,
         discoveredByHost,
+        toasts,
+        addToast,
+        removeToast,
         refreshDiscoveredVMs,
         getDiscoveredVMs,
         initializeRealtime,
