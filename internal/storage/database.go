@@ -499,6 +499,7 @@ type DiskAttachment struct {
 	gorm.Model
 	VMUUID      string `gorm:"index"`
 	DiskID      uint
+	Disk        Disk   // Preloaded disk resource
 	DeviceName  string // e.g., vda
 	BusType     string // virtio/sata/ide
 	ReadOnly    bool
@@ -966,6 +967,7 @@ func InitDB(dataSourceName string) (*gorm.DB, error) {
 		&Permission{},
 		&Task{},
 		&AuditLog{},
+		&DiscoveredVM{},
 	)
 	if err != nil {
 		return nil, err
@@ -1036,6 +1038,16 @@ func InitDB(dataSourceName string) (*gorm.DB, error) {
 	// New attachment indexes
 	if err := db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS uniq_disk_attachment_vm_dev ON disk_attachments(vm_uuid, device_name) WHERE vm_uuid IS NOT NULL AND device_name IS NOT NULL;").Error; err != nil {
 		log.Verbosef("failed to create unique index uniq_disk_attachment_vm_dev: %v", err)
+		return nil, err
+	}
+
+	// Discovered VMs table indexes
+	if err := db.Exec("CREATE INDEX IF NOT EXISTS idx_discovered_vms_host_id ON discovered_vms(host_id);").Error; err != nil {
+		log.Verbosef("failed to create index idx_discovered_vms_host_id: %v", err)
+		return nil, err
+	}
+	if err := db.Exec("CREATE INDEX IF NOT EXISTS idx_discovered_vms_domain_uuid ON discovered_vms(domain_uuid);").Error; err != nil {
+		log.Verbosef("failed to create index idx_discovered_vms_domain_uuid: %v", err)
 		return nil, err
 	}
 

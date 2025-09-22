@@ -192,12 +192,6 @@ watch(() => selectedHost.value?.vms, async (nv, ov) => {
 }, { immediate: false });
 
 // Refresh discovered VM list when host VMs change
-watch(() => selectedHost.value?.vms, async (nv, ov) => {
-  if (!route.params.hostId) return;
-  // refresh centralized cache
-  await mainStore.refreshDiscoveredVMs(route.params.hostId);
-}, { immediate: false });
-
 // Debug: log when discoveredVMs updates and after DOM updates
 watch(discoveredVMs, (nv) => {
   nextTick(() => console.log('[HostDashboard] discoveredVMs rendered, count=', (nv && nv.length) || 0));

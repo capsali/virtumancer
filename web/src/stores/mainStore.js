@@ -242,9 +242,11 @@ export const useMainStore = defineStore('main', () => {
                         }
                         break;
                     case 'vms-changed':
-                        console.log(`WebSocket received vms-changed for host ${message.payload.hostId}, refreshing host data and discovered list.`);
+                        console.log(`WebSocket received vms-changed for host ${message.payload.hostId}, refreshing host data.`);
                         refreshHostData(message.payload.hostId);
-                        // Refresh discovered list for this host as live vms changed
+                        break;
+                    case 'discovered-vms-changed':
+                        console.log(`WebSocket received discovered-vms-changed for host ${message.payload.hostId}, refreshing discovered list.`);
                         refreshDiscoveredVMs(message.payload.hostId).catch(() => {});
                         break;
                     case 'vm-stats-updated':

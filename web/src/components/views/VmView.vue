@@ -474,10 +474,54 @@ const loadPortAttachments = async () => {
                             </thead>
                             <tbody class="bg-gray-900 divide-y divide-gray-800">
                                 <tr v-for="disk in hardware.disks" :key="disk.target.dev">
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">{{ disk.target.dev }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ disk.target.bus }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300 font-mono break-all">{{ disk.path }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ disk.driver.type }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">{{ disk.target?.dev || 'N/A' }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ disk.target?.bus || 'N/A' }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300 font-mono break-all">{{ disk.source?.file || 'N/A' }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ disk.driver?.type || 'N/A' }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Video Devices -->
+                <div class="bg-gray-900 rounded-lg shadow-lg">
+                    <h3 class="text-xl font-semibold text-white p-4">Video / GPU</h3>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-700">
+                            <thead class="bg-gray-800">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Model</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">VRAM</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Heads</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-gray-900 divide-y divide-gray-800">
+                                <tr v-for="(video, index) in hardware.videos" :key="index">
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">{{ video.model?.type || 'N/A' }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ video.model?.vram || 'N/A' }} MB</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ video.model?.heads || 'N/A' }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Boot Order -->
+                <div class="bg-gray-900 rounded-lg shadow-lg">
+                    <h3 class="text-xl font-semibold text-white p-4">Boot Order</h3>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-700">
+                            <thead class="bg-gray-800">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Order</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Device</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-gray-900 divide-y divide-gray-800">
+                                <tr v-for="boot in hardware.boot" :key="boot.order">
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">{{ boot?.order || 'N/A' }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ boot?.dev || 'N/A' }}</td>
                                 </tr>
                             </tbody>
                         </table>

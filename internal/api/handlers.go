@@ -144,16 +144,12 @@ func (h *APIHandler) DeleteHost(w http.ResponseWriter, r *http.Request) {
 func (h *APIHandler) ListVMsFromLibvirt(w http.ResponseWriter, r *http.Request) {
 	hostID := chi.URLParam(r, "hostID")
 
-	// Immediately get VMs from the DB for a fast response.
+	// Get VMs from the DB for a fast response.
 	vms, err := h.HostService.GetVMsForHostFromDB(hostID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-
-	// In the background, trigger a sync from libvirt.
-	// The service will broadcast a websocket update when it's done.
-	go h.HostService.SyncVMsForHost(hostID)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(vms)

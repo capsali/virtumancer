@@ -218,7 +218,8 @@ type NUMANodeInfo struct {
 
 // BootEntry represents <boot dev="..."/> entries.
 type BootEntry struct {
-	Dev string `xml:"dev,attr" json:"dev"`
+	Dev   string `xml:"dev,attr" json:"dev"`
+	Order int    `xml:"order,attr" json:"order"`
 }
 
 // CPUInfo is a minimal representation of <cpu> subtree for parsing features/topology.

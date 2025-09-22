@@ -2,6 +2,7 @@ package services
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -143,6 +144,8 @@ type HostService struct {
 	hub         *ws.Hub
 	monitor     *MonitoringManager
 	hostMonitor *HostMonitoringManager
+	syncMutex   sync.Map // map[string]*sync.Mutex for per-host sync locking
+	lastSync    sync.Map // map[string]time.Time for last sync time
 }
 
 func NewHostService(db *gorm.DB, connector *libvirt.Connector, hub *ws.Hub) *HostService {
@@ -187,6 +190,10 @@ func (s *HostService) EnsureHostConnected(hostID string) error {
 	s.db.Model(&storage.Host{}).Where("id = ?", hostID).Updates(map[string]interface{}{"task_state": "", "state": storage.HostStateConnected})
 	// Notify clients that the host is now connected
 	s.broadcastHostConnectionChanged(hostID, true)
+
+	// Sync VMs for the newly connected host
+	go s.SyncVMsForHost(hostID)
+
 	return nil
 }
 
@@ -243,6 +250,13 @@ func (s *HostService) broadcastHostsChanged() {
 func (s *HostService) broadcastVMsChanged(hostID string) {
 	s.hub.BroadcastMessage(ws.Message{
 		Type:    "vms-changed",
+		Payload: ws.MessagePayload{"hostId": hostID},
+	})
+}
+
+func (s *HostService) broadcastDiscoveredVMsChanged(hostID string) {
+	s.hub.BroadcastMessage(ws.Message{
+		Type:    "discovered-vms-changed",
 		Payload: ws.MessagePayload{"hostId": hostID},
 	})
 }
@@ -565,12 +579,29 @@ func (s *HostService) getVMHardwareFromDB(hostID, vmName string) (*libvirt.Hardw
 	var hardware libvirt.HardwareInfo
 
 	// Retrieve and populate disks
-	var diskAttachments []storage.VolumeAttachment
-	s.db.Preload("Volume").Where("vm_uuid = ?", vm.UUID).Find(&diskAttachments)
+	var diskAttachments []storage.DiskAttachment
+	s.db.Preload("Disk").Where("vm_uuid = ?", vm.UUID).Find(&diskAttachments)
 	for _, da := range diskAttachments {
+		path := da.Disk.Path
+		if da.Disk.VolumeID != nil {
+			// If it references a volume, get the volume name
+			var vol storage.Volume
+			if err := s.db.First(&vol, da.Disk.VolumeID).Error; err == nil {
+				path = vol.Name
+			}
+		}
+		var driver struct {
+			Name string `xml:"name,attr" json:"driver_name"`
+			Type string `xml:"type,attr" json:"type"`
+		}
+		if da.Disk.DriverJSON != "" {
+			json.Unmarshal([]byte(da.Disk.DriverJSON), &driver)
+		} else {
+			driver.Type = da.Disk.Format
+		}
 		hardware.Disks = append(hardware.Disks, libvirt.DiskInfo{
 			Device: da.DeviceName,
-			Path:   da.Volume.Name,
+			Path:   path,
 			Target: struct {
 				Dev string `xml:"dev,attr" json:"dev"`
 				Bus string `xml:"bus,attr" json:"bus"`
@@ -578,12 +609,7 @@ func (s *HostService) getVMHardwareFromDB(hostID, vmName string) (*libvirt.Hardw
 				Dev: da.DeviceName,
 				Bus: da.BusType,
 			},
-			Driver: struct {
-				Name string `xml:"name,attr" json:"driver_name"`
-				Type string `xml:"type,attr" json:"type"`
-			}{
-				Type: da.Volume.Format,
-			},
+			Driver: driver,
 		})
 	}
 
@@ -631,6 +657,31 @@ func (s *HostService) getVMHardwareFromDB(hostID, vmName string) (*libvirt.Hardw
 		}
 	}
 
+	// Retrieve and populate videos
+	var videoAttachments []storage.VideoAttachment
+	s.db.Preload("VideoModel").Where("vm_uuid = ?", vm.UUID).Find(&videoAttachments)
+	for _, va := range videoAttachments {
+		hardware.Videos = append(hardware.Videos, libvirt.VideoInfo{
+			Model: struct {
+				Type  string `xml:"type,attr" json:"type"`
+				VRAM  int    `xml:"vram,attr,omitempty" json:"vram,omitempty"`
+				Heads int    `xml:"heads,attr,omitempty" json:"heads,omitempty"`
+			}{
+				Type:  va.VideoModel.ModelName,
+				VRAM:  int(va.VideoModel.VRAM),
+				Heads: va.VideoModel.Heads,
+			},
+		})
+	}
+
+	var bootConfig storage.BootConfig
+	if err := s.db.Where("vm_uuid = ?", vm.UUID).First(&bootConfig).Error; err == nil {
+		var bootDevices []libvirt.BootEntry
+		if err := json.Unmarshal([]byte(bootConfig.BootOrderJSON), &bootDevices); err == nil {
+			hardware.Boot = bootDevices
+		}
+	}
+
 	return &hardware, nil
 }
 func (s *HostService) GetVMHardwareAndDetectDrift(hostID, vmName string) (*libvirt.HardwareInfo, error) {
@@ -644,6 +695,21 @@ func (s *HostService) GetVMHardwareAndDetectDrift(hostID, vmName string) (*libvi
 }
 
 func (s *HostService) SyncVMsForHost(hostID string) {
+	// Prevent syncs too frequently (within 30 seconds)
+	now := time.Now()
+	if last, ok := s.lastSync.Load(hostID); ok {
+		if now.Sub(last.(time.Time)) < 30*time.Second {
+			log.Debugf("Skipping sync for host %s, last sync was %v ago", hostID, now.Sub(last.(time.Time)))
+			return
+		}
+	}
+	s.lastSync.Store(hostID, now)
+
+	// Prevent concurrent syncs for the same host
+	mu, _ := s.syncMutex.LoadOrStore(hostID, &sync.Mutex{})
+	mu.(*sync.Mutex).Lock()
+	defer mu.(*sync.Mutex).Unlock()
+
 	changed, err := s.syncHostVMs(hostID)
 	if err != nil {
 		log.Verbosef("Error during background VM sync for host %s: %v", hostID, err)
@@ -657,39 +723,51 @@ func (s *HostService) SyncVMsForHost(hostID string) {
 // ListDiscoveredVMs returns VMs reported by libvirt on the host that are not
 // currently present in our database (i.e., discovered but not managed).
 func (s *HostService) ListDiscoveredVMs(hostID string) ([]libvirt.VMInfo, error) {
-	vms, err := s.connector.ListAllDomains(hostID)
-	if err != nil {
+	// Serve discovered VMs from the DB for fast, deterministic UI responses.
+	// Background: if a fresh libvirt sync is desired, the API handler can
+	// call SyncVMsForHost or the client can call with a ?refresh=true flag.
+	var discs []storage.DiscoveredVM
+	if err := s.db.Where("host_id = ? AND imported = 0", hostID).Find(&discs).Error; err != nil {
 		return nil, err
-	}
-
-	// Build a set of domain_uuids present in DB for this host
-	var dbVMs []storage.VirtualMachine
-	if err := s.db.Where("host_id = ?", hostID).Find(&dbVMs).Error; err != nil {
-		return nil, err
-	}
-	dbSet := make(map[string]bool)
-	for _, v := range dbVMs {
-		dbSet[v.DomainUUID] = true
 	}
 
 	var out []libvirt.VMInfo
-	for _, vm := range vms {
-		if !dbSet[vm.UUID] {
-			out = append(out, vm)
-		}
+	for _, d := range discs {
+		out = append(out, libvirt.VMInfo{UUID: d.DomainUUID, Name: d.Name})
 	}
+
+	// Trigger a background sync to refresh discovered-vms from libvirt.
+	// This will update the discovered_vms table and broadcast a vms-changed event
+	// when new rows are ingested/removed.
+	go func(id string) {
+		_, err := s.syncHostVMs(id)
+		if err != nil {
+			log.Verbosef("background syncHostVMs failed for host %s: %v", id, err)
+		}
+	}(hostID)
+
 	return out, nil
 }
 
 // ImportVM imports a single discovered VM into the database by name.
 func (s *HostService) ImportVM(hostID, vmName string) error {
+	// Get domain info to obtain UUID for marking imported
+	vmInfo, err := s.connector.GetDomainInfo(hostID, vmName)
+	if err != nil {
+		return err
+	}
 	changed, err := s.ingestVMFromLibvirt(hostID, vmName)
 	if err != nil {
 		return err
 	}
 	if changed {
+		// Mark as imported in discovered_vms
+		if err := storage.MarkDiscoveredVMImported(s.db, hostID, vmInfo.UUID); err != nil {
+			log.Verbosef("Warning: failed to mark discovered VM %s as imported: %v", vmName, err)
+		}
 		// Notify clients that the managed VM list changed for this host
 		s.broadcastVMsChanged(hostID)
+		s.broadcastDiscoveredVMsChanged(hostID)
 	}
 	return nil
 }
@@ -711,10 +789,15 @@ func (s *HostService) ImportAllVMs(hostID string) error {
 			log.Verbosef("ImportAllVMs: failed to import VM %s on host %s: %v", vm.Name, hostID, ierr)
 		} else if changed {
 			anyImported = true
+			// Mark as imported in discovered_vms
+			if err := storage.MarkDiscoveredVMImported(s.db, hostID, vm.UUID); err != nil {
+				log.Verbosef("Warning: failed to mark discovered VM %s as imported: %v", vm.Name, err)
+			}
 		}
 	}
 	if anyImported {
 		s.broadcastVMsChanged(hostID)
+		s.broadcastDiscoveredVMsChanged(hostID)
 	}
 	return nil
 }
@@ -1162,24 +1245,83 @@ func (s *HostService) syncVMHardware(tx *gorm.DB, vmUUID string, hostID string, 
 	}
 
 	// --- Sync Disks (Intelligent Update) ---
-	var existingAttachments []storage.VolumeAttachment
-	tx.Preload("Volume").Where("vm_uuid = ?", vmUUID).Find(&existingAttachments)
-	existingAttachmentsMap := make(map[string]storage.VolumeAttachment)
-	for _, da := range existingAttachments {
-		existingAttachmentsMap[da.DeviceName] = da
+	var existingDiskAttachments []storage.DiskAttachment
+	tx.Preload("Disk").Where("vm_uuid = ?", vmUUID).Find(&existingDiskAttachments)
+	existingDiskAttachmentsMap := make(map[string]storage.DiskAttachment)
+	for _, da := range existingDiskAttachments {
+		existingDiskAttachmentsMap[da.DeviceName] = da
 	}
 
 	for _, disk := range hardware.Disks {
-		var volume storage.Volume
-		tx.FirstOrCreate(&volume, storage.Volume{Name: disk.Path}, storage.Volume{
-			Name: disk.Path, Format: disk.Driver.Type, Type: "DISK",
-		})
+		// First, handle Volume if it's pool-managed (has a pool path)
+		var volume *storage.Volume
+		if disk.Source.File != "" {
+			// Assume file-based disk; create Volume if not exists
+			var vol storage.Volume
+			tx.FirstOrCreate(&vol, storage.Volume{Name: disk.Source.File}, storage.Volume{
+				Name: disk.Source.File, Format: disk.Driver.Type, Type: "DISK",
+			})
+			volume = &vol
+		}
 
-		attachment, exists := existingAttachmentsMap[disk.Target.Dev]
+		// Create or update Disk resource
+		var diskRes storage.Disk
+		diskName := disk.Source.File
+		if diskName == "" {
+			diskName = disk.Source.Dev // block device
+		}
+		if diskName == "" {
+			diskName = fmt.Sprintf("disk-%s", disk.Target.Dev) // fallback
+		}
+		// For driver options, serialize to JSON
+		driverJSON, _ := json.Marshal(map[string]interface{}{
+			"name": disk.Driver.Name,
+			"type": disk.Driver.Type,
+		})
+		updates := make(map[string]interface{})
+		if volume != nil {
+			updates["volume_id"] = volume.ID
+		}
+		updates["path"] = disk.Source.File
+		updates["format"] = disk.Driver.Type
+		updates["driver_json"] = string(driverJSON)
+		// TODO: Add capacity, serial, etc. if available
+
+		if err := tx.Where("name = ?", diskName).First(&diskRes).Error; err != nil {
+			if err == gorm.ErrRecordNotFound {
+				diskRes = storage.Disk{Name: diskName}
+				for k, v := range updates {
+					switch k {
+					case "volume_id":
+						if vid, ok := v.(uint); ok {
+							diskRes.VolumeID = &vid
+						}
+					case "path":
+						diskRes.Path = v.(string)
+					case "format":
+						diskRes.Format = v.(string)
+					case "driver_json":
+						diskRes.DriverJSON = v.(string)
+					}
+				}
+				if err := tx.Create(&diskRes).Error; err != nil {
+					return false, err
+				}
+			} else {
+				return false, err
+			}
+		} else {
+			// Update existing
+			if err := tx.Model(&diskRes).Updates(updates).Error; err != nil {
+				return false, err
+			}
+		}
+
+		attachment, exists := existingDiskAttachmentsMap[disk.Target.Dev]
 		if exists {
 			updates := make(map[string]interface{})
-			if attachment.VolumeID != volume.ID {
-				updates["volume_id"] = volume.ID
+			if attachment.DiskID != diskRes.ID {
+				updates["disk_id"] = diskRes.ID
 			}
 			if attachment.BusType != disk.Target.Bus {
 				updates["bus_type"] = disk.Target.Bus
@@ -1188,25 +1330,19 @@ func (s *HostService) syncVMHardware(tx *gorm.DB, vmUUID string, hostID string, 
 				if err := tx.Model(&attachment).Updates(updates).Error; err != nil {
 					return false, err
 				}
-				// If the volume_id changed, keep the attachment index in sync
-				// No attachment_index device_id update for volumes: volumes are multi-attach.
 				changed = true
 			}
-			delete(existingAttachmentsMap, disk.Target.Dev)
+			delete(existingDiskAttachmentsMap, disk.Target.Dev)
 		} else {
-			newAttachment := storage.VolumeAttachment{
-				VMUUID: vmUUID, VolumeID: volume.ID, DeviceName: disk.Target.Dev, BusType: disk.Target.Bus,
+			newAttachment := storage.DiskAttachment{
+				VMUUID: vmUUID, DiskID: diskRes.ID, DeviceName: disk.Target.Dev, BusType: disk.Target.Bus,
 			}
 			if err := tx.Create(&newAttachment).Error; err != nil {
 				return false, err
 			}
-			// Insert corresponding attachment index in the same transaction
-			// Volumes can be multi-attached (e.g., ISOs or multi-attach volumes). To support that,
-			// we do not enforce uniqueness by device_id for device_type == "volume". We still
-			// record the attachment in the index for fast VM-scoped queries, but store DeviceID=0
-			// to avoid conflicts with the unique (device_type, device_id) index.
-			var nilDevID *uint = nil
-			alloc := storage.AttachmentIndex{VMUUID: vmUUID, DeviceType: "volume", AttachmentID: newAttachment.ID, DeviceID: nilDevID}
+			// Insert corresponding attachment index
+			devID := diskRes.ID
+			alloc := storage.AttachmentIndex{VMUUID: vmUUID, DeviceType: "disk", AttachmentID: newAttachment.ID, DeviceID: &devID}
 			if err := s.ensureAttachmentIndex(tx, alloc); err != nil {
 				return false, err
 			}
@@ -1214,16 +1350,16 @@ func (s *HostService) syncVMHardware(tx *gorm.DB, vmUUID string, hostID string, 
 		}
 	}
 
-	if len(existingAttachmentsMap) > 0 {
+	if len(existingDiskAttachmentsMap) > 0 {
 		var idsToDelete []uint
-		for _, attachment := range existingAttachmentsMap {
+		for _, attachment := range existingDiskAttachmentsMap {
 			idsToDelete = append(idsToDelete, attachment.ID)
 		}
 		// Remove index entries first, then remove attachment rows within the same tx
-		if err := tx.Where("device_type = ? AND attachment_id IN ?", "volume", idsToDelete).Delete(&storage.AttachmentIndex{}).Error; err != nil {
+		if err := tx.Where("device_type = ? AND attachment_id IN ?", "disk", idsToDelete).Delete(&storage.AttachmentIndex{}).Error; err != nil {
 			return false, err
 		}
-		if err := tx.Where("id IN ?", idsToDelete).Delete(&storage.VolumeAttachment{}).Error; err != nil {
+		if err := tx.Where("id IN ?", idsToDelete).Delete(&storage.DiskAttachment{}).Error; err != nil {
 			return false, err
 		}
 		changed = true
@@ -1673,12 +1809,31 @@ func (s *HostService) syncHostVMs(hostID string) (bool, error) {
 	liveVMUUIDs := make(map[string]struct{})
 	for _, vmInfo := range liveVMs {
 		liveVMUUIDs[vmInfo.UUID] = struct{}{}
-		changed, err := s.detectDriftOrIngestVM(hostID, vmInfo.Name, true)
-		if err != nil {
-			log.Verbosef("Error syncing VM %s: %v", vmInfo.Name, err)
-		}
-		if changed {
-			overallChanged = true
+		// Check if VM is already in managed DB
+		var existing storage.VirtualMachine
+		if err := s.db.Where("host_id = ? AND domain_uuid = ?", hostID, vmInfo.UUID).First(&existing).Error; err == nil {
+			// Already managed, sync drift
+			changed, err := s.detectDriftOrIngestVM(hostID, vmInfo.Name, true)
+			if err != nil {
+				log.Verbosef("Error syncing VM %s: %v", vmInfo.Name, err)
+			}
+			if changed {
+				overallChanged = true
+			}
+		} else if errors.Is(err, gorm.ErrRecordNotFound) {
+			// Not managed, upsert to discovered_vms
+			disc := storage.DiscoveredVM{
+				HostID:     hostID,
+				Name:       vmInfo.Name,
+				DomainUUID: vmInfo.UUID,
+				InfoJSON:   "", // can populate later if needed
+			}
+			if err := storage.UpsertDiscoveredVM(s.db, &disc); err != nil {
+				log.Verbosef("Error upserting discovered VM %s: %v", vmInfo.Name, err)
+			}
+			// Don't set overallChanged for discovered VMs, as they are updated frequently
+		} else {
+			log.Verbosef("Error checking VM %s in DB: %v", vmInfo.Name, err)
 		}
 	}
 
@@ -1707,12 +1862,21 @@ func (s *HostService) syncHostVMs(hostID string) (bool, error) {
 				log.Verbosef("Warning: failed to prune old VM %s: %v", dbVM.Name, err)
 				continue
 			}
+			// Also remove from discovered_vms if present (shouldn't be, but clean up)
+			if err := tx.Where("host_id = ? AND domain_uuid = ?", hostID, dbVM.DomainUUID).Delete(&storage.DiscoveredVM{}).Error; err != nil {
+				log.Verbosef("Warning: failed to delete discovered VM for %s: %v", dbVM.Name, err)
+			}
 			if err := tx.Commit().Error; err != nil {
 				log.Verbosef("Warning: failed to commit prune transaction for VM %s: %v", dbVM.Name, err)
 				continue
 			}
 			overallChanged = true
 		}
+	}
+
+	if overallChanged {
+		s.broadcastVMsChanged(hostID)
+		s.broadcastDiscoveredVMsChanged(hostID)
 	}
 
 	return overallChanged, nil
