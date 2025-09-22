@@ -79,9 +79,12 @@ const handleCancel = () => {
 };
 
 const openConnectConfirm = (action) => {
+  console.log('[HostDashboard] openConnectConfirm called with action:', action);
   const hid = selectedHost.value?.id || props.hostId || route.params.hostId;
+  console.log('[HostDashboard] hostId:', hid, 'selectedHost:', selectedHost.value);
   connectConfirmPayload.value = { action, hostId: hid };
   showConnectConfirm.value = true;
+  console.log('[HostDashboard] showConnectConfirm set to true');
 };
 
 const connectAction = computed(() => {
@@ -90,6 +93,7 @@ const connectAction = computed(() => {
 });
 
 const handleHeaderConnectClick = (ev) => {
+  console.log('[HostDashboard] handleHeaderConnectClick called, connectAction:', connectAction.value, 'selectedHost:', selectedHost.value);
   openConnectConfirm(connectAction.value);
 };
 
@@ -122,6 +126,10 @@ const handleConnectCancel = () => {
 
 onMounted(async () => {
   if (route.params.hostId) {
+    // Ensure hosts are loaded
+    if (mainStore.hosts.length === 0) {
+      await mainStore.fetchHosts();
+    }
     await loadHostPortsAndAttachments(route.params.hostId);
   // Prime centralized discovered cache for this host
   mainStore.refreshDiscoveredVMs(route.params.hostId).catch(() => {});
@@ -366,10 +374,11 @@ const formatUptime = (sec) => {
         <div class="flex items-center">
           <p class="text-gray-400 font-mono mr-4">{{ selectedHost.uri }}</p>
           <button
-            @click.prevent="handleHeaderConnectClick"
-            :disabled="mainStore.isLoading.connectHost && mainStore.isLoading.connectHost[hostId]"
-            :aria-disabled="mainStore.isLoading.connectHost && mainStore.isLoading.connectHost[hostId] ? 'true' : 'false'"
-            :aria-busy="mainStore.isLoading.connectHost && mainStore.isLoading.connectHost[hostId] ? 'true' : 'false'"
+            type="button"
+            @click="handleHeaderConnectClick"
+            :disabled="!selectedHost || showConnectConfirm || (mainStore.isLoading.connectHost && mainStore.isLoading.connectHost[hostId])"
+            :aria-disabled="!selectedHost || showConnectConfirm || (mainStore.isLoading.connectHost && mainStore.isLoading.connectHost[hostId]) ? 'true' : 'false'"
+            :aria-busy="(mainStore.isLoading.connectHost && mainStore.isLoading.connectHost[hostId]) ? 'true' : 'false'"
             :class="selectedHost && (selectedHost.state === 'CONNECTED' || (selectedHost.info && selectedHost.info.connected)) ? 'px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed' : 'px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed'"
           >
             <span v-if="mainStore.isLoading.connectHost && mainStore.isLoading.connectHost[hostId]" class="inline-block animate-spin w-4 h-4 border-2 border-white rounded-full border-t-transparent mr-2" aria-hidden="true"></span>
@@ -433,7 +442,6 @@ const formatUptime = (sec) => {
           <ul v-else class="space-y-2">
         <li v-for="d in discoveredVMs" :key="d.uuid" class="bg-gray-800 p-3 rounded flex items-center justify-between">
           <div>
-          <ConfirmModal v-if="showConnectConfirm" :title="connectConfirmPayload.action === 'disconnect' ? 'Disconnect host?' : 'Connect host?'" :message="connectConfirmPayload.action === 'disconnect' ? 'Disconnecting will close the libvirt connection for this host. Open consoles and live stats may stop working.' : 'Attempt to establish a libvirt connection to this host now?'" confirmText="Confirm" cancelText="Cancel" :loading="connectConfirmLoading" @confirm="handleConnectConfirm" @cancel="handleConnectCancel" />
             <div class="text-sm text-gray-300">Name: <span class="font-medium text-white">{{ d.name }}</span></div>
             <div class="text-xs text-gray-500">UUID: <span class="font-mono">{{ d.uuid }}</span></div>
           </div>
@@ -560,6 +568,7 @@ const formatUptime = (sec) => {
     <p>Select a host from the sidebar to view details.</p>
   </div>
   <ConfirmModal v-if="showConfirm" :title="confirmPayload.type === 'all' ? 'Import all VMs?' : 'Import VM?'" :message="confirmPayload.type === 'all' ? 'Import all discovered VMs on this host into management. This will create DB records for each VM.' : `Import VM \'${confirmPayload.vmName || ''}\' into management?`" confirmText="Import" cancelText="Cancel" :loading="confirmLoading" @confirm="handleConfirm" @cancel="handleCancel" />
+  <ConfirmModal v-if="showConnectConfirm" :title="connectConfirmPayload.action === 'disconnect' ? 'Disconnect host?' : 'Connect host?'" :message="connectConfirmPayload.action === 'disconnect' ? 'Disconnecting will close the libvirt connection for this host. Open consoles and live stats may stop working.' : 'Attempt to establish a libvirt connection to this host now?'" confirmText="Confirm" cancelText="Cancel" :loading="connectConfirmLoading" @confirm="handleConnectConfirm" @cancel="handleConnectCancel" />
 
 
 </template>
