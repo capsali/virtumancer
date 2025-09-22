@@ -37,9 +37,9 @@ type VMView struct {
 	NeedsRebuild bool               `json:"needs_rebuild"`
 
 	// From Libvirt or DB cache
-	State        storage.VMState      `json:"state"`
-	LibvirtState storage.VMState      `json:"libvirtState"` // Observed state from libvirt
-	Graphics     libvirt.GraphicsInfo `json:"graphics"`
+	State        storage.VMState       `json:"state"`
+	LibvirtState storage.VMState       `json:"libvirtState"` // Observed state from libvirt
+	Graphics     libvirt.GraphicsInfo  `json:"graphics"`
 	Hardware     *libvirt.HardwareInfo `json:"hardware,omitempty"` // Pointer to allow for null
 
 	// From Libvirt (live data, only in some calls)
