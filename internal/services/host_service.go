@@ -147,6 +147,7 @@ type HostService struct {
 	hostMonitor *HostMonitoringManager
 	syncMutex   sync.Map // map[string]*sync.Mutex for per-host sync locking
 	lastSync    sync.Map // map[string]time.Time for last sync time
+	vmPollers   sync.Map // map[string]chan struct{} for stopping VM state polling
 }
 
 func NewHostService(db *gorm.DB, connector *libvirt.Connector, hub *ws.Hub) *HostService {
@@ -200,6 +201,9 @@ func (s *HostService) EnsureHostConnected(hostID string) error {
 	// Notify clients that the host is now connected
 	s.broadcastHostConnectionChanged(hostID, true)
 	s.broadcastHostsChanged()
+
+	// Start VM state polling for this host
+	s.startVMPolling(hostID)
 
 	// Sync VMs for the newly connected host
 	go s.SyncVMsForHost(hostID)
@@ -284,6 +288,7 @@ func (s *HostService) DisconnectHost(hostID string, userInitiated bool) error {
 	// Stop all monitoring for this host
 	s.monitor.StopHostMonitoring(hostID)
 	s.hostMonitor.StopHostMonitoring(hostID)
+	s.stopVMPolling(hostID)
 
 	log.Infof("Host %s disconnected successfully (userInitiated=%v)", hostID, userInitiated)
 	s.broadcastHostConnectionChanged(hostID, false)
@@ -823,7 +828,96 @@ func (s *HostService) SyncVMsForHost(hostID string) {
 	}
 }
 
-// ListDiscoveredVMs returns VMs reported by libvirt on the host that are not
+// startVMPolling starts background polling of VM states for a connected host
+func (s *HostService) startVMPolling(hostID string) {
+	// Stop any existing poller for this host
+	if stopChan, exists := s.vmPollers.Load(hostID); exists {
+		close(stopChan.(chan struct{}))
+	}
+
+	// Create a stop channel for this poller
+	stopChan := make(chan struct{})
+	s.vmPollers.Store(hostID, stopChan)
+
+	go func() {
+		ticker := time.NewTicker(30 * time.Second) // Poll every 30 seconds
+		defer ticker.Stop()
+
+		log.Debugf("Started VM state polling for host %s", hostID)
+
+		// Do an initial poll immediately
+		if err := s.pollVMStates(hostID); err != nil {
+			log.Verbosef("Error in initial VM state poll for host %s: %v", hostID, err)
+		}
+
+		for {
+			select {
+			case <-stopChan:
+				log.Debugf("Stopped VM state polling for host %s", hostID)
+				return
+			case <-ticker.C:
+				// Check if host is still connected
+				if _, err := s.connector.GetConnection(hostID); err != nil {
+					log.Debugf("Host %s no longer connected, stopping VM polling", hostID)
+					return
+				}
+
+				// Poll VM states
+				if err := s.pollVMStates(hostID); err != nil {
+					log.Verbosef("Error polling VM states for host %s: %v", hostID, err)
+				}
+			}
+		}
+	}()
+}
+
+// stopVMPolling stops background polling for a host
+func (s *HostService) stopVMPolling(hostID string) {
+	if stopChan, exists := s.vmPollers.LoadAndDelete(hostID); exists {
+		close(stopChan.(chan struct{}))
+	}
+}
+
+// pollVMStates polls current VM states from libvirt and updates libvirtState in DB
+func (s *HostService) pollVMStates(hostID string) error {
+	// Get all VMs for this host from DB
+	var dbVMs []storage.VirtualMachine
+	if err := s.db.Where("host_id = ?", hostID).Find(&dbVMs).Error; err != nil {
+		return fmt.Errorf("failed to get VMs for host %s: %w", hostID, err)
+	}
+
+	var changed bool
+	for _, dbVM := range dbVMs {
+		// Get current state from libvirt
+		vmInfo, err := s.connector.GetDomainInfo(hostID, dbVM.Name)
+		if err != nil {
+			// VM might not exist anymore, set libvirtState to UNKNOWN
+			if dbVM.LibvirtState != storage.StateUnknown {
+				s.db.Model(&dbVM).Update("libvirt_state", storage.StateUnknown)
+				changed = true
+			}
+			continue
+		}
+
+		// Update libvirtState if it changed
+		newLibvirtState := mapLibvirtStateToVMState(vmInfo.State)
+		if dbVM.LibvirtState != newLibvirtState {
+			if err := s.db.Model(&dbVM).Update("libvirt_state", newLibvirtState).Error; err != nil {
+				log.Verbosef("Failed to update libvirtState for VM %s: %v", dbVM.Name, err)
+				continue
+			}
+			changed = true
+			log.Debugf("Updated libvirtState for VM %s on host %s: %s -> %s", dbVM.Name, hostID, dbVM.LibvirtState, newLibvirtState)
+		}
+	}
+
+	if changed {
+		s.broadcastVMsChanged(hostID)
+	}
+
+	return nil
+}
+
 // currently present in our database (i.e., discovered but not managed).
 func (s *HostService) ListDiscoveredVMs(hostID string) ([]libvirt.VMInfo, error) {
 	// Serve discovered VMs from the DB for fast, deterministic UI responses.
@@ -1075,11 +1169,10 @@ func (s *HostService) detectDriftOrIngestVM(hostID, vmName string, isInitialSync
 		updates := make(map[string]interface{})
 		driftDetails := make(map[string]map[string]interface{})
 
-		// Always update volatile state
-		newState := mapLibvirtStateToVMState(vmInfo.State)
-		if existingVM.State != newState {
-			updates["state"] = newState
-			updates["libvirt_state"] = newState
+		// Always update observed state from libvirt (but not intended state)
+		newLibvirtState := mapLibvirtStateToVMState(vmInfo.State)
+		if existingVM.LibvirtState != newLibvirtState {
+			updates["libvirt_state"] = newLibvirtState
 			changed = true
 		}
 
