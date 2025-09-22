@@ -29,6 +29,7 @@ type VMView struct {
 	IsTemplate      bool                `json:"is_template"`
 	CPUModel        string              `json:"cpu_model"`
 	CPUTopologyJSON string              `json:"cpu_topology_json"`
+	OSType          string              `json:"os_type"`
 	TaskState       storage.VMTaskState `json:"task_state"`
 
 	// NEW: Drift detection fields
@@ -629,9 +630,16 @@ func (s *HostService) GetVMsForHostFromDB(hostID string) ([]VMView, error) {
 		return nil, fmt.Errorf("could not get DB VM records for host %s: %w", hostID, err)
 	}
 
+	// Check if host is connected to populate live data
+	hostConnected := false
+	if _, err := s.connector.GetConnection(hostID); err == nil {
+		hostConnected = true
+	}
+
 	var vmViews []VMView
 	for _, dbVM := range dbVMs {
 		var graphics libvirt.GraphicsInfo // Default to false
+		var liveData libvirt.VMInfo
 
 		if dbVM.State == storage.StateActive {
 			var console storage.Console
@@ -641,6 +649,15 @@ func (s *HostService) GetVMsForHostFromDB(hostID string) ([]VMView, error) {
 			} else if err == nil {
 				graphics.VNC = strings.ToLower(console.Type) == "vnc"
 				graphics.SPICE = strings.ToLower(console.Type) == "spice"
+			}
+		}
+
+		// Populate live data if host is connected
+		if hostConnected {
+			if vmInfo, err := s.connector.GetDomainInfo(hostID, dbVM.Name); err == nil {
+				liveData = libvirt.VMInfo{
+					Uptime: vmInfo.Uptime,
+				}
 			}
 		}
 
@@ -654,6 +671,7 @@ func (s *HostService) GetVMsForHostFromDB(hostID string) ([]VMView, error) {
 			IsTemplate:      dbVM.IsTemplate,
 			CPUModel:        dbVM.CPUModel,
 			CPUTopologyJSON: dbVM.CPUTopologyJSON,
+			OSType:          dbVM.OSType,
 			State:           dbVM.State,
 			LibvirtState:    dbVM.LibvirtState,
 			TaskState:       dbVM.TaskState,
@@ -661,6 +679,8 @@ func (s *HostService) GetVMsForHostFromDB(hostID string) ([]VMView, error) {
 			SyncStatus:      dbVM.SyncStatus,
 			DriftDetails:    dbVM.DriftDetails,
 			NeedsRebuild:    dbVM.NeedsRebuild,
+			// Live data
+			Uptime: liveData.Uptime,
 		})
 	}
 	return vmViews, nil

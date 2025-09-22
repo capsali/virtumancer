@@ -485,9 +485,9 @@ const loadPortAttachments = async () => {
           <h3 class="text-xl font-semibold mb-4 text-white">Details</h3>
           <dl class="space-y-4">
             <div> <dt class="text-sm font-medium text-gray-400">Host</dt> <dd class="mt-1 text-lg text-gray-200">{{ host.id }}</dd> </div>
-            <div> <dt class="text-sm font-medium text-gray-400">Uptime</dt> <dd class="mt-1 text-lg text-gray-200">{{ formatUptime(vm.uptime) }}</dd> </div>
-             <div> <dt class="text-sm font-medium text-gray-400">vCPUs</dt> <dd class="mt-1 text-lg text-gray-200">{{ vm.vcpu }}</dd> </div>
-            <div> <dt class="text-sm font-medium text-gray-400">Memory</dt> <dd class="mt-1 text-lg text-gray-200">{{ formatMemory(vm.max_mem) }}</dd> </div>
+            <div> <dt class="text-sm font-medium text-gray-400">OS Type</dt> <dd class="mt-1 text-lg text-gray-200">{{ vm.os_type || 'Unknown' }}</dd> </div>
+            <div> <dt class="text-sm font-medium text-gray-400">vCPUs</dt> <dd class="mt-1 text-lg text-gray-200">{{ vm.vcpu_count }}</dd> </div>
+            <div> <dt class="text-sm font-medium text-gray-400">Memory</dt> <dd class="mt-1 text-lg text-gray-200">{{ formatMemory(vm.memory_bytes / 1024) }}</dd> </div>
             <div> <dt class="text-sm font-medium text-gray-400">Internal UUID</dt> <dd class="mt-1 text-xs font-mono text-gray-200">{{ vm.uuid }}</dd> </div>
           </dl>
         </div>
