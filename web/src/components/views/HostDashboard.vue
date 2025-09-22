@@ -265,9 +265,26 @@ const revertVmState = async (vm) => {
 const acceptVmState = async (vm) => {
     // Accept: Update DB state to match libvirt state
     const displayState = getVmDisplayState(vm, selectedHost.value);
-    // This would need a backend API to update the VM state in DB
-    // For now, we'll just refresh to get updated state
-    await mainStore.fetchHosts();
+    try {
+        const response = await fetch(`/api/v1/hosts/${selectedHost.value.id}/vms/${vm.name}/state`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                state: displayState.observedState
+            })
+        });
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        // Refresh the VM data
+        await mainStore.fetchHosts();
+        mainStore.addToast(`Accepted current state for ${vm.name}`, 'success');
+    } catch (error) {
+        console.error('Failed to accept VM state:', error);
+        mainStore.addToast(`Failed to accept state for ${vm.name}`, 'error');
+    }
 };
 
 

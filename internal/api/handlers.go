@@ -367,3 +367,24 @@ func (h *APIHandler) RebuildVM(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// UpdateVMState updates the intended state of a VM in the database to match the provided state
+func (h *APIHandler) UpdateVMState(w http.ResponseWriter, r *http.Request) {
+	hostID := chi.URLParam(r, "hostID")
+	vmName := chi.URLParam(r, "vmName")
+
+	var req struct {
+		State string `json:"state"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.HostService.UpdateVMState(hostID, vmName, req.State); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}

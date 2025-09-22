@@ -232,33 +232,46 @@ let previousVmName = null;
 let previousHostId = null;
 
 onMounted(() => {
-    if (host.value && vm.value) {
-        mainStore.subscribeToVmStats(host.value.id, vm.value.name);
-        previousVmName = vm.value.name;
-        previousHostId = host.value.id;
-        // preload attachments
-        loadPortAttachments();
+    const vmName = route.params.vmName;
+    if (vmName) {
+        // Find the host for this VM
+        const vmHost = mainStore.hosts.find(h => h.vms && h.vms.some(v => v.name === vmName));
+        if (vmHost) {
+            mainStore.subscribeToVmStats(vmHost.id, vmName);
+            // Sync VM state from libvirt to ensure we have latest observed state
+            mainStore.syncVmFromLibvirt(vmHost.id, vmName);
+            previousVmName = vmName;
+            previousHostId = vmHost.id;
+            // preload attachments
+            loadPortAttachments();
+        }
     }
 });
 
-// Watch for route changes to vmName and hostId
+// Watch for route changes to vmName
 watch(
-    () => [route.params.vmName, host.value?.id],
-    async ([newVmName, newHostId], [oldVmName, oldHostId]) => {
+    () => route.params.vmName,
+    async (newVmName, oldVmName) => {
         if (previousVmName && previousHostId) {
             mainStore.unsubscribeFromVmStats(previousHostId, previousVmName);
         }
         // Clear any previously loaded hardware so the hardware tab will fetch fresh data
         mainStore.activeVmHardware = null;
-        if (newVmName && newHostId) {
-            mainStore.subscribeToVmStats(newHostId, newVmName);
-            previousVmName = newVmName;
-            previousHostId = newHostId;
-            // If the hardware tab is active, immediately fetch hardware for the newly-selected VM
-            if (activeTab.value === 'hardware') {
-                await mainStore.fetchVmHardware(newHostId, newVmName);
-                // Also reload the port attachments for this VM so MACs and device names refresh
-                await loadPortAttachments();
+        if (newVmName) {
+            // Find the host for this VM
+            const vmHost = mainStore.hosts.find(h => h.vms && h.vms.some(v => v.name === newVmName));
+            if (vmHost) {
+                mainStore.subscribeToVmStats(vmHost.id, newVmName);
+                // Sync VM state from libvirt to ensure we have latest observed state
+                mainStore.syncVmFromLibvirt(vmHost.id, newVmName);
+                previousVmName = newVmName;
+                previousHostId = vmHost.id;
+                // If the hardware tab is active, immediately fetch hardware for the newly-selected VM
+                if (activeTab.value === 'hardware') {
+                    await mainStore.fetchVmHardware(vmHost.id, newVmName);
+                    // Also reload the port attachments for this VM so MACs and device names refresh
+                    await loadPortAttachments();
+                }
             }
         }
     },

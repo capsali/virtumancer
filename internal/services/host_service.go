@@ -123,6 +123,7 @@ type HostServiceProvider interface {
 	GetVMsForHostFromDB(hostID string) ([]VMView, error)
 	GetVMStats(hostID, vmName string) (*libvirt.VMStats, error)
 	GetVMHardwareAndDetectDrift(hostID, vmName string) (*libvirt.HardwareInfo, error)
+	UpdateVMState(hostID, vmName, state string) error
 	GetPortsForHostFromDB(hostID string) ([]storage.Port, error)
 	GetPortAttachmentsForVM(vmUUID string) ([]PortAttachmentView, error)
 	SyncVMsForHost(hostID string)
@@ -997,6 +998,43 @@ func (s *HostService) ImportAllVMs(hostID string) error {
 		s.broadcastVMsChanged(hostID)
 		s.broadcastDiscoveredVMsChanged(hostID)
 	}
+	return nil
+}
+
+// UpdateVMState updates the intended state of a VM in the database
+func (s *HostService) UpdateVMState(hostID, vmName, state string) error {
+	// Validate the state
+	var validState storage.VMState
+	switch state {
+	case "INITIALIZED":
+		validState = storage.StateInitialized
+	case "ACTIVE", "RUNNING":
+		validState = storage.StateActive
+	case "PAUSED":
+		validState = storage.StatePaused
+	case "SUSPENDED":
+		validState = storage.StateSuspended
+	case "STOPPED":
+		validState = storage.StateStopped
+	case "ERROR":
+		validState = storage.StateError
+	case "UNKNOWN":
+		validState = storage.StateUnknown
+	default:
+		return fmt.Errorf("invalid state: %s", state)
+	}
+
+	// Update the VM state in database
+	result := s.db.Model(&storage.VirtualMachine{}).Where("host_id = ? AND name = ?", hostID, vmName).Update("state", validState)
+	if result.Error != nil {
+		return fmt.Errorf("failed to update VM state: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("VM %s not found on host %s", vmName, hostID)
+	}
+
+	// Broadcast the change
+	s.broadcastVMsChanged(hostID)
 	return nil
 }
 
@@ -2218,6 +2256,7 @@ func (s *HostService) SyncVMFromLibvirt(hostID, vmName string) error {
 		"Name":         vmInfo.Name,
 		"VCPUCount":    vmInfo.Vcpu,
 		"MemoryBytes":  vmInfo.MaxMem * 1024,
+		"LibvirtState": mapLibvirtStateToVMState(vmInfo.State), // Update observed state
 		"SyncStatus":   storage.StatusSynced,
 		"DriftDetails": "",
 		"NeedsRebuild": false,

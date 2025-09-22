@@ -92,6 +92,7 @@ func main() {
 		r.Post("/hosts/{hostID}/vms/{vmName}/forcereset", apiHandler.ForceResetVM)
 		r.Post("/hosts/{hostID}/vms/{vmName}/sync-from-libvirt", apiHandler.SyncVMLive)
 		r.Post("/hosts/{hostID}/vms/{vmName}/rebuild-from-db", apiHandler.RebuildVM)
+		r.Put("/hosts/{hostID}/vms/{vmName}/state", apiHandler.UpdateVMState)
 		r.Get("/hosts/{hostID}/vms/{vmName}/stats", apiHandler.GetVMStats)
 		r.Get("/hosts/{hostID}/vms/{vmName}/hardware", apiHandler.GetVMHardware)
 
