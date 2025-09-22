@@ -2142,7 +2142,7 @@ func (s *HostService) GetVMStats(hostID, vmName string) (*libvirt.VMStats, error
 
 // --- VM Actions ---
 
-func (s *HostService) performVMAction(hostID, vmName string, taskState storage.VMTaskState, action func() error) error {
+func (s *HostService) performVMAction(hostID, vmName string, taskState storage.VMTaskState, action func() error, intendedState ...storage.VMState) error {
 	// Check if host is connected
 	if _, err := s.connector.GetConnection(hostID); err != nil {
 		return fmt.Errorf("host %s is not connected", hostID)
@@ -2160,6 +2160,13 @@ func (s *HostService) performVMAction(hostID, vmName string, taskState storage.V
 		s.db.Model(&storage.VirtualMachine{}).Where("host_id = ? AND name = ?", hostID, vmName).Update("task_state", "")
 		s.broadcastVMsChanged(hostID)
 		return err
+	}
+
+	// Update intended state if provided
+	if len(intendedState) > 0 {
+		if err := s.db.Model(&storage.VirtualMachine{}).Where("host_id = ? AND name = ?", hostID, vmName).Update("state", intendedState[0]).Error; err != nil {
+			log.Verbosef("Warning: failed to update intended state for %s: %v", vmName, err)
+		}
 	}
 
 	// After a successful action, re-run drift detection.
@@ -2185,13 +2192,13 @@ func (s *HostService) StartVM(hostID, vmName string) error {
 		// So, we can clear the flag.
 		s.db.Model(&storage.VirtualMachine{}).Where("host_id = ? AND name = ?", hostID, vmName).Update("needs_rebuild", false)
 		return s.connector.StartDomain(hostID, vmName)
-	})
+	}, storage.StateActive)
 }
 
 func (s *HostService) ShutdownVM(hostID, vmName string) error {
 	return s.performVMAction(hostID, vmName, storage.TaskStateStopping, func() error {
 		return s.connector.ShutdownDomain(hostID, vmName)
-	})
+	}, storage.StateStopped)
 }
 
 func (s *HostService) RebootVM(hostID, vmName string) error {
@@ -2200,13 +2207,13 @@ func (s *HostService) RebootVM(hostID, vmName string) error {
 		// So, we can clear the flag.
 		s.db.Model(&storage.VirtualMachine{}).Where("host_id = ? AND name = ?", hostID, vmName).Update("needs_rebuild", false)
 		return s.connector.RebootDomain(hostID, vmName)
-	})
+	}, storage.StateActive)
 }
 
 func (s *HostService) ForceOffVM(hostID, vmName string) error {
 	return s.performVMAction(hostID, vmName, storage.TaskStatePoweringOff, func() error {
 		return s.connector.DestroyDomain(hostID, vmName)
-	})
+	}, storage.StateStopped)
 }
 
 func (s *HostService) ForceResetVM(hostID, vmName string) error {
@@ -2215,7 +2222,7 @@ func (s *HostService) ForceResetVM(hostID, vmName string) error {
 		// So, we can clear the flag.
 		s.db.Model(&storage.VirtualMachine{}).Where("host_id = ? AND name = ?", hostID, vmName).Update("needs_rebuild", false)
 		return s.connector.ResetDomain(hostID, vmName)
-	})
+	}, storage.StateActive)
 }
 
 // --- Drift and Sync Actions ---

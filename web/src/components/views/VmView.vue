@@ -8,7 +8,7 @@ import { useVmStateDisplay } from '@/composables/useVmStateDisplay';
 
 const mainStore = useMainStore();
 const route = useRoute();
-const { getVmDisplayState } = useVmStateDisplay();
+const { getVmDisplayState, isVmRunning } = useVmStateDisplay();
 const activeTab = ref('summary');
 
 const vm = computed(() => {
@@ -230,6 +230,23 @@ watch(activeTab, async (newTab) => {
 // Track previous VM for proper unsubscribe
 let previousVmName = null;
 let previousHostId = null;
+let isSubscribed = false;
+
+const updateVmStatsSubscription = (vm, vmHost) => {
+    const shouldBeSubscribed = vm && vmHost && isVmRunning(vm, vmHost);
+    
+    if (shouldBeSubscribed && !isSubscribed) {
+        // Subscribe
+        mainStore.subscribeToVmStats(vmHost.id, vm.name);
+        isSubscribed = true;
+        console.log(`Subscribed to stats for ${vmHost.id}/${vm.name}`);
+    } else if (!shouldBeSubscribed && isSubscribed) {
+        // Unsubscribe
+        mainStore.unsubscribeFromVmStats(vmHost.id, vm.name);
+        isSubscribed = false;
+        console.log(`Unsubscribed from stats for ${vmHost.id}/${vm.name}`);
+    }
+};
 
 onMounted(() => {
     const vmName = route.params.vmName;
@@ -237,7 +254,8 @@ onMounted(() => {
         // Find the host for this VM
         const vmHost = mainStore.hosts.find(h => h.vms && h.vms.some(v => v.name === vmName));
         if (vmHost) {
-            mainStore.subscribeToVmStats(vmHost.id, vmName);
+            const foundVm = vmHost.vms.find(v => v.name === vmName);
+            updateVmStatsSubscription(foundVm, vmHost);
             // Sync VM state from libvirt to ensure we have latest observed state
             mainStore.syncVmFromLibvirt(vmHost.id, vmName);
             previousVmName = vmName;
@@ -252,8 +270,10 @@ onMounted(() => {
 watch(
     () => route.params.vmName,
     async (newVmName, oldVmName) => {
-        if (previousVmName && previousHostId) {
+        // Always unsubscribe from previous VM if we were subscribed
+        if (isSubscribed && previousHostId && previousVmName) {
             mainStore.unsubscribeFromVmStats(previousHostId, previousVmName);
+            isSubscribed = false;
         }
         // Clear any previously loaded hardware so the hardware tab will fetch fresh data
         mainStore.activeVmHardware = null;
@@ -261,7 +281,8 @@ watch(
             // Find the host for this VM
             const vmHost = mainStore.hosts.find(h => h.vms && h.vms.some(v => v.name === newVmName));
             if (vmHost) {
-                mainStore.subscribeToVmStats(vmHost.id, newVmName);
+                const foundVm = vmHost.vms.find(v => v.name === newVmName);
+                updateVmStatsSubscription(foundVm, vmHost);
                 // Sync VM state from libvirt to ensure we have latest observed state
                 mainStore.syncVmFromLibvirt(vmHost.id, newVmName);
                 previousVmName = newVmName;
@@ -278,10 +299,20 @@ watch(
     { immediate: false }
 );
 
+// Watch for VM state changes to subscribe/unsubscribe stats monitoring
+watch(
+    [vm, host],
+    ([newVm, newHost]) => {
+        updateVmStatsSubscription(newVm, newHost);
+    },
+    { immediate: false }
+);
+
 onBeforeRouteLeave((to, from, next) => {
     // Unsubscribe from VM stats when leaving this route
-    if (previousHostId && previousVmName) {
+    if (isSubscribed && previousHostId && previousVmName) {
         mainStore.unsubscribeFromVmStats(previousHostId, previousVmName);
+        isSubscribed = false;
     }
     next();
 });
