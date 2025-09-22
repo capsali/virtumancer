@@ -114,10 +114,11 @@ type DiskInfo struct {
 		Type string `xml:"type,attr" json:"type"`
 	} `xml:"driver" json:"driver"`
 	Source struct {
-		File string `xml:"file,attr"`
-		Dev  string `xml:"dev,attr"`
-	} `xml:"source"`
+		File string `xml:"file,attr" json:"file"`
+		Dev  string `xml:"dev,attr" json:"dev"`
+	} `xml:"source" json:"source"`
 	Path   string `json:"path"`
+	Name   string `json:"name"`
 	Target struct {
 		Dev string `xml:"dev,attr" json:"dev"`
 		Bus string `xml:"bus,attr" json:"bus"`

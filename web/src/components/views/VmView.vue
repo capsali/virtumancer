@@ -476,7 +476,7 @@ const loadPortAttachments = async () => {
                                 <tr v-for="disk in hardware.disks" :key="disk.target.dev">
                                     <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">{{ disk.target?.dev || 'N/A' }}</td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ disk.target?.bus || 'N/A' }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300 font-mono break-all">{{ disk.source?.file || 'N/A' }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300 font-mono break-all">{{ disk.source?.file || disk.name || 'N/A' }}</td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{{ disk.driver?.type || 'N/A' }}</td>
                                 </tr>
                             </tbody>

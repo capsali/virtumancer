@@ -601,7 +601,14 @@ func (s *HostService) getVMHardwareFromDB(hostID, vmName string) (*libvirt.Hardw
 		}
 		hardware.Disks = append(hardware.Disks, libvirt.DiskInfo{
 			Device: da.DeviceName,
-			Path:   path,
+			Source: struct {
+				File string `xml:"file,attr" json:"file"`
+				Dev  string `xml:"dev,attr" json:"dev"`
+			}{
+				File: path,
+			},
+			Path: path,
+			Name: da.Disk.Name,
 			Target: struct {
 				Dev string `xml:"dev,attr" json:"dev"`
 				Bus string `xml:"bus,attr" json:"bus"`
@@ -1282,7 +1289,11 @@ func (s *HostService) syncVMHardware(tx *gorm.DB, vmUUID string, hostID string, 
 		if volume != nil {
 			updates["volume_id"] = volume.ID
 		}
-		updates["path"] = disk.Source.File
+		path := disk.Source.File
+		if path == "" {
+			path = disk.Source.Dev
+		}
+		updates["path"] = path
 		updates["format"] = disk.Driver.Type
 		updates["driver_json"] = string(driverJSON)
 		// TODO: Add capacity, serial, etc. if available
