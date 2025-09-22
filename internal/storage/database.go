@@ -57,6 +57,9 @@ type Host struct {
 	State string `gorm:"size:32;default:'DISCONNECTED'" json:"state"`
 	// TaskState reflects transient work being performed on the host (e.g., connecting)
 	TaskState string `gorm:"size:32" json:"task_state"`
+	// AutoReconnectDisabled indicates if automatic reconnection is disabled for this host
+	// (e.g., because it was manually disconnected by the user)
+	AutoReconnectDisabled bool `gorm:"default:false" json:"auto_reconnect_disabled"`
 }
 
 // HostState defines allowed host states to mirror VM state behavior.

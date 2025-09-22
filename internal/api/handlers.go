@@ -114,7 +114,7 @@ func (h *APIHandler) GetHostInfo(w http.ResponseWriter, r *http.Request) {
 // ConnectHost triggers a connection attempt for the given host id.
 func (h *APIHandler) ConnectHost(w http.ResponseWriter, r *http.Request) {
 	hostID := chi.URLParam(r, "hostID")
-	if err := h.HostService.EnsureHostConnected(hostID); err != nil {
+	if err := h.HostService.EnsureHostConnectedForced(hostID); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -124,7 +124,7 @@ func (h *APIHandler) ConnectHost(w http.ResponseWriter, r *http.Request) {
 // DisconnectHost requests a disconnect for the given host id.
 func (h *APIHandler) DisconnectHost(w http.ResponseWriter, r *http.Request) {
 	hostID := chi.URLParam(r, "hostID")
-	if err := h.HostService.DisconnectHost(hostID); err != nil {
+	if err := h.HostService.DisconnectHost(hostID, true); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

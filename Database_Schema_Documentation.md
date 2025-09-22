@@ -12,6 +12,9 @@ Stores the connection details for each managed libvirt host.
 | :---- | :---- | :---- | :---- |
 | id | TEXT | PRIMARY KEY | A user-defined, unique ID for the host. |
 | uri | TEXT | NOT NULL | The full libvirt connection URI. |
+| state | TEXT | DEFAULT "DISCONNECTED" | The current connection state of the host (CONNECTED, DISCONNECTED, ERROR). |
+| task_state | TEXT |  | The current task state if a connection/disconnection operation is in progress. |
+| auto_reconnect_disabled | BOOLEAN | DEFAULT false | If true, prevents automatic reconnection to this host. Set when user manually disconnects. |
 | created\_at | DATETIME |  | Timestamp of creation. |
 
 ### **virtual\_machines**

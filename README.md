@@ -15,6 +15,7 @@ Virtumancer is a modern, web-based virtualization management platform designed f
 
 * **Multi-Host Management**: Connect to and manage multiple libvirt hosts from a single interface.  
 * **Secure Connections**: First-class support for qemu+ssh URIs using native SSH tunneling for secure, agentless remote management.  
+* **Host Connection Control**: Manually connect/disconnect hosts with persistent user disconnect preferences that prevent unwanted automatic reconnections.  
 * **VM Lifecycle Management**: Start, stop, shutdown, reboot, and force-reset virtual machines.  
 * **Real-Time Monitoring**: Live-stream CPU, memory, and I/O statistics for running VMs directly to the UI.  
 * **Normalized Datastore**: VM hardware configurations are discovered and stored in a structured, relational database, enabling powerful future features.  

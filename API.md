@@ -4,11 +4,11 @@ Virtumancer exposes a RESTful HTTP API for management operations and a WebSocket
 
 ## **REST API**
 
-Base URL: /api
+Base URL: /api/v1
 
 ### **Host Management**
 
-#### **GET /api/hosts**
+#### **GET /api/v1/hosts**
 
 * **Description**: Retrieves a list of all configured hosts from the database.  
 * **Response**: 200 OK  
@@ -16,11 +16,13 @@ Base URL: /api
     {  
       "id": "kvmsrv",  
       "uri": "qemu+ssh://user@host/system",  
+      "state": "CONNECTED",  
+      "auto_reconnect_disabled": false,  
       "created\_at": "2023-10-27T10:00:00Z"  
     }  
   \]
 
-#### **POST /api/hosts**
+#### **POST /api/v1/hosts**
 
 * **Description**: Adds a new host, connects to it, and stores it in the database.  
 * **Request Body**:  
@@ -31,14 +33,28 @@ Base URL: /api
 
 * **Response**: 200 OK on success, with the created host object. 500 Internal Server Error if the connection fails.
 
-#### **DELETE /api/hosts/:id**
+#### **POST /api/v1/hosts/:id/connect**
+
+* **Description**: Manually connects to a previously disconnected host. This will succeed even if auto-reconnection was previously disabled by a user disconnect.  
+* **URL Parameters**:  
+  * id (string): The ID of the host to connect.  
+* **Response**: 200 OK on success. 500 Internal Server Error if the connection fails.
+
+#### **POST /api/v1/hosts/:id/disconnect**
+
+* **Description**: Disconnects from a host and marks it so that automatic reconnection is disabled. This prevents the system from automatically reconnecting to the host until manually reconnected.  
+* **URL Parameters**:  
+  * id (string): The ID of the host to disconnect.  
+* **Response**: 200 OK on success. 500 Internal Server Error if the disconnection fails.
+
+#### **DELETE /api/v1/hosts/:id**
 
 * **Description**: Disconnects from a host and removes it from the database.  
 * **URL Parameters**:  
   * id (string): The ID of the host to remove.  
 * **Response**: 204 No Content
 
-#### **GET /api/hosts/:id/info**
+#### **GET /api/v1/hosts/:id/info**
 
 * **Description**: Retrieves real-time information and statistics about a specific host (CPU, memory, etc.).  
 * **URL Parameters**:  
@@ -54,7 +70,7 @@ Base URL: /api
 
 ### **Virtual Machine Management**
 
-#### **GET /api/hosts/:id/vms**
+#### **GET /api/v1/hosts/:id/vms**
 
 * **Description**: Retrieves a list of all virtual machines on a specific host from the local database cache.  
 * **URL Parameters**:  
@@ -75,7 +91,7 @@ Base URL: /api
     }  
   \]
 
-#### **GET /api/hosts/:hostId/vms/:vmName/hardware**
+#### **GET /api/v1/hosts/:hostId/vms/:vmName/hardware**
 
 * **Description**: Retrieves the hardware configuration for a specific VM. This triggers a fresh sync from libvirt before returning the cached data.  
 * **URL Parameters**:  
@@ -102,7 +118,7 @@ Base URL: /api
     \]  
   }
 
-#### **POST /api/hosts/:hostId/vms/:vmName/action**
+#### **POST /api/v1/hosts/:hostId/vms/:vmName/action**
 
 * **Description**: Performs a power action on a specific VM.  
 * **URL Parameters**:  

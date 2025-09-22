@@ -113,7 +113,8 @@ type HostServiceProvider interface {
 	ws.InboundMessageHandler
 	GetAllHosts() ([]storage.Host, error)
 	EnsureHostConnected(hostID string) error
-	DisconnectHost(hostID string) error
+	EnsureHostConnectedForced(hostID string) error
+	DisconnectHost(hostID string, userInitiated bool) error
 	GetHostInfo(hostID string) (*libvirt.HostInfo, error)
 	AddHost(host storage.Host) (*storage.Host, error)
 	RemoveHost(hostID string) error
@@ -163,6 +164,8 @@ func NewHostService(db *gorm.DB, connector *libvirt.Connector, hub *ws.Hub) *Hos
 // URI from the database and connect. This allows lazy connection on demand
 // (e.g., when the UI first subscribes to stats) instead of connecting all
 // hosts at startup.
+// This respects the AutoReconnectDisabled flag and will not reconnect
+// hosts that were manually disconnected by the user.
 func (s *HostService) EnsureHostConnected(hostID string) error {
 	log.Debugf("EnsureHostConnected: checking connection for host %s", hostID)
 	if _, err := s.connector.GetConnection(hostID); err == nil {
@@ -173,6 +176,12 @@ func (s *HostService) EnsureHostConnected(hostID string) error {
 	var host storage.Host
 	if err := s.db.Where("id = ?", hostID).First(&host).Error; err != nil {
 		return fmt.Errorf("could not find host %s in database: %w", hostID, err)
+	}
+
+	// Check if auto-reconnection is disabled for this host
+	if host.AutoReconnectDisabled {
+		log.Debugf("EnsureHostConnected: auto-reconnection disabled for host %s", hostID)
+		return fmt.Errorf("host %s has auto-reconnection disabled", hostID)
 	}
 
 	log.Verbosef("EnsureHostConnected: connecting to host %s (uri=%s)", hostID, host.URI)
@@ -189,6 +198,48 @@ func (s *HostService) EnsureHostConnected(hostID string) error {
 	s.db.Model(&storage.Host{}).Where("id = ?", hostID).Updates(map[string]interface{}{"task_state": "", "state": storage.HostStateConnected})
 	// Notify clients that the host is now connected
 	s.broadcastHostConnectionChanged(hostID, true)
+	s.broadcastHostsChanged()
+
+	// Sync VMs for the newly connected host
+	go s.SyncVMsForHost(hostID)
+
+	return nil
+}
+
+// EnsureHostConnectedForced ensures there's an active libvirt connection for the
+// given host ID, ignoring the AutoReconnectDisabled flag. This should be used
+// for manual connect requests from the user.
+func (s *HostService) EnsureHostConnectedForced(hostID string) error {
+	log.Debugf("EnsureHostConnectedForced: forcing connection for host %s", hostID)
+	if _, err := s.connector.GetConnection(hostID); err == nil {
+		log.Debugf("EnsureHostConnectedForced: host %s already connected", hostID)
+		return nil // already connected
+	}
+
+	var host storage.Host
+	if err := s.db.Where("id = ?", hostID).First(&host).Error; err != nil {
+		return fmt.Errorf("could not find host %s in database: %w", hostID, err)
+	}
+
+	log.Verbosef("EnsureHostConnectedForced: connecting to host %s (uri=%s)", hostID, host.URI)
+	// Mark host as connecting in DB so UI and API can reflect transient state
+	s.db.Model(&storage.Host{}).Where("id = ?", hostID).Updates(map[string]interface{}{"task_state": storage.HostTaskStateConnecting, "state": storage.HostStateDisconnected})
+	if err := s.connector.AddHost(host); err != nil {
+		log.Debugf("EnsureHostConnectedForced: failed to connect to host %s: %v", hostID, err)
+		// Set task_state to empty and mark as error
+		s.db.Model(&storage.Host{}).Where("id = ?", hostID).Updates(map[string]interface{}{"task_state": "", "state": storage.HostStateError})
+		return fmt.Errorf("failed to connect to host %s: %w", hostID, err)
+	}
+	log.Verbosef("EnsureHostConnectedForced: connection established for host %s", hostID)
+	// Clear task state, mark connected, and enable auto-reconnection
+	s.db.Model(&storage.Host{}).Where("id = ?", hostID).Updates(map[string]interface{}{
+		"task_state": "",
+		"state": storage.HostStateConnected,
+		"auto_reconnect_disabled": false,
+	})
+	// Notify clients that the host is now connected
+	s.broadcastHostConnectionChanged(hostID, true)
+	s.broadcastHostsChanged()
 
 	// Sync VMs for the newly connected host
 	go s.SyncVMsForHost(hostID)
@@ -198,8 +249,10 @@ func (s *HostService) EnsureHostConnected(hostID string) error {
 
 // DisconnectHost disconnects an active libvirt connection for the host and
 // updates DB state. It's safe to call even if no connection exists.
-func (s *HostService) DisconnectHost(hostID string) error {
-	log.Debugf("DisconnectHost: disconnecting host %s", hostID)
+// userInitiated indicates if this disconnect was requested by the user
+// (in which case auto-reconnection will be disabled).
+func (s *HostService) DisconnectHost(hostID string, userInitiated bool) error {
+	log.Debugf("DisconnectHost: disconnecting host %s (userInitiated=%v)", hostID, userInitiated)
 	// If there's no connection, return nil
 	if _, err := s.connector.GetConnection(hostID); err != nil {
 		log.Debugf("DisconnectHost: no active connection for host %s", hostID)
@@ -212,9 +265,23 @@ func (s *HostService) DisconnectHost(hostID string) error {
 		return fmt.Errorf("failed to disconnect host %s: %w", hostID, err)
 	}
 
-	// Mark host as disconnected
-	s.db.Model(&storage.Host{}).Where("id = ?", hostID).Updates(map[string]interface{}{"task_state": "", "state": storage.HostStateDisconnected})
+	// Mark host as disconnected and set auto-reconnect flag
+	updates := map[string]interface{}{
+		"task_state": "",
+		"state": storage.HostStateDisconnected,
+	}
+	if userInitiated {
+		updates["auto_reconnect_disabled"] = true
+	}
+	s.db.Model(&storage.Host{}).Where("id = ?", hostID).Updates(updates)
+	
+	// Stop all monitoring for this host
+	s.monitor.StopHostMonitoring(hostID)
+	s.hostMonitor.StopHostMonitoring(hostID)
+	
+	log.Infof("Host %s disconnected successfully (userInitiated=%v)", hostID, userInitiated)
 	s.broadcastHostConnectionChanged(hostID, false)
+	s.broadcastHostsChanged()
 	return nil
 }
 
@@ -709,6 +776,11 @@ func (s *HostService) getVMHardwareFromDB(hostID, vmName string) (*libvirt.Hardw
 	return &hardware, nil
 }
 func (s *HostService) GetVMHardwareAndDetectDrift(hostID, vmName string) (*libvirt.HardwareInfo, error) {
+	// Check if host is connected
+	if _, err := s.connector.GetConnection(hostID); err != nil {
+		return nil, fmt.Errorf("host %s is not connected", hostID)
+	}
+	
 	if changed, syncErr := s.detectDriftOrIngestVM(hostID, vmName, false); syncErr != nil {
 		log.Verbosef("Error during hardware sync for %s: %v", vmName, syncErr)
 	} else if changed {
@@ -1914,6 +1986,11 @@ func (s *HostService) syncHostVMs(hostID string) (bool, error) {
 }
 
 func (s *HostService) GetVMStats(hostID, vmName string) (*libvirt.VMStats, error) {
+	// Check if host is connected
+	if _, err := s.connector.GetConnection(hostID); err != nil {
+		return nil, fmt.Errorf("host %s is not connected", hostID)
+	}
+	
 	stats := s.monitor.GetLastKnownStats(hostID, vmName)
 	if stats != nil {
 		return stats, nil
@@ -1924,6 +2001,11 @@ func (s *HostService) GetVMStats(hostID, vmName string) (*libvirt.VMStats, error
 // --- VM Actions ---
 
 func (s *HostService) performVMAction(hostID, vmName string, taskState storage.VMTaskState, action func() error) error {
+	// Check if host is connected
+	if _, err := s.connector.GetConnection(hostID); err != nil {
+		return fmt.Errorf("host %s is not connected", hostID)
+	}
+	
 	// Set task state
 	if err := s.db.Model(&storage.VirtualMachine{}).Where("host_id = ? AND name = ?", hostID, vmName).Update("task_state", taskState).Error; err != nil {
 		return fmt.Errorf("failed to set task state for %s: %w", vmName, err)
@@ -1999,6 +2081,11 @@ func (s *HostService) ForceResetVM(hostID, vmName string) error {
 // SyncVMFromLibvirt forces an update from the live libvirt state into the database,
 // overwriting the DB record and clearing any drift status.
 func (s *HostService) SyncVMFromLibvirt(hostID, vmName string) error {
+	// Check if host is connected
+	if _, err := s.connector.GetConnection(hostID); err != nil {
+		return fmt.Errorf("host %s is not connected", hostID)
+	}
+	
 	vmInfo, err := s.connector.GetDomainInfo(hostID, vmName)
 	if err != nil {
 		return fmt.Errorf("could not fetch info for VM %s on host %s: %w", vmName, hostID, err)
@@ -2204,6 +2291,20 @@ func (m *MonitoringManager) UnsubscribeClient(client *ws.Client) {
 	}
 }
 
+func (m *MonitoringManager) StopHostMonitoring(hostID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Stop monitoring for all VMs on this host
+	for key, sub := range m.subscriptions {
+		if strings.HasPrefix(key, hostID+":") {
+			log.Verbosef("Stopping VM monitoring for %s due to host disconnect", key)
+			close(sub.stop)
+			delete(m.subscriptions, key)
+		}
+	}
+}
+
 func (m *MonitoringManager) GetLastKnownStats(hostID, vmName string) *libvirt.VMStats {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -2269,15 +2370,18 @@ func (m *MonitoringManager) pollVmStats(hostID, vmName string, sub *VmSubscripti
 // --- Host Monitoring Goroutine Logic ---
 
 func (m *HostMonitoringManager) Subscribe(client *ws.Client, hostID string) {
-	if err := m.service.EnsureHostConnected(hostID); err != nil {
-		log.Printf("Warning: could not ensure host %s connected: %v", hostID, err)
-	}
-
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	sub, exists := m.subscriptions[hostID]
 	if !exists {
+		// Check if host is connected before starting monitoring
+		if _, err := m.service.connector.GetConnection(hostID); err != nil {
+			log.Verbosef("Skipping host monitoring for %s: host not connected", hostID)
+			// Don't start monitoring if host is not connected
+			return
+		}
+
 		log.Verbosef("Starting host monitoring for %s", hostID)
 		sub = &HostSubscription{
 			clients: make(map[*ws.Client]bool),
@@ -2331,6 +2435,17 @@ func (m *HostMonitoringManager) UnsubscribeClient(client *ws.Client) {
 				delete(m.subscriptions, hostID)
 			}
 		}
+	}
+}
+
+func (m *HostMonitoringManager) StopHostMonitoring(hostID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if sub, exists := m.subscriptions[hostID]; exists {
+		log.Verbosef("Stopping host monitoring for %s due to host disconnect", hostID)
+		close(sub.stop)
+		delete(m.subscriptions, hostID)
 	}
 }
 
