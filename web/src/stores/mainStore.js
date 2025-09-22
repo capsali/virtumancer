@@ -702,6 +702,12 @@ export const useMainStore = defineStore('main', () => {
             } catch (e) {
                 console.warn('[mainStore] fetchHosts after connect failed', e);
             }
+            // Refresh discovered VMs for this host
+            try {
+                await refreshDiscoveredVMs(hostId);
+            } catch (e) {
+                console.warn('[mainStore] refreshDiscoveredVMs after connect failed', e);
+            }
             // clear connecting indicator
             if (hostConnecting.value[hostId]) {
                 const copy = { ...hostConnecting.value };
@@ -765,6 +771,8 @@ export const useMainStore = defineStore('main', () => {
                 hostStats.value = copy;
             }
             activeVmStats.value = null;
+            // Clear discovered VMs for disconnected host
+            discoveredByHost.value = { ...discoveredByHost.value, [hostId]: [] };
             return true;
         } catch (e) {
             console.error('disconnectHost failed', e);

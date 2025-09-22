@@ -111,6 +111,8 @@ const handleConnectConfirm = async () => {
   } catch (e) {
     console.error('Connect/Disconnect action failed', e);
   } finally {
+    // Refresh discovered VMs after connect/disconnect
+    mainStore.refreshDiscoveredVMs(hostId).catch(() => {});
     connectConfirmLoading.value = false;
     showConnectConfirm.value = false;
     connectConfirmPayload.value = {};
