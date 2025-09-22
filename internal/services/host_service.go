@@ -476,7 +476,7 @@ func (s *HostService) AutoConnectHosts() error {
 	for _, host := range hosts {
 		log.Infof("Auto-connecting to previously connected host %s (%s)", host.ID, host.URI)
 		if err := s.EnsureHostConnected(host.ID); err != nil {
-			log.Verbosef("Failed to auto-connect to host %s: %v", host.ID, err)
+			log.Errorf("Failed to auto-connect to host %s: %v", host.ID, err)
 			// Continue with other hosts even if one fails
 		}
 	}

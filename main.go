@@ -53,7 +53,7 @@ func main() {
 
 	// Auto-connect to hosts that were previously connected
 	if err := hostService.AutoConnectHosts(); err != nil {
-		log.Verbosef("Failed to auto-connect to some hosts: %v", err)
+		log.Errorf("Failed to auto-connect to some hosts: %v", err)
 	}
 
 	// Host connections are established lazily when needed (e.g., on the

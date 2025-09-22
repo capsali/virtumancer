@@ -976,11 +976,11 @@ func InitDB(dataSourceName string) (*gorm.DB, error) {
 	// Ensure indexes / unique constraints for the attachment index for fast queries
 	// and to prevent duplicate entries. Run after AutoMigrate so tables exist.
 	if err := db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS uniq_attachment_index ON attachment_indices(device_type, attachment_id);").Error; err != nil {
-		log.Verbosef("failed to create unique index uniq_attachment_index: %v", err)
+		log.Errorf("failed to create unique index uniq_attachment_index: %v", err)
 		return nil, err
 	}
 	if err := db.Exec("CREATE INDEX IF NOT EXISTS idx_attachment_index_vm_uuid ON attachment_indices(vm_uuid);").Error; err != nil {
-		log.Verbosef("failed to create index idx_attachment_index_vm_uuid: %v", err)
+		log.Errorf("failed to create index idx_attachment_index_vm_uuid: %v", err)
 		return nil, err
 	}
 
@@ -988,14 +988,14 @@ func InitDB(dataSourceName string) (*gorm.DB, error) {
 	// This covers per-instance device types such as `console` (and other non-volume types).
 	// Volumes can be multi-attached so exclude them from this unique constraint using a partial index.
 	if err := db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS uniq_attachment_index_device ON attachment_indices(device_type, device_id) WHERE device_type != 'volume' AND device_id IS NOT NULL;").Error; err != nil {
-		log.Verbosef("failed to create unique index uniq_attachment_index_device: %v", err)
+		log.Errorf("failed to create unique index uniq_attachment_index_device: %v", err)
 		return nil, err
 	}
 
 	// Normalize old data: convert device_id == 0 to NULL so multi-attach rows
 	// are represented as NULL device_id (we changed DeviceID to *uint).
 	if err := db.Exec("UPDATE attachment_indices SET device_id = NULL WHERE device_id = 0").Error; err != nil {
-		log.Verbosef("failed to normalize attachment_indices device_id zeros: %v", err)
+		log.Errorf("failed to normalize attachment_indices device_id zeros: %v", err)
 		return nil, err
 	}
 

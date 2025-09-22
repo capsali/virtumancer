@@ -5,7 +5,6 @@ import (
 	"encoding/csv"
 	"flag"
 	"fmt"
-	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -42,14 +41,14 @@ func main() {
 	// Configure log file if requested
 	var logF *os.File
 	if *logFile != "" {
-		f, err := os.OpenFile(*logFile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+		f, err := log.SetFileOutput(*logFile)
 		if err != nil {
 			log.Fatalf("failed to open log file %s: %v", *logFile, err)
 		}
 		logF = f
-		mw := io.MultiWriter(os.Stdout, logF)
-		log.SetOutput(mw)
-		defer logF.Close()
+		if logF != nil {
+			defer logF.Close()
+		}
 	}
 
 	if _, err := os.Stat(*dbPath); os.IsNotExist(err) {
