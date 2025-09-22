@@ -26,9 +26,9 @@ func TestDisconnectHost_UserInitiated(t *testing.T) {
 
 	// Create a test host
 	testHost := &storage.Host{
-		ID:   "test-host",
-		URI:  "qemu+ssh://test@example.com/system",
-		State: "CONNECTED",
+		ID:                    "test-host",
+		URI:                   "qemu+ssh://test@example.com/system",
+		State:                 "CONNECTED",
 		AutoReconnectDisabled: false,
 	}
 	err := db.Create(testHost).Error
@@ -36,8 +36,8 @@ func TestDisconnectHost_UserInitiated(t *testing.T) {
 
 	// Simulate what DisconnectHost does for user-initiated disconnect
 	updates := map[string]interface{}{
-		"task_state": "",
-		"state": "DISCONNECTED",
+		"task_state":              "",
+		"state":                   "DISCONNECTED",
 		"auto_reconnect_disabled": true,
 	}
 	err = db.Model(&storage.Host{}).Where("id = ?", "test-host").Updates(updates).Error
@@ -57,9 +57,9 @@ func TestDisconnectHost_NetworkDisconnect(t *testing.T) {
 
 	// Create a test host
 	testHost := &storage.Host{
-		ID:   "test-host",
-		URI:  "qemu+ssh://test@example.com/system",
-		State: "CONNECTED",
+		ID:                    "test-host",
+		URI:                   "qemu+ssh://test@example.com/system",
+		State:                 "CONNECTED",
 		AutoReconnectDisabled: false,
 	}
 	err := db.Create(testHost).Error
@@ -68,7 +68,7 @@ func TestDisconnectHost_NetworkDisconnect(t *testing.T) {
 	// Simulate what DisconnectHost does for network-initiated disconnect
 	updates := map[string]interface{}{
 		"task_state": "",
-		"state": "DISCONNECTED",
+		"state":      "DISCONNECTED",
 	}
 	err = db.Model(&storage.Host{}).Where("id = ?", "test-host").Updates(updates).Error
 	require.NoError(t, err)
@@ -87,9 +87,9 @@ func TestEnsureHostConnected_RespectsAutoReconnectDisabled(t *testing.T) {
 
 	// Create a test host with auto-reconnect disabled
 	testHost := &storage.Host{
-		ID:   "test-host",
-		URI:  "qemu+ssh://test@example.com/system",
-		State: "DISCONNECTED",
+		ID:                    "test-host",
+		URI:                   "qemu+ssh://test@example.com/system",
+		State:                 "DISCONNECTED",
 		AutoReconnectDisabled: true,
 	}
 	err := db.Create(testHost).Error
@@ -114,9 +114,9 @@ func TestManualConnect_ResetsAutoReconnectDisabled(t *testing.T) {
 
 	// Create a test host with auto-reconnect disabled
 	testHost := &storage.Host{
-		ID:   "test-host",
-		URI:  "qemu+ssh://test@example.com/system",
-		State: "DISCONNECTED",
+		ID:                    "test-host",
+		URI:                   "qemu+ssh://test@example.com/system",
+		State:                 "DISCONNECTED",
 		AutoReconnectDisabled: true,
 	}
 	err := db.Create(testHost).Error
@@ -124,8 +124,8 @@ func TestManualConnect_ResetsAutoReconnectDisabled(t *testing.T) {
 
 	// Simulate what EnsureHostConnectedForced does
 	updates := map[string]interface{}{
-		"task_state": "",
-		"state": "CONNECTED",
+		"task_state":              "",
+		"state":                   "CONNECTED",
 		"auto_reconnect_disabled": false,
 	}
 	err = db.Model(&storage.Host{}).Where("id = ?", "test-host").Updates(updates).Error

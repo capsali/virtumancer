@@ -233,8 +233,8 @@ func (s *HostService) EnsureHostConnectedForced(hostID string) error {
 	log.Verbosef("EnsureHostConnectedForced: connection established for host %s", hostID)
 	// Clear task state, mark connected, and enable auto-reconnection
 	s.db.Model(&storage.Host{}).Where("id = ?", hostID).Updates(map[string]interface{}{
-		"task_state": "",
-		"state": storage.HostStateConnected,
+		"task_state":              "",
+		"state":                   storage.HostStateConnected,
 		"auto_reconnect_disabled": false,
 	})
 	// Notify clients that the host is now connected
@@ -268,17 +268,17 @@ func (s *HostService) DisconnectHost(hostID string, userInitiated bool) error {
 	// Mark host as disconnected and set auto-reconnect flag
 	updates := map[string]interface{}{
 		"task_state": "",
-		"state": storage.HostStateDisconnected,
+		"state":      storage.HostStateDisconnected,
 	}
 	if userInitiated {
 		updates["auto_reconnect_disabled"] = true
 	}
 	s.db.Model(&storage.Host{}).Where("id = ?", hostID).Updates(updates)
-	
+
 	// Stop all monitoring for this host
 	s.monitor.StopHostMonitoring(hostID)
 	s.hostMonitor.StopHostMonitoring(hostID)
-	
+
 	log.Infof("Host %s disconnected successfully (userInitiated=%v)", hostID, userInitiated)
 	s.broadcastHostConnectionChanged(hostID, false)
 	s.broadcastHostsChanged()
@@ -780,7 +780,7 @@ func (s *HostService) GetVMHardwareAndDetectDrift(hostID, vmName string) (*libvi
 	if _, err := s.connector.GetConnection(hostID); err != nil {
 		return nil, fmt.Errorf("host %s is not connected", hostID)
 	}
-	
+
 	if changed, syncErr := s.detectDriftOrIngestVM(hostID, vmName, false); syncErr != nil {
 		log.Verbosef("Error during hardware sync for %s: %v", vmName, syncErr)
 	} else if changed {
@@ -1990,7 +1990,7 @@ func (s *HostService) GetVMStats(hostID, vmName string) (*libvirt.VMStats, error
 	if _, err := s.connector.GetConnection(hostID); err != nil {
 		return nil, fmt.Errorf("host %s is not connected", hostID)
 	}
-	
+
 	stats := s.monitor.GetLastKnownStats(hostID, vmName)
 	if stats != nil {
 		return stats, nil
@@ -2005,7 +2005,7 @@ func (s *HostService) performVMAction(hostID, vmName string, taskState storage.V
 	if _, err := s.connector.GetConnection(hostID); err != nil {
 		return fmt.Errorf("host %s is not connected", hostID)
 	}
-	
+
 	// Set task state
 	if err := s.db.Model(&storage.VirtualMachine{}).Where("host_id = ? AND name = ?", hostID, vmName).Update("task_state", taskState).Error; err != nil {
 		return fmt.Errorf("failed to set task state for %s: %w", vmName, err)
@@ -2085,7 +2085,7 @@ func (s *HostService) SyncVMFromLibvirt(hostID, vmName string) error {
 	if _, err := s.connector.GetConnection(hostID); err != nil {
 		return fmt.Errorf("host %s is not connected", hostID)
 	}
-	
+
 	vmInfo, err := s.connector.GetDomainInfo(hostID, vmName)
 	if err != nil {
 		return fmt.Errorf("could not fetch info for VM %s on host %s: %w", vmName, hostID, err)
