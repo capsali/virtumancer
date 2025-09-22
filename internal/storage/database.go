@@ -17,6 +17,7 @@ const (
 	StateSuspended   VMState = "SUSPENDED"
 	StateStopped     VMState = "STOPPED"
 	StateError       VMState = "ERROR"
+	StateUnknown     VMState = "UNKNOWN"
 )
 
 // VMTaskState defines the possible transient states of a VM during an operation.

@@ -275,6 +275,11 @@ func (s *HostService) DisconnectHost(hostID string, userInitiated bool) error {
 	}
 	s.db.Model(&storage.Host{}).Where("id = ?", hostID).Updates(updates)
 
+	// Set all VMs for this host to unknown state since we can't monitor them
+	if err := s.db.Model(&storage.VirtualMachine{}).Where("host_id = ?", hostID).Update("state", storage.StateUnknown).Error; err != nil {
+		log.Warnf("Failed to update VM states to unknown for host %s: %v", hostID, err)
+	}
+
 	// Stop all monitoring for this host
 	s.monitor.StopHostMonitoring(hostID)
 	s.hostMonitor.StopHostMonitoring(hostID)
