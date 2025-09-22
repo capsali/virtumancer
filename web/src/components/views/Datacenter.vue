@@ -2,9 +2,11 @@
 import { useMainStore } from '@/stores/mainStore';
 import { useRouter } from 'vue-router';
 import { computed } from 'vue';
+import { useVmStateDisplay } from '@/composables/useVmStateDisplay';
 
 const mainStore = useMainStore();
 const router = useRouter();
+const { isVmRunning } = useVmStateDisplay();
 
 function selectHost(hostId) {
   mainStore.selectHost(hostId);
@@ -12,7 +14,7 @@ function selectHost(hostId) {
 }
 
 const totalVms = (host) => host.vms?.length || 0;
-const runningVms = (host) => host.vms?.filter(vm => vm.state === 'ACTIVE').length || 0;
+const runningVms = (host) => host.vms?.filter(vm => isVmRunning(vm, host)).length || 0;
 
 const formatBytes = (bytes, decimals = 2) => {
     if (bytes === 0) return '0 Bytes';
@@ -28,7 +30,7 @@ const calculateCpuUsage = (host) => {
   if (!host || !host.vms || !host.info) return 0;
   const hostCores = host.info.cpu;
   if (!hostCores) return 0;
-  const runningVmCores = host.vms.reduce((acc, vm) => vm.state === 'ACTIVE' ? acc + vm.vcpu_count : acc, 0);
+  const runningVmCores = host.vms.reduce((acc, vm) => isVmRunning(vm, host) ? acc + vm.vcpu_count : acc, 0);
   return Math.min(100, (runningVmCores / hostCores) * 100);
 };
 

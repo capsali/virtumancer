@@ -4,9 +4,11 @@ import { computed, ref, watch, onMounted } from 'vue';
 import { useRoute, onBeforeRouteLeave } from 'vue-router';
 import VncConsole from '@/components/consoles/VncConsole.vue';
 import SpiceConsole from '@/components/consoles/SpiceConsole.vue';
+import { useVmStateDisplay } from '@/composables/useVmStateDisplay';
 
 const mainStore = useMainStore();
 const route = useRoute();
+const { getVmDisplayState } = useVmStateDisplay();
 const activeTab = ref('summary');
 
 const vm = computed(() => {
@@ -142,15 +144,23 @@ const stateText = (vm) => {
         // Capitalize first letter
         return task.charAt(0).toUpperCase() + task.slice(1);
     }
-    const states = { 
+    const displayState = getVmDisplayState(vm, host.value);
+    if (displayState.hasDrift) {
+        return `${displayState.status} (Drift)`;
+    }
+    if (displayState.status === 'UNKNOWN') {
+        return `Unknown (${displayState.lastKnownState})`;
+    }
+    const states = {
         'INITIALIZED': 'Initialized',
-        'ACTIVE': 'Running', 
-        'PAUSED': 'Paused', 
+        'ACTIVE': 'Running',
+        'RUNNING': 'Running',
+        'PAUSED': 'Paused',
         'SUSPENDED': 'Suspended',
-        'STOPPED': 'Stopped', 
+        'STOPPED': 'Stopped',
         'ERROR': 'Error'
     };
-    return states[vm.state] || 'Unknown';
+    return states[displayState.status] || displayState.status;
 };
 
 const stateColor = (vm) => {
@@ -158,14 +168,18 @@ const stateColor = (vm) => {
   if (vm.task_state) {
       return 'text-orange-300 bg-orange-900/50 animate-pulse';
   }
-  const colors = { 
-    'ACTIVE': 'text-green-400 bg-green-900/50', 
-    'PAUSED': 'text-yellow-400 bg-yellow-900/50', 
-    'SUSPENDED': 'text-blue-400 bg-blue-900/50',
-    'STOPPED': 'text-red-400 bg-red-900/50',
-    'ERROR': 'text-red-400 bg-red-900/50 font-bold',
+  const displayState = getVmDisplayState(vm, host.value);
+  if (displayState.hasDrift) {
+      return 'text-red-400 bg-red-900/50 font-bold';
+  }
+  const colors = {
+    'green': 'text-green-400 bg-green-900/50',
+    'yellow': 'text-yellow-400 bg-yellow-900/50',
+    'blue': 'text-blue-400 bg-blue-900/50',
+    'red': 'text-red-400 bg-red-900/50',
+    'gray': 'text-gray-400 bg-gray-700',
   };
-  return colors[vm.state] || 'text-gray-400 bg-gray-700';
+  return colors[displayState.color] || 'text-gray-400 bg-gray-700';
 };
 
 const formatMemory = (kb) => {
@@ -282,8 +296,8 @@ const loadPortAttachments = async () => {
         </span>
       </div>
       <div class="flex items-center space-x-2">
-         <button :disabled="isTaskActive || isReconcileLoading" v-if="vm.state === 'STOPPED'" @click="mainStore.startVm(host.id, vm.name)" class="px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-md transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed">Start</button>
-         <template v-if="vm.state === 'ACTIVE'">
+         <button :disabled="isTaskActive || isReconcileLoading" v-if="getVmDisplayState(vm, host).status === 'STOPPED'" @click="mainStore.startVm(host.id, vm.name)" class="px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-md transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed">Start</button>
+         <template v-if="getVmDisplayState(vm, host).status === 'ACTIVE' || getVmDisplayState(vm, host).status === 'RUNNING'">
             <button :disabled="isTaskActive || isReconcileLoading" @click="mainStore.gracefulShutdownVm(host.id, vm.name)" class="px-4 py-2 text-sm font-medium text-white bg-yellow-600 hover:bg-yellow-700 rounded-md transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed">Shutdown</button>
             <button :disabled="isTaskActive || isReconcileLoading" @click="mainStore.gracefulRebootVm(host.id, vm.name)" class="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed">Reboot</button>
             <button :disabled="isTaskActive || isReconcileLoading" @click="mainStore.forceOffVm(host.id, vm.name)" class="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed">Force Off</button>

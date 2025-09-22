@@ -3,10 +3,12 @@ import { useMainStore } from '@/stores/mainStore';
 import { computed, ref, onMounted, watch, defineProps, nextTick } from 'vue';
 import ConfirmModal from '@/components/modals/ConfirmModal.vue';
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router';
+import { useVmStateDisplay } from '@/composables/useVmStateDisplay';
 
 const mainStore = useMainStore();
 const route = useRoute();
 const router = useRouter();
+const { getVmDisplayState, isVmRunning } = useVmStateDisplay();
 const props = defineProps({ hostId: { type: String, default: null } });
 
 const selectedHost = computed(() => {
@@ -226,7 +228,7 @@ const totalCpu = computed(() => {
 
 const vCpuAllocation = computed(() => {
     if (!selectedHost.value || !selectedHost.value.vms) return 0;
-    return selectedHost.value.vms.reduce((total, vm) => total + (vm.state === 'ACTIVE' ? vm.vcpu_count : 0), 0);
+    return selectedHost.value.vms.reduce((total, vm) => total + (isVmRunning(vm, selectedHost.value) ? vm.vcpu_count : 0), 0);
 });
 
 const vCpuAllocationPercent = computed(() => {
@@ -239,9 +241,34 @@ const cpuUtilization = computed(() => {
     return (hostStats.value.cpu_utilization * 100).toFixed(1);
 });
 
+const vmsWithDrift = computed(() => {
+    if (!selectedHost.value || !selectedHost.value.vms) return [];
+    return selectedHost.value.vms.filter(vm => getVmDisplayState(vm, selectedHost.value).hasDrift);
+});
+
 const selectVm = (vmName) => {
     router.push({ name: 'vm-view', params: { vmName } });
 }
+
+const revertVmState = async (vm) => {
+    // Revert: Change libvirt state to match intended DB state
+    const displayState = getVmDisplayState(vm, selectedHost.value);
+    if (displayState.intendedState === 'ACTIVE' || displayState.intendedState === 'RUNNING') {
+        await mainStore.startVm(selectedHost.value.id, vm.name);
+    } else if (displayState.intendedState === 'STOPPED') {
+        await mainStore.gracefulShutdownVm(selectedHost.value.id, vm.name);
+    }
+    // Refresh the VM data
+    await mainStore.fetchHosts();
+};
+
+const acceptVmState = async (vm) => {
+    // Accept: Update DB state to match libvirt state
+    const displayState = getVmDisplayState(vm, selectedHost.value);
+    // This would need a backend API to update the VM state in DB
+    // For now, we'll just refresh to get updated state
+    await mainStore.fetchHosts();
+};
 
 
 
@@ -276,15 +303,23 @@ const stateText = (vm) => {
         // Capitalize first letter
         return task.charAt(0).toUpperCase() + task.slice(1);
     }
+    const displayState = getVmDisplayState(vm, selectedHost.value);
+    if (displayState.hasDrift) {
+        return `${displayState.status} (Drift)`;
+    }
+    if (displayState.status === 'UNKNOWN') {
+        return `Unknown (${displayState.lastKnownState})`;
+    }
     const states = {
         'INITIALIZED': 'Initialized',
-        'ACTIVE': 'Running', 
-        'PAUSED': 'Paused', 
+        'ACTIVE': 'Running',
+        'RUNNING': 'Running',
+        'PAUSED': 'Paused',
         'SUSPENDED': 'Suspended',
-        'STOPPED': 'Stopped', 
+        'STOPPED': 'Stopped',
         'ERROR': 'Error'
     };
-    return states[vm.state] || 'Unknown';
+    return states[displayState.status] || displayState.status;
 };
 
 const stateColor = (vm) => {
@@ -292,14 +327,18 @@ const stateColor = (vm) => {
   if (vm.task_state) {
       return 'text-orange-300 bg-orange-900/50 animate-pulse';
   }
+  const displayState = getVmDisplayState(vm, selectedHost.value);
+  if (displayState.hasDrift) {
+      return 'text-red-400 bg-red-900/50 font-bold';
+  }
   const colors = {
-    'ACTIVE': 'text-green-400 bg-green-900/50',
-    'PAUSED': 'text-yellow-400 bg-yellow-900/50',
-    'SUSPENDED': 'text-blue-400 bg-blue-900/50',
-    'STOPPED': 'text-red-400 bg-red-900/50',
-    'ERROR': 'text-red-400 bg-red-900/50 font-bold',
+    'green': 'text-green-400 bg-green-900/50',
+    'yellow': 'text-yellow-400 bg-yellow-900/50',
+    'blue': 'text-blue-400 bg-blue-900/50',
+    'red': 'text-red-400 bg-red-900/50',
+    'gray': 'text-gray-400 bg-gray-700',
   };
-  return colors[vm.state] || 'text-gray-400 bg-gray-700';
+  return colors[displayState.color] || 'text-gray-400 bg-gray-700';
 };
 
 // Host state helpers (mirror VM helpers)
@@ -386,6 +425,34 @@ const formatUptime = (sec) => {
             <span v-if="mainStore.isLoading.connectHost && mainStore.isLoading.connectHost[hostId]" class="inline-block animate-spin w-4 h-4 border-2 border-white rounded-full border-t-transparent mr-2" aria-hidden="true"></span>
             {{ selectedHost && (selectedHost.state === 'CONNECTED' || (selectedHost.info && selectedHost.info.connected)) ? 'Disconnect' : 'Connect' }}
           </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Drift Warnings -->
+    <div v-if="vmsWithDrift.length > 0" class="mb-6 bg-red-900/20 border border-red-500/50 rounded-lg p-4">
+      <div class="flex items-start">
+        <div class="flex-shrink-0">
+          <svg class="h-5 w-5 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>
+          </svg>
+        </div>
+        <div class="ml-3 flex-1">
+          <h3 class="text-sm font-medium text-red-400">
+            Configuration Drift Detected
+          </h3>
+          <div class="mt-2 text-sm text-red-300">
+            <p>{{ vmsWithDrift.length }} VM{{ vmsWithDrift.length > 1 ? 's have' : ' has' }} state drift. The intended state doesn't match the observed state from libvirt.</p>
+            <ul class="mt-2 space-y-1">
+              <li v-for="vm in vmsWithDrift" :key="vm.uuid" class="flex items-center justify-between">
+                <span>{{ vm.name }}: Intended {{ getVmDisplayState(vm, selectedHost).intendedState }}, Observed {{ getVmDisplayState(vm, selectedHost).observedState }}</span>
+                <div class="flex space-x-2">
+                  <button @click="revertVmState(vm)" class="text-xs bg-red-600 hover:bg-red-700 px-2 py-1 rounded text-white">Revert</button>
+                  <button @click="acceptVmState(vm)" class="text-xs bg-gray-600 hover:bg-gray-700 px-2 py-1 rounded text-white">Accept</button>
+                </div>
+              </li>
+            </ul>
+          </div>
         </div>
       </div>
     </div>
@@ -543,12 +610,12 @@ const formatUptime = (sec) => {
               <td class="px-6 py-4 whitespace-nowrap">
                 <div class="flex items-center">
                   <div class="h-2.5 w-2.5 rounded-full mr-3 flex-shrink-0" :class="{
-                    'bg-green-500': vm.state === 'ACTIVE' && !vm.task_state, 
-                    'bg-red-500': (vm.state === 'STOPPED' || vm.state === 'ERROR') && !vm.task_state,
-                    'bg-yellow-500': vm.state === 'PAUSED' && !vm.task_state,
-                    'bg-blue-500': vm.state === 'SUSPENDED' && !vm.task_state,
+                    'bg-green-500': getVmDisplayState(vm, selectedHost).color === 'green',
+                    'bg-red-500': getVmDisplayState(vm, selectedHost).color === 'red',
+                    'bg-yellow-500': getVmDisplayState(vm, selectedHost).color === 'yellow',
+                    'bg-blue-500': getVmDisplayState(vm, selectedHost).color === 'blue',
+                    'bg-gray-500': getVmDisplayState(vm, selectedHost).color === 'gray',
                     'bg-orange-500 animate-pulse': vm.task_state,
-                    'bg-gray-500': !['ACTIVE', 'STOPPED', 'ERROR', 'PAUSED', 'SUSPENDED'].includes(vm.state) && !vm.task_state
                   }"></div>
                   <div class="text-sm font-medium text-white">{{ vm.name }}</div>
                 </div>

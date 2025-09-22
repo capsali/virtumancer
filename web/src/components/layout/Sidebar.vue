@@ -5,10 +5,12 @@ import { onMounted, ref } from 'vue';
 import { watch } from 'vue';
 import ConfirmModal from '@/components/modals/ConfirmModal.vue';
 import { useRouter } from 'vue-router';
+import { useVmStateDisplay } from '@/composables/useVmStateDisplay';
 
 const uiStore = useUiStore();
 const mainStore = useMainStore();
 const router = useRouter();
+const { getVmDisplayState, isVmRunning } = useVmStateDisplay();
 
 const expandedHosts = ref({});
 const showConfirm = ref(false);
@@ -99,7 +101,7 @@ function toggleHost(hostId) {
 }
 
 const runningVmsCount = (host) => {
-    return host.vms ? host.vms.filter(vm => vm.state === 'ACTIVE').length : 0;
+    return host.vms ? host.vms.filter(vm => isVmRunning(vm, host)).length : 0;
 }
 
 const hostStateText = (host) => {
@@ -193,12 +195,12 @@ const hostStateColor = (host) => {
                 <li v-for="vm in host.vms" :key="vm.name">
                   <div @click="selectVm(vm)" class="flex items-center p-1.5 text-sm rounded-md cursor-pointer hover:bg-gray-700" :class="{'bg-gray-700/50': $route.params.vmName === vm.name}">
                     <span class="h-2 w-2 rounded-full mr-2 flex-shrink-0" :class="{
-                      'bg-green-500': vm.state === 'ACTIVE' && !vm.task_state, 
-                      'bg-red-500': (vm.state === 'STOPPED' || vm.state === 'ERROR') && !vm.task_state,
-                      'bg-yellow-500': vm.state === 'PAUSED' && !vm.task_state,
-                      'bg-blue-500': vm.state === 'SUSPENDED' && !vm.task_state,
+                      'bg-green-500': getVmDisplayState(vm, host).color === 'green',
+                      'bg-red-500': getVmDisplayState(vm, host).color === 'red',
+                      'bg-yellow-500': getVmDisplayState(vm, host).color === 'yellow',
+                      'bg-blue-500': getVmDisplayState(vm, host).color === 'blue',
+                      'bg-gray-500': getVmDisplayState(vm, host).color === 'gray',
                       'bg-orange-500 animate-pulse': vm.task_state,
-                      'bg-gray-500': !['ACTIVE', 'STOPPED', 'ERROR', 'PAUSED', 'SUSPENDED'].includes(vm.state) && !vm.task_state
                     }"></span>
                     <span class="truncate">{{ vm.name }}</span>
                   </div>

@@ -194,7 +194,7 @@ export const useMainStore = defineStore('main', () => {
                                     // Replace host entry
                                     hosts.value.splice(idx, 1, updatedHost);
                                     // Clear any host stats and active VM stats
-                                    if (hostStats && hostStats.value) {
+                                    if (hostStats.value && hostStats.value) {
                                         const copy = { ...hostStats.value };
                                         delete copy[message.payload.hostId];
                                         hostStats.value = copy;
@@ -765,7 +765,7 @@ export const useMainStore = defineStore('main', () => {
                 fetchHosts();
             }
             // Clear any host stats for this host
-            if (hostStats && hostStats.value) {
+            if (hostStats.value && hostStats.value) {
                 const copy = { ...hostStats.value };
                 delete copy[hostId];
                 hostStats.value = copy;

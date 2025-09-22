@@ -37,9 +37,10 @@ type VMView struct {
 	NeedsRebuild bool               `json:"needs_rebuild"`
 
 	// From Libvirt or DB cache
-	State    storage.VMState       `json:"state"`
-	Graphics libvirt.GraphicsInfo  `json:"graphics"`
-	Hardware *libvirt.HardwareInfo `json:"hardware,omitempty"` // Pointer to allow for null
+	State        storage.VMState      `json:"state"`
+	LibvirtState storage.VMState      `json:"libvirtState"` // Observed state from libvirt
+	Graphics     libvirt.GraphicsInfo `json:"graphics"`
+	Hardware     *libvirt.HardwareInfo `json:"hardware,omitempty"` // Pointer to allow for null
 
 	// From Libvirt (live data, only in some calls)
 	MaxMem  uint64 `json:"max_mem"`
@@ -275,9 +276,9 @@ func (s *HostService) DisconnectHost(hostID string, userInitiated bool) error {
 	}
 	s.db.Model(&storage.Host{}).Where("id = ?", hostID).Updates(updates)
 
-	// Set all VMs for this host to unknown state since we can't monitor them
-	if err := s.db.Model(&storage.VirtualMachine{}).Where("host_id = ?", hostID).Update("state", storage.StateUnknown).Error; err != nil {
-		log.Warnf("Failed to update VM states to unknown for host %s: %v", hostID, err)
+	// Set all VMs for this host to unknown libvirt state since we can't observe them
+	if err := s.db.Model(&storage.VirtualMachine{}).Where("host_id = ?", hostID).Update("libvirt_state", storage.StateUnknown).Error; err != nil {
+		log.Warnf("Failed to update VM libvirt states to unknown for host %s: %v", hostID, err)
 	}
 
 	// Stop all monitoring for this host
@@ -648,6 +649,7 @@ func (s *HostService) GetVMsForHostFromDB(hostID string) ([]VMView, error) {
 			CPUModel:        dbVM.CPUModel,
 			CPUTopologyJSON: dbVM.CPUTopologyJSON,
 			State:           dbVM.State,
+			LibvirtState:    dbVM.LibvirtState,
 			TaskState:       dbVM.TaskState,
 			Graphics:        graphics,
 			SyncStatus:      dbVM.SyncStatus,
@@ -934,14 +936,15 @@ func (s *HostService) ingestVMFromLibvirt(hostID, vmName string) (bool, error) {
 			softVM.MemoryBytes = vmInfo.MaxMem * 1024
 			softVM.SyncStatus = storage.StatusSynced
 			if uerr := tx.Unscoped().Model(&softVM).Updates(map[string]interface{}{
-				"host_id":      softVM.HostID,
-				"name":         softVM.Name,
-				"domain_uuid":  softVM.DomainUUID,
-				"state":        softVM.State,
-				"v_cpu_count":  softVM.VCPUCount,
-				"memory_bytes": softVM.MemoryBytes,
-				"sync_status":  softVM.SyncStatus,
-				"deleted_at":   nil,
+				"host_id":       softVM.HostID,
+				"name":          softVM.Name,
+				"domain_uuid":   softVM.DomainUUID,
+				"state":         softVM.State,
+				"libvirt_state": softVM.State,
+				"v_cpu_count":   softVM.VCPUCount,
+				"memory_bytes":  softVM.MemoryBytes,
+				"sync_status":   softVM.SyncStatus,
+				"deleted_at":    nil,
 			}).Error; uerr != nil {
 				tx.Rollback()
 				return false, fmt.Errorf("failed to restore soft-deleted VM row during ingestion: %w", uerr)
@@ -969,14 +972,15 @@ func (s *HostService) ingestVMFromLibvirt(hostID, vmName string) (bool, error) {
 	}
 
 	newVM := storage.VirtualMachine{
-		HostID:      hostID,
-		Name:        vmInfo.Name,
-		DomainUUID:  vmInfo.UUID,
-		State:       mapLibvirtStateToVMState(vmInfo.State),
-		VCPUCount:   vmInfo.Vcpu,
-		MemoryBytes: vmInfo.MaxMem * 1024,
-		SyncStatus:  storage.StatusSynced,
-		Source:      "managed",
+		HostID:       hostID,
+		Name:         vmInfo.Name,
+		DomainUUID:   vmInfo.UUID,
+		State:        mapLibvirtStateToVMState(vmInfo.State),
+		LibvirtState: mapLibvirtStateToVMState(vmInfo.State),
+		VCPUCount:    vmInfo.Vcpu,
+		MemoryBytes:  vmInfo.MaxMem * 1024,
+		SyncStatus:   storage.StatusSynced,
+		Source:       "managed",
 	}
 	var existingVMs []storage.VirtualMachine
 	tx.Where("domain_uuid = ?", vmInfo.UUID).Limit(1).Find(&existingVMs)
@@ -1075,6 +1079,7 @@ func (s *HostService) detectDriftOrIngestVM(hostID, vmName string, isInitialSync
 		newState := mapLibvirtStateToVMState(vmInfo.State)
 		if existingVM.State != newState {
 			updates["state"] = newState
+			updates["libvirt_state"] = newState
 			changed = true
 		}
 
@@ -1130,14 +1135,15 @@ func (s *HostService) detectDriftOrIngestVM(hostID, vmName string, isInitialSync
 			softVM.SyncStatus = storage.StatusSynced
 			// Clear deleted_at by saving with Unscoped
 			if uerr := tx.Unscoped().Model(&softVM).Updates(map[string]interface{}{
-				"host_id":      softVM.HostID,
-				"name":         softVM.Name,
-				"domain_uuid":  softVM.DomainUUID,
-				"state":        softVM.State,
-				"v_cpu_count":  softVM.VCPUCount,
-				"memory_bytes": softVM.MemoryBytes,
-				"sync_status":  softVM.SyncStatus,
-				"deleted_at":   nil,
+				"host_id":       softVM.HostID,
+				"name":          softVM.Name,
+				"domain_uuid":   softVM.DomainUUID,
+				"state":         softVM.State,
+				"libvirt_state": softVM.State,
+				"v_cpu_count":   softVM.VCPUCount,
+				"memory_bytes":  softVM.MemoryBytes,
+				"sync_status":   softVM.SyncStatus,
+				"deleted_at":    nil,
 			}).Error; uerr != nil {
 				tx.Rollback()
 				return false, fmt.Errorf("failed to restore soft-deleted VM row: %w", uerr)

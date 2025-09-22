@@ -83,26 +83,27 @@ const (
 // VirtualMachine is Virtumancer's canonical definition of a VM's intended state.
 type VirtualMachine struct {
 	gorm.Model
-	HostID     string `gorm:"uniqueIndex:idx_vm_host_name"`
-	Name       string `gorm:"uniqueIndex:idx_vm_host_name"`
-	UUID       string `gorm:"primaryKey"`  // Virtumancer's internal, guaranteed-unique UUID
-	DomainUUID string `gorm:"uniqueIndex"` // The UUID as reported by libvirt
+	HostID     string `gorm:"uniqueIndex:idx_vm_host_name" json:"hostId"`
+	Name       string `gorm:"uniqueIndex:idx_vm_host_name" json:"name"`
+	UUID       string `gorm:"primaryKey" json:"uuid"`  // Virtumancer's internal, guaranteed-unique UUID
+	DomainUUID string `gorm:"uniqueIndex" json:"domainUuid"` // The UUID as reported by libvirt
 	// Source indicates whether this VM was created/managed by Virtumancer
 	// ('managed') or imported from libvirt ('imported'). Discovered VMs are
 	// not persisted until explicitly imported.
-	Source          string `gorm:"size:32;default:'managed'"`
-	Description     string
-	State           VMState     `gorm:"default:'INITIALIZED'"` // Stable state
-	TaskState       VMTaskState // Transient state during operations
-	VCPUCount       uint
-	CPUModel        string
-	CPUTopologyJSON string
-	MemoryBytes     uint64
-	OSType          string
-	IsTemplate      bool
-	SyncStatus      SyncStatus `gorm:"default:'UNKNOWN'"`
-	DriftDetails    string     // JSON blob storing drift information
-	NeedsRebuild    bool       `gorm:"default:false"`
+	Source          string `gorm:"size:32;default:'managed'" json:"source"`
+	Description     string `json:"description"`
+	State           VMState     `gorm:"default:'INITIALIZED'" json:"state"` // Intended/target state
+	LibvirtState    VMState     `gorm:"default:'INITIALIZED'" json:"libvirtState"` // Observed state from libvirt (UNKNOWN when disconnected)
+	TaskState       VMTaskState `json:"taskState"` // Transient state during operations
+	VCPUCount       uint `json:"vcpuCount"`
+	CPUModel        string `json:"cpuModel"`
+	CPUTopologyJSON string `json:"cpuTopologyJson"`
+	MemoryBytes     uint64 `json:"memoryBytes"`
+	OSType          string `json:"osType"`
+	IsTemplate      bool `json:"isTemplate"`
+	SyncStatus      SyncStatus `gorm:"default:'UNKNOWN'" json:"syncStatus"`
+	DriftDetails    string     `json:"driftDetails"` // JSON blob storing drift information
+	NeedsRebuild    bool       `gorm:"default:false" json:"needsRebuild"`
 }
 
 // --- Storage Management ---
