@@ -365,19 +365,16 @@ const formatUptime = (sec) => {
         </div>
         <div class="flex items-center">
           <p class="text-gray-400 font-mono mr-4">{{ selectedHost.uri }}</p>
-          <div>
-            <button
-              v-if="selectedHost"
-              @click.prevent="handleHeaderConnectClick"
-              :disabled="mainStore.isLoading.connectHost && mainStore.isLoading.connectHost[hostId]"
-              :aria-disabled="mainStore.isLoading.connectHost && mainStore.isLoading.connectHost[hostId] ? 'true' : 'false'"
-              :aria-busy="mainStore.isLoading.connectHost && mainStore.isLoading.connectHost[hostId] ? 'true' : 'false'"
-              :class="(selectedHost && (selectedHost.state === 'CONNECTED' || (selectedHost.info && selectedHost.info.connected))) ? 'relative z-50 pointer-events-auto px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed' : 'relative z-50 pointer-events-auto px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed'"
-            >
-              <span v-if="mainStore.isLoading.connectHost && mainStore.isLoading.connectHost[hostId]" class="inline-block animate-spin w-4 h-4 border-2 border-white rounded-full border-t-transparent mr-2" aria-hidden="true"></span>
-              {{ (selectedHost && (selectedHost.state === 'CONNECTED' || (selectedHost.info && selectedHost.info.connected))) ? 'Disconnect' : 'Connect' }}
-            </button>
-          </div>
+          <button
+            @click.prevent="handleHeaderConnectClick"
+            :disabled="mainStore.isLoading.connectHost && mainStore.isLoading.connectHost[hostId]"
+            :aria-disabled="mainStore.isLoading.connectHost && mainStore.isLoading.connectHost[hostId] ? 'true' : 'false'"
+            :aria-busy="mainStore.isLoading.connectHost && mainStore.isLoading.connectHost[hostId] ? 'true' : 'false'"
+            :class="selectedHost && (selectedHost.state === 'CONNECTED' || (selectedHost.info && selectedHost.info.connected)) ? 'px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed' : 'px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed'"
+          >
+            <span v-if="mainStore.isLoading.connectHost && mainStore.isLoading.connectHost[hostId]" class="inline-block animate-spin w-4 h-4 border-2 border-white rounded-full border-t-transparent mr-2" aria-hidden="true"></span>
+            {{ selectedHost && (selectedHost.state === 'CONNECTED' || (selectedHost.info && selectedHost.info.connected)) ? 'Disconnect' : 'Connect' }}
+          </button>
         </div>
       </div>
     </div>

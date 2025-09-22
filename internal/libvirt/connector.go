@@ -117,9 +117,11 @@ type DiskInfo struct {
 		File string `xml:"file,attr" json:"file"`
 		Dev  string `xml:"dev,attr" json:"dev"`
 	} `xml:"source" json:"source"`
-	Path   string `json:"path"`
-	Name   string `json:"name"`
-	Target struct {
+	Path      string `json:"path"`
+	Name      string `json:"name"`
+	ReadOnly  bool   `xml:"readonly" json:"readonly"`
+	Shareable bool   `xml:"shareable" json:"shareable"`
+	Target    struct {
 		Dev string `xml:"dev,attr" json:"dev"`
 		Bus string `xml:"bus,attr" json:"bus"`
 	} `xml:"target" json:"target"`

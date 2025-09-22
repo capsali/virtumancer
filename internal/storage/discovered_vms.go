@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"errors"
 	"time"
 
 	"gorm.io/gorm"
@@ -26,25 +25,23 @@ func (DiscoveredVM) TableName() string {
 
 // UpsertDiscoveredVM inserts or updates a discovered VM record, updating LastSeenAt only if it's older than 30 seconds.
 func UpsertDiscoveredVM(db *gorm.DB, d *DiscoveredVM) error {
-	var existing DiscoveredVM
-	err := db.Where("host_id = ? AND domain_uuid = ?", d.HostID, d.DomainUUID).First(&existing).Error
-	if err == nil {
+	var existing []DiscoveredVM
+	db.Where("host_id = ? AND domain_uuid = ?", d.HostID, d.DomainUUID).Limit(1).Find(&existing)
+	if len(existing) > 0 {
 		// Update only if LastSeenAt is more than 30 seconds old
-		if time.Since(existing.LastSeenAt) > 30*time.Second {
-			existing.Name = d.Name
-			existing.InfoJSON = d.InfoJSON
-			existing.LastSeenAt = time.Now()
-			existing.Imported = d.Imported
-			return db.Save(&existing).Error
+		if time.Since(existing[0].LastSeenAt) > 30*time.Second {
+			existing[0].Name = d.Name
+			existing[0].InfoJSON = d.InfoJSON
+			existing[0].LastSeenAt = time.Now()
+			existing[0].Imported = d.Imported
+			return db.Save(&existing[0]).Error
 		}
 		// No update needed
 		return nil
-	}
-	if errors.Is(err, gorm.ErrRecordNotFound) {
+	} else {
 		d.LastSeenAt = time.Now()
 		return db.Create(d).Error
 	}
-	return err
 }
 
 // ListDiscoveredVMsByHost lists non-imported discovered VMs for a host.
