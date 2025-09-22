@@ -464,6 +464,25 @@ func (s *HostService) GetAllHosts() ([]storage.Host, error) {
 	return hosts, nil
 }
 
+// AutoConnectHosts connects to all hosts that were previously connected
+// (i.e., have state = CONNECTED in the database). This should be called
+// on backend startup to restore connection state.
+func (s *HostService) AutoConnectHosts() error {
+	var hosts []storage.Host
+	if err := s.db.Where("state = ?", storage.HostStateConnected).Find(&hosts).Error; err != nil {
+		return fmt.Errorf("failed to query connected hosts: %w", err)
+	}
+
+	for _, host := range hosts {
+		log.Infof("Auto-connecting to previously connected host %s (%s)", host.ID, host.URI)
+		if err := s.EnsureHostConnected(host.ID); err != nil {
+			log.Verbosef("Failed to auto-connect to host %s: %v", host.ID, err)
+			// Continue with other hosts even if one fails
+		}
+	}
+	return nil
+}
+
 // GetHostInfo returns host information from the connector, ensuring the host
 // is connected first.
 func (s *HostService) GetHostInfo(hostID string) (*libvirt.HostInfo, error) {

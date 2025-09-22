@@ -51,6 +51,11 @@ func main() {
 	// Initialize Host Service
 	hostService := services.NewHostService(db, connector, hub)
 
+	// Auto-connect to hosts that were previously connected
+	if err := hostService.AutoConnectHosts(); err != nil {
+		log.Verbosef("Failed to auto-connect to some hosts: %v", err)
+	}
+
 	// Host connections are established lazily when needed (e.g., on the
 	// first websocket subscription) to avoid delaying server startup.
 
