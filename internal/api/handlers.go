@@ -292,17 +292,148 @@ func (h *APIHandler) GetVMHardware(w http.ResponseWriter, r *http.Request) {
 	vmName := chi.URLParam(r, "vmName")
 	hardware, err := h.HostService.GetVMHardwareAndDetectDrift(hostID, vmName)
 	if err != nil {
-		// Even if there's an error (e.g., no cache yet), we might still proceed
-		// if we want to allow the background sync to populate it.
-		// For now, we'll return an error if the initial fetch fails.
-		http.Error(w, err.Error(), http.StatusNotFound)
+		h.HandleError(w, err, fmt.Sprintf("get_vm_hardware_%s", vmName))
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(hardware)
 }
 
-// ListHostPorts returns unattached ports for a host (port pool).
+// GetVMExtendedHardware retrieves comprehensive hardware configuration from all related database entities
+func (h *APIHandler) GetVMExtendedHardware(w http.ResponseWriter, r *http.Request) {
+	hostID := chi.URLParam(r, "hostID")
+	vmName := chi.URLParam(r, "vmName")
+
+	log.Printf("Getting extended hardware configuration for VM %s on host %s", vmName, hostID)
+
+	// Get the VM first
+	var vm storage.VirtualMachine
+	if err := h.DB.Where("host_id = ? AND name = ?", hostID, vmName).First(&vm).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			http.Error(w, "VM not found", http.StatusNotFound)
+			return
+		}
+		log.Printf("Error finding VM: %v", err)
+		http.Error(w, "Failed to find VM", http.StatusInternalServerError)
+		return
+	}
+
+	// Create comprehensive hardware response
+	response := map[string]interface{}{
+		"vm_info": vm,
+	}
+
+	// Load CPU topology
+	var cpuTopology storage.CPUTopology
+	if err := h.DB.Where("vm_id = ?", vm.ID).First(&cpuTopology).Error; err == nil {
+		response["cpu_topology"] = cpuTopology
+	}
+
+	// Load CPU features
+	var cpuFeatures []storage.CPUFeature
+	if err := h.DB.Where("vm_id = ?", vm.ID).Find(&cpuFeatures).Error; err == nil {
+		response["cpu_features"] = cpuFeatures
+	}
+
+	// Load memory configurations
+	var memoryConfigs []storage.MemoryConfig
+	if err := h.DB.Where("vm_id = ?", vm.ID).Find(&memoryConfigs).Error; err == nil {
+		response["memory_configs"] = memoryConfigs
+	}
+
+	// Load disk attachments
+	var diskAttachments []storage.DiskAttachment
+	if err := h.DB.Where("vm_id = ?", vm.ID).Find(&diskAttachments).Error; err == nil {
+		response["disk_attachments"] = diskAttachments
+	}
+
+	// Load port attachments
+	var portAttachments []storage.PortAttachment
+	if err := h.DB.Where("vm_id = ?", vm.ID).Find(&portAttachments).Error; err == nil {
+		response["port_attachments"] = portAttachments
+	}
+
+	// Load video attachments
+	var videoAttachments []storage.VideoAttachment
+	if err := h.DB.Where("vm_id = ?", vm.ID).Find(&videoAttachments).Error; err == nil {
+		response["video_attachments"] = videoAttachments
+	}
+
+	// Load controller attachments
+	var controllerAttachments []storage.ControllerAttachment
+	if err := h.DB.Where("vm_id = ?", vm.ID).Find(&controllerAttachments).Error; err == nil {
+		response["controller_attachments"] = controllerAttachments
+	}
+
+	// Load host device attachments
+	var hostDeviceAttachments []storage.HostDeviceAttachment
+	if err := h.DB.Where("vm_id = ?", vm.ID).Find(&hostDeviceAttachments).Error; err == nil {
+		response["host_device_attachments"] = hostDeviceAttachments
+	}
+
+	// Load TPM attachments
+	var tpmAttachments []storage.TPMAttachment
+	if err := h.DB.Where("vm_id = ?", vm.ID).Find(&tpmAttachments).Error; err == nil {
+		response["tpm_attachments"] = tpmAttachments
+	}
+
+	// Load watchdog attachments
+	var watchdogAttachments []storage.WatchdogAttachment
+	if err := h.DB.Where("vm_id = ?", vm.ID).Find(&watchdogAttachments).Error; err == nil {
+		response["watchdog_attachments"] = watchdogAttachments
+	}
+
+	// Load serial device attachments
+	var serialDeviceAttachments []storage.SerialDeviceAttachment
+	if err := h.DB.Where("vm_id = ?", vm.ID).Find(&serialDeviceAttachments).Error; err == nil {
+		response["serial_device_attachments"] = serialDeviceAttachments
+	}
+
+	// Load filesystem attachments
+	var filesystemAttachments []storage.FilesystemAttachment
+	if err := h.DB.Where("vm_id = ?", vm.ID).Find(&filesystemAttachments).Error; err == nil {
+		response["filesystem_attachments"] = filesystemAttachments
+	}
+
+	// Load RNG attachments
+	var rngAttachments []storage.RngDeviceAttachment
+	if err := h.DB.Where("vm_id = ?", vm.ID).Find(&rngAttachments).Error; err == nil {
+		response["rng_attachments"] = rngAttachments
+	}
+
+	// Load memory balloon attachments
+	var memoryBalloonAttachments []storage.MemoryBalloonAttachment
+	if err := h.DB.Where("vm_id = ?", vm.ID).Find(&memoryBalloonAttachments).Error; err == nil {
+		response["memory_balloon_attachments"] = memoryBalloonAttachments
+	}
+
+	// Load VSock attachments
+	var vsockAttachments []storage.VsockAttachment
+	if err := h.DB.Where("vm_id = ?", vm.ID).Find(&vsockAttachments).Error; err == nil {
+		response["vsock_attachments"] = vsockAttachments
+	}
+
+	// Load boot configuration
+	var bootConfig storage.BootConfig
+	if err := h.DB.Where("vm_id = ?", vm.ID).First(&bootConfig).Error; err == nil {
+		response["boot_config"] = bootConfig
+	}
+
+	// Load security labels
+	var securityLabels []storage.SecurityLabel
+	if err := h.DB.Where("vm_id = ?", vm.ID).Find(&securityLabels).Error; err == nil {
+		response["security_labels"] = securityLabels
+	}
+
+	log.Printf("Extended hardware configuration loaded for VM %s with %d entity types", vmName, len(response))
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		log.Printf("Error encoding extended hardware response: %v", err)
+		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+		return
+	}
+} // ListHostPorts returns unattached ports for a host (port pool).
 func (h *APIHandler) ListHostPorts(w http.ResponseWriter, r *http.Request) {
 	hostID := chi.URLParam(r, "hostID")
 	ports, err := h.HostService.GetPortsForHostFromDB(hostID)
@@ -466,6 +597,53 @@ func (h *APIHandler) UpdateVMState(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// GetHostStats returns statistics for a specific host
+func (h *APIHandler) GetHostStats(w http.ResponseWriter, r *http.Request) {
+	hostID := chi.URLParam(r, "hostID")
+
+	// Get basic host info first
+	hostInfo, err := h.HostService.GetHostInfo(hostID)
+	if err != nil {
+		h.HandleError(w, err, fmt.Sprintf("get_host_info_%s", hostID))
+		return
+	}
+
+	// Get VMs for this host to calculate VM statistics
+	vms, err := h.HostService.GetVMsForHostFromDB(hostID)
+	if err != nil {
+		log.Printf("Warning: failed to get VMs for host %s: %v", hostID, err)
+		vms = []services.VMView{} // Continue with empty VMs if this fails
+	}
+
+	// Calculate VM state counts
+	vmCounts := map[string]int{
+		"ACTIVE":  0,
+		"STOPPED": 0,
+		"PAUSED":  0,
+		"ERROR":   0,
+		"UNKNOWN": 0,
+	}
+
+	for _, vm := range vms {
+		vmCounts[string(vm.State)]++
+	}
+
+	// Build response with host info and VM statistics
+	stats := map[string]interface{}{
+		"host_info": hostInfo,
+		"vm_counts": vmCounts,
+		"total_vms": len(vms),
+		"resources": map[string]interface{}{
+			"memory_bytes": hostInfo.Memory,
+			"cpu_count":    hostInfo.CPU,
+			"hostname":     hostInfo.Hostname,
+		},
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(stats)
 }
 
 // --- Dashboard Endpoints ---

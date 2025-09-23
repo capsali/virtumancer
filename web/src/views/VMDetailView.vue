@@ -82,6 +82,17 @@
           💻 Console
         </FButton>
       </div>
+
+      <!-- Hardware Configuration Button -->
+      <div class="mt-4 pt-4 border-t border-gray-700">
+        <FButton
+          variant="outline"
+          @click="showExtendedHardwareModal = true"
+          class="flex items-center gap-2"
+        >
+          🔧 Extended Hardware Configuration
+        </FButton>
+      </div>
     </FCard>
 
     <!-- VM Information Grid -->
@@ -261,6 +272,16 @@
     <div v-if="error" class="p-4 bg-red-500/10 border border-red-400/20 rounded-lg">
       <p class="text-red-400">{{ error }}</p>
     </div>
+
+    <!-- Extended Hardware Configuration Modal -->
+    <VMHardwareConfigModalExtended
+      v-if="vm"
+      :show="showExtendedHardwareModal"
+      :host-id="props.hostId"
+      :vm-name="vm.name"
+      @close="showExtendedHardwareModal = false"
+      @hardware-updated="loadVM"
+    />
   </div>
 </template>
 
@@ -271,6 +292,7 @@ import { useVMStore } from '@/stores/vmStore';
 import { useUIStore } from '@/stores/uiStore';
 import FCard from '@/components/ui/FCard.vue';
 import FButton from '@/components/ui/FButton.vue';
+import VMHardwareConfigModalExtended from '@/components/modals/VMHardwareConfigModalExtended.vue';
 import type { VirtualMachine, VMStats } from '@/types';
 
 interface Props {
@@ -290,6 +312,7 @@ const vm = ref<VirtualMachine | null>(null);
 const vmStats = ref<VMStats | null>(null);
 const error = ref<string | null>(null);
 const loadingStats = ref(false);
+const showExtendedHardwareModal = ref(false);
 
 // Get VM data
 const loadVM = async (): Promise<void> => {

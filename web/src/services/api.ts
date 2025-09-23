@@ -299,6 +299,14 @@ export const vmApi = {
 
   async getVideoAttachments(hostId: string, vmName: string): Promise<any[]> {
     return apiClient.get<any[]>(`/hosts/${hostId}/vms/${vmName}/video-attachments`);
+  },
+
+  async updateHardware(hostId: string, vmName: string, hardwareConfig: any): Promise<{ success: boolean }> {
+    return apiClient.put(`/hosts/${hostId}/vms/${vmName}/hardware`, hardwareConfig);
+  },
+
+  async getExtendedVMHardware(hostId: string, vmName: string): Promise<any> {
+    return apiClient.get(`/hosts/${hostId}/vms/${vmName}/hardware/extended`);
   }
 };
 

@@ -43,19 +43,19 @@ export const useHostStore = defineStore('hosts', () => {
   });
 
   const connectedHosts = computed((): Host[] => {
-    return hosts.value.filter(h => h.state === 'CONNECTED');
+    return hosts.value.filter(h => h && h.state === 'CONNECTED');
   });
 
   const disconnectedHosts = computed((): Host[] => {
-    return hosts.value.filter(h => h.state === 'DISCONNECTED');
+    return hosts.value.filter(h => h && h.state === 'DISCONNECTED');
   });
 
   const errorHosts = computed((): Host[] => {
-    return hosts.value.filter(h => h.state === 'ERROR');
+    return hosts.value.filter(h => h && h.state === 'ERROR');
   });
 
   const hostsWithStats = computed(() => {
-    return hosts.value.map(host => ({
+    return hosts.value.filter(h => h).map(host => ({
       ...host,
       stats: hostStats.value[host.id] || null,
       discovered: discoveredVMs.value[host.id] || [],

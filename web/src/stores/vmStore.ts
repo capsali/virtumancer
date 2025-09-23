@@ -34,20 +34,20 @@ export const useVMStore = defineStore('virtualMachines', () => {
 
   const vmsByHost = computed(() => {
     return (hostId: string): VirtualMachine[] => {
-      return vms.value.filter(vm => vm.hostId === hostId);
+      return vms.value.filter(vm => vm && vm.hostId === hostId);
     };
   });
 
   const activeVMs = computed((): VirtualMachine[] => {
-    return vms.value.filter(vm => vm.state === 'ACTIVE');
+    return vms.value.filter(vm => vm && vm.state === 'ACTIVE');
   });
 
   const stoppedVMs = computed((): VirtualMachine[] => {
-    return vms.value.filter(vm => vm.state === 'STOPPED');
+    return vms.value.filter(vm => vm && vm.state === 'STOPPED');
   });
 
   const errorVMs = computed((): VirtualMachine[] => {
-    return vms.value.filter(vm => vm.state === 'ERROR');
+    return vms.value.filter(vm => vm && vm.state === 'ERROR');
   });
 
   const vmWithStats = computed(() => {
@@ -66,6 +66,7 @@ export const useVMStore = defineStore('virtualMachines', () => {
 
   const vmsByState = computed(() => {
     return vms.value.reduce((acc, vm) => {
+      if (!vm || !vm.state) return acc;
       if (!acc[vm.state]) {
         acc[vm.state] = [];
       }
@@ -88,7 +89,7 @@ export const useVMStore = defineStore('virtualMachines', () => {
       
       const data = await vmApi.getAll(hostId);
       // Update only VMs for this host
-      vms.value = vms.value.filter(vm => vm.hostId !== hostId).concat(data);
+      vms.value = vms.value.filter(vm => vm && vm.hostId !== hostId).concat(data);
     } catch (error) {
       handleError('fetchVMs', error);
       throw error;

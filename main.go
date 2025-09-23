@@ -77,6 +77,7 @@ func main() {
 		r.Post("/hosts/{hostID}/connect", apiHandler.ConnectHost)
 		r.Post("/hosts/{hostID}/disconnect", apiHandler.DisconnectHost)
 		r.Get("/hosts/{hostID}/info", apiHandler.GetHostInfo)
+		r.Get("/hosts/{hostID}/stats", apiHandler.GetHostStats)
 		r.Delete("/hosts/{hostID}", apiHandler.DeleteHost)
 
 		// VM routes
@@ -97,6 +98,7 @@ func main() {
 		r.Put("/hosts/{hostID}/vms/{vmName}/state", apiHandler.UpdateVMState)
 		r.Get("/hosts/{hostID}/vms/{vmName}/stats", apiHandler.GetVMStats)
 		r.Get("/hosts/{hostID}/vms/{vmName}/hardware", apiHandler.GetVMHardware)
+		r.Get("/hosts/{hostID}/vms/{vmName}/hardware/extended", apiHandler.GetVMExtendedHardware)
 
 		// Port routes
 		r.Get("/hosts/{hostID}/ports", apiHandler.ListHostPorts)

@@ -34,10 +34,10 @@ export const useAppStore = defineStore('app', () => {
   // Computed properties
   const appStats = computed((): AppStats => {
     return {
-      totalHosts: hostStore.hosts.length,
-      connectedHosts: hostStore.connectedHosts.length,
-      totalVMs: vmStore.vms.length,
-      runningVMs: vmStore.activeVMs.length,
+      totalHosts: hostStore.hosts?.length || 0,
+      connectedHosts: hostStore.connectedHosts?.length || 0,
+      totalVMs: vmStore.vms?.length || 0,
+      runningVMs: vmStore.activeVMs?.length || 0,
       lastUpdated: lastSyncTime.value || new Date()
     };
   });
@@ -45,7 +45,7 @@ export const useAppStore = defineStore('app', () => {
   const connectionStatus = computed(() => {
     if (!isOnline.value) return 'offline';
     if (!isInitialized.value) return 'initializing';
-    if (hostStore.connectedHosts.length === 0) return 'disconnected';
+    if ((hostStore.connectedHosts?.length || 0) === 0) return 'disconnected';
     return 'connected';
   });
 

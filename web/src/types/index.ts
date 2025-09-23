@@ -69,26 +69,88 @@ export interface VMStats {
 }
 
 export interface VMHardware {
+  // CPU Configuration
   vcpus: number;
+  cpu_model?: string;
+  cpu_topology?: {
+    sockets: number;
+    cores: number;
+    threads: number;
+  };
+  cpu_features?: Array<{
+    name: string;
+    policy: string;
+  }>;
+  
+  // Memory Configuration
   memory_mb: number;
+  memory_bytes?: number;
+  current_memory?: number;
+  memory_backing?: {
+    mode: string;
+    sourceType: string;
+    locked: boolean;
+    nosharepages: boolean;
+  };
+  
+  // Storage
   disks: VMDisk[];
+  
+  // Network
   networks: VMNetwork[];
+  
+  // Video/Graphics
+  video_devices?: Array<{
+    id?: string;
+    model: string;
+    vram: number;
+    heads: number;
+    accel3d: boolean;
+  }>;
+  
+  // Advanced Hardware
+  controllers?: Array<{
+    id: string;
+    type: string;
+    model: string;
+  }>;
+  host_devices?: Array<{
+    id: string;
+    name: string;
+    address: string;
+  }>;
+  tpm?: {
+    enabled: boolean;
+    version: string;
+    backend: string;
+  };
 }
 
 export interface VMDisk {
+  id?: string;
   device: string;
+  deviceName?: string;
   type: string;
+  busType?: string;
   size_gb: number;
+  capacityGB?: number;
   format: string;
   target: string;
+  readOnly?: boolean;
+  shareable?: boolean;
 }
 
 export interface VMNetwork {
+  id?: string;
   interface: string;
   type: string;
   source: string;
+  sourceRef?: string;
+  sourceType?: string;
   mac: string;
+  macAddress?: string;
   model: string;
+  modelName?: string;
 }
 
 export interface ToastMessage {

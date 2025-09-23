@@ -28,15 +28,15 @@
       <div class="grid grid-cols-2 gap-4 text-sm">
         <div>
           <span class="text-slate-400">UUID:</span>
-          <span class="text-white ml-2 font-mono text-xs">{{ vm.domain_uuid.slice(0, 8) }}...</span>
+          <span class="text-white ml-2 font-mono text-xs">{{ vm.domain_uuid?.slice(0, 8) || 'N/A' }}...</span>
         </div>
         <div>
           <span class="text-slate-400">State:</span>
           <span :class="[
             'ml-2 px-2 py-0.5 rounded-full text-xs',
-            getStateClass(vm.state)
+            getStateClass(vm.state || 'UNKNOWN')
           ]">
-            {{ vm.state.toLowerCase() }}
+            {{ (vm.state || 'UNKNOWN').toLowerCase() }}
           </span>
         </div>
         <div>

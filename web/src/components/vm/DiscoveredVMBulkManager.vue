@@ -150,7 +150,7 @@ const searchQuery = ref('');
 const sortOrder = ref<'name-asc' | 'name-desc' | 'date-desc' | 'date-asc'>('name-asc');
 
 // Computed properties
-const totalCount = computed(() => props.vms.length);
+const totalCount = computed(() => props.vms?.length || 0);
 const selectedCount = computed(() => selectedVMUUIDs.value.size);
 
 const isAllSelected = computed(() => {
@@ -162,24 +162,26 @@ const isPartiallySelected = computed(() => {
 });
 
 const filteredAndSortedVMs = computed(() => {
-  let filtered = props.vms;
+  let filtered = props.vms || [];
 
   // Apply search filter
   if (searchQuery.value) {
     const query = searchQuery.value.toLowerCase();
     filtered = filtered.filter(vm => 
-      vm.name.toLowerCase().includes(query) ||
-      vm.domain_uuid.toLowerCase().includes(query)
+      vm && vm.name && vm.domain_uuid &&
+      (vm.name.toLowerCase().includes(query) ||
+      vm.domain_uuid.toLowerCase().includes(query))
     );
   }
 
   // Apply sorting
   return filtered.sort((a, b) => {
+    if (!a || !b) return 0;
     switch (sortOrder.value) {
       case 'name-asc':
-        return a.name.localeCompare(b.name);
+        return (a.name || '').localeCompare(b.name || '');
       case 'name-desc':
-        return b.name.localeCompare(a.name);
+        return (b.name || '').localeCompare(a.name || '');
       case 'date-desc':
         return new Date(b.last_seen_at || 0).getTime() - new Date(a.last_seen_at || 0).getTime();
       case 'date-asc':
@@ -207,7 +209,9 @@ const toggleSelectAll = (): void => {
   if (isAllSelected.value) {
     selectedVMUUIDs.value.clear();
   } else {
-    selectedVMUUIDs.value = new Set(filteredAndSortedVMs.value.map(vm => vm.domain_uuid));
+    selectedVMUUIDs.value = new Set(filteredAndSortedVMs.value
+      .filter(vm => vm && vm.domain_uuid)
+      .map(vm => vm.domain_uuid));
   }
 };
 
