@@ -92,18 +92,53 @@ type VMStats struct {
 
 // HardwareInfo holds the hardware configuration of a VM.
 type HardwareInfo struct {
-	OSType    string         `json:"os_type"`
-	Disks     []DiskInfo     `json:"disks"`
-	Networks  []NetworkInfo  `json:"networks"`
-	Videos    []VideoInfo    `json:"videos,omitempty"`
-	Consoles  []ConsoleInfo  `json:"consoles,omitempty"`
-	Hostdevs  []HostdevInfo  `json:"hostdevs,omitempty"`
-	BlockDevs []BlockDev     `json:"blockdevs,omitempty"`
-	IOThreads []IOThread     `json:"iothreads,omitempty"`
-	Mdevs     []MdevInfo     `json:"mdevs,omitempty"`
-	NUMANodes []NUMANodeInfo `json:"numa_nodes,omitempty"`
-	Boot      []BootEntry    `json:"boot,omitempty"`
-	CPU       *CPUInfo       `json:"cpu,omitempty"`
+	// Basic VM info
+	Name          string `json:"name"`
+	UUID          string `json:"uuid"`
+	Title         string `json:"title"`
+	Description   string `json:"description"`
+	Metadata      string `json:"metadata"`
+	OSType        string `json:"os_type"`
+	CurrentMemory uint64 `json:"current_memory"`
+
+	// OS Configuration
+	OSConfig   *OSConfigInfo `json:"os_config,omitempty"`
+	SMBIOSInfo []SMBIOSInfo  `json:"smbios_info,omitempty"`
+
+	// CPU Configuration
+	CPUInfo     *CPUConfigInfo   `json:"cpu_info,omitempty"`
+	CPUFeatures []CPUFeatureInfo `json:"cpu_features,omitempty"`
+
+	// Memory Configuration
+	MemoryBacking *MemoryBackingInfo `json:"memory_backing,omitempty"`
+	NUMANodes     []NUMANodeInfo     `json:"numa_nodes,omitempty"`
+
+	// Security
+	SecurityLabels []SecurityLabelInfo `json:"security_labels,omitempty"`
+	LaunchSecurity *LaunchSecurityInfo `json:"launch_security,omitempty"`
+
+	// Features
+	HypervisorFeatures []HypervisorFeatureInfo `json:"hypervisor_features,omitempty"`
+
+	// Lifecycle
+	LifecycleActions *LifecycleActionInfo `json:"lifecycle_actions,omitempty"`
+
+	// Clock
+	ClockConfig *ClockInfo `json:"clock_config,omitempty"`
+
+	// Performance
+	PerfEvents []PerfEventInfo `json:"perf_events,omitempty"`
+
+	// Existing device arrays
+	Disks     []DiskInfo    `json:"disks"`
+	Networks  []NetworkInfo `json:"networks"`
+	Videos    []VideoInfo   `json:"videos,omitempty"`
+	Consoles  []ConsoleInfo `json:"consoles,omitempty"`
+	Hostdevs  []HostdevInfo `json:"hostdevs,omitempty"`
+	BlockDevs []BlockDev    `json:"blockdevs,omitempty"`
+	IOThreads []IOThread    `json:"iothreads,omitempty"`
+	Mdevs     []MdevInfo    `json:"mdevs,omitempty"`
+	Boot      []BootEntry   `json:"boot,omitempty"`
 }
 
 // DiskInfo represents a virtual disk.
@@ -147,9 +182,133 @@ type NetworkInfo struct {
 
 // DomainHardwareXML is used for unmarshalling hardware info from the domain XML.
 type DomainHardwareXML struct {
+	Name        string `xml:"name" json:"name"`
+	UUID        string `xml:"uuid" json:"uuid"`
+	Title       string `xml:"title" json:"title"`
+	Description string `xml:"description" json:"description"`
+	Metadata    struct {
+		Content string `xml:",innerxml" json:"content"`
+	} `xml:"metadata" json:"metadata"`
 	OS struct {
-		Type string `xml:"type" json:"type"`
+		Type   string `xml:"type" json:"type"`
+		Loader struct {
+			Path      string `xml:",chardata" json:"path"`
+			Type      string `xml:"type,attr" json:"type"`
+			Readonly  string `xml:"readonly,attr" json:"readonly"`
+			Secure    string `xml:"secure,attr" json:"secure"`
+			Stateless string `xml:"stateless,attr" json:"stateless"`
+		} `xml:"loader" json:"loader"`
+		NVram struct {
+			Path     string `xml:",chardata" json:"path"`
+			Template string `xml:"template,attr" json:"template"`
+			Type     string `xml:"type,attr" json:"type"`
+		} `xml:"nvram" json:"nvram"`
+		Bootmenu struct {
+			Enable  string `xml:"enable,attr" json:"enable"`
+			Timeout string `xml:"timeout,attr" json:"timeout"`
+		} `xml:"bootmenu" json:"bootmenu"`
+		SmBIOS struct {
+			Mode string `xml:"mode,attr" json:"mode"`
+		} `xml:"smbios" json:"smbios"`
+		Firmware struct {
+			Value string `xml:",chardata" json:"value"`
+		} `xml:"firmware" json:"firmware"`
+		BIOS struct {
+			UsesSerial    string `xml:"useserial,attr" json:"useserial"`
+			RebootTimeout string `xml:"rebootTimeout,attr" json:"rebootTimeout"`
+		} `xml:"bios" json:"bios"`
 	} `xml:"os" json:"os"`
+	Memory struct {
+		Value uint64 `xml:",chardata" json:"value"`
+		Unit  string `xml:"unit,attr" json:"unit"`
+	} `xml:"memory" json:"memory"`
+	CurrentMemory struct {
+		Value uint64 `xml:",chardata" json:"value"`
+		Unit  string `xml:"unit,attr" json:"unit"`
+	} `xml:"currentMemory" json:"currentMemory"`
+	CPU struct {
+		Mode  string `xml:"mode,attr" json:"mode"`
+		Model struct {
+			Name     string `xml:",chardata" json:"name"`
+			Fallback string `xml:"fallback,attr" json:"fallback"`
+		} `xml:"model" json:"model"`
+		Topology struct {
+			Sockets uint `xml:"sockets,attr" json:"sockets"`
+			Cores   uint `xml:"cores,attr" json:"cores"`
+			Threads uint `xml:"threads,attr" json:"threads"`
+		} `xml:"topology" json:"topology"`
+		Features []struct {
+			Name   string `xml:"name,attr" json:"name"`
+			Policy string `xml:"policy,attr" json:"policy"`
+		} `xml:"feature" json:"features"`
+	} `xml:"cpu" json:"cpu"`
+	MemoryBacking struct {
+		Hugepages struct {
+			Page []struct {
+				Size    uint64 `xml:"size,attr" json:"size"`
+				Unit    string `xml:"unit,attr" json:"unit"`
+				Nodeset string `xml:"nodeset,attr" json:"nodeset"`
+			} `xml:"page" json:"page"`
+		} `xml:"hugepages" json:"hugepages"`
+		Nosharepages struct{} `xml:"nosharepages" json:"nosharepages"`
+		Locked       struct{} `xml:"locked" json:"locked"`
+		Source       struct {
+			Type string `xml:"type,attr" json:"type"`
+		} `xml:"source" json:"source"`
+		Access struct {
+			Mode string `xml:"mode,attr" json:"mode"`
+		} `xml:"access" json:"access"`
+	} `xml:"memoryBacking" json:"memoryBacking"`
+	NUMA struct {
+		Cell []NUMANodeInfo `xml:"cell" json:"cell"`
+	} `xml:"numa" json:"numa"`
+	Features struct {
+		PAE     struct{} `xml:"pae" json:"pae"`
+		ACPI    struct{} `xml:"acpi" json:"acpi"`
+		APIC    struct{} `xml:"apic" json:"apic"`
+		HAP     struct{} `xml:"hap" json:"hap"`
+		Privnet struct{} `xml:"privnet" json:"privnet"`
+		HyperV  struct {
+			Mode    string `xml:"mode,attr" json:"mode"`
+			Relaxed struct {
+				State string `xml:"state,attr" json:"state"`
+			} `xml:"relaxed" json:"relaxed"`
+			VAPIC struct {
+				State string `xml:"state,attr" json:"state"`
+			} `xml:"vapic" json:"vapic"`
+			Spinlocks struct {
+				State   string `xml:"state,attr" json:"state"`
+				Retries string `xml:"retries,attr" json:"retries"`
+			} `xml:"spinlocks" json:"spinlocks"`
+		} `xml:"hyperv" json:"hyperv"`
+		KVM struct {
+			Hidden struct {
+				State string `xml:"state,attr" json:"state"`
+			} `xml:"hidden" json:"hidden"`
+			HintDedicated struct {
+				State string `xml:"state,attr" json:"state"`
+			} `xml:"hint-dedicated" json:"hint-dedicated"`
+		} `xml:"kvm" json:"kvm"`
+		PVSpinlock struct {
+			State string `xml:"state,attr" json:"state"`
+		} `xml:"pvspinlock" json:"pvspinlock"`
+	} `xml:"features" json:"features"`
+	OnPoweroff    string `xml:"on_poweroff,attr" json:"on_poweroff"`
+	OnReboot      string `xml:"on_reboot,attr" json:"on_reboot"`
+	OnCrash       string `xml:"on_crash,attr" json:"on_crash"`
+	OnLockfailure string `xml:"on_lockfailure,attr" json:"on_lockfailure"`
+	Clock         struct {
+		Offset     string `xml:"offset,attr" json:"offset"`
+		Timezone   string `xml:"timezone,attr" json:"timezone"`
+		Basis      string `xml:"basis,attr" json:"basis"`
+		Adjustment int64  `xml:"adjustment,attr" json:"adjustment"`
+	} `xml:"clock" json:"clock"`
+	Perf struct {
+		Event []struct {
+			Name  string `xml:"name,attr" json:"name"`
+			State string `xml:"enabled,attr" json:"state"`
+		} `xml:"event" json:"event"`
+	} `xml:"perf" json:"perf"`
 	Devices struct {
 		Disks      []DiskInfo     `xml:"disk"`
 		Interfaces []NetworkInfo  `xml:"interface"`
@@ -232,6 +391,139 @@ type BootEntry struct {
 // CPUInfo is a minimal representation of <cpu> subtree for parsing features/topology.
 type CPUInfo struct {
 	Mode string `xml:"mode,attr" json:"mode"`
+}
+
+// OSConfigInfo represents OS configuration information.
+type OSConfigInfo struct {
+	Type      string        `json:"type"`
+	Arch      string        `json:"arch,omitempty"`
+	Machine   string        `json:"machine,omitempty"`
+	BootMenu  *BootMenuInfo `json:"boot_menu,omitempty"`
+	BootDev   []string      `json:"boot_dev,omitempty"`
+	Init      string        `json:"init,omitempty"`
+	InitArgs  []string      `json:"init_args,omitempty"`
+	InitEnv   []InitEnvInfo `json:"init_env,omitempty"`
+	InitDir   string        `json:"init_dir,omitempty"`
+	InitUser  string        `json:"init_user,omitempty"`
+	InitGroup string        `json:"init_group,omitempty"`
+}
+
+// BootMenuInfo represents boot menu configuration.
+type BootMenuInfo struct {
+	Enable  string `json:"enable"`
+	Timeout string `json:"timeout,omitempty"`
+}
+
+// InitEnvInfo represents environment variables for init.
+type InitEnvInfo struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
+// SMBIOSInfo represents SMBIOS configuration.
+type SMBIOSInfo struct {
+	Mode string `json:"mode"`
+}
+
+// CPUConfigInfo represents CPU configuration information.
+type CPUConfigInfo struct {
+	Mode       string           `json:"mode,omitempty"`
+	Model      string           `json:"model,omitempty"`
+	Match      string           `json:"match,omitempty"`
+	Check      string           `json:"check,omitempty"`
+	Migratable string           `json:"migratable,omitempty"`
+	Topology   *CPUTopologyInfo `json:"topology,omitempty"`
+	Vendor     string           `json:"vendor,omitempty"`
+	VendorID   string           `json:"vendor_id,omitempty"`
+}
+
+// CPUTopologyInfo represents CPU topology configuration.
+type CPUTopologyInfo struct {
+	Sockets int `json:"sockets,omitempty"`
+	Cores   int `json:"cores,omitempty"`
+	Threads int `json:"threads,omitempty"`
+}
+
+// CPUFeatureInfo represents CPU feature configuration.
+type CPUFeatureInfo struct {
+	Name   string `json:"name"`
+	Policy string `json:"policy,omitempty"`
+}
+
+// MemoryBackingInfo represents memory backing configuration.
+type MemoryBackingInfo struct {
+	HugePages    *HugePagesInfo `json:"hugepages,omitempty"`
+	NoSharePages bool           `json:"nosharepages,omitempty"`
+	Locked       bool           `json:"locked,omitempty"`
+	Source       string         `json:"source,omitempty"`
+	Access       string         `json:"access,omitempty"`
+	Allocation   string         `json:"allocation,omitempty"`
+	Discard      bool           `json:"discard,omitempty"`
+}
+
+// HugePagesInfo represents huge pages configuration.
+type HugePagesInfo struct {
+	Page []HugePageInfo `json:"page,omitempty"`
+}
+
+// HugePageInfo represents a single huge page configuration.
+type HugePageInfo struct {
+	Size    string `json:"size"`
+	Unit    string `json:"unit,omitempty"`
+	Nodeset string `json:"nodeset,omitempty"`
+}
+
+// SecurityLabelInfo represents security label configuration.
+type SecurityLabelInfo struct {
+	Type    string `json:"type"`
+	Label   string `json:"label,omitempty"`
+	Relabel string `json:"relabel,omitempty"`
+}
+
+// LaunchSecurityInfo represents launch security configuration.
+type LaunchSecurityInfo struct {
+	Type            string `json:"type"`
+	CBitPos         string `json:"cbitpos,omitempty"`
+	ReducedPhysBits string `json:"reduced_phys_bits,omitempty"`
+	Policy          string `json:"policy,omitempty"`
+	DHCert          string `json:"dh_cert,omitempty"`
+	Session         string `json:"session,omitempty"`
+}
+
+// HypervisorFeatureInfo represents hypervisor feature configuration.
+type HypervisorFeatureInfo struct {
+	Name  string `json:"name"`
+	State string `json:"state,omitempty"`
+}
+
+// LifecycleActionInfo represents lifecycle action configuration.
+type LifecycleActionInfo struct {
+	OnPoweroff    string `json:"on_poweroff,omitempty"`
+	OnReboot      string `json:"on_reboot,omitempty"`
+	OnCrash       string `json:"on_crash,omitempty"`
+	OnLockFailure string `json:"on_lock_failure,omitempty"`
+}
+
+// ClockInfo represents clock configuration.
+type ClockInfo struct {
+	Offset string           `json:"offset"`
+	Timers []ClockTimerInfo `json:"timers,omitempty"`
+}
+
+// ClockTimerInfo represents clock timer configuration.
+type ClockTimerInfo struct {
+	Name       string `json:"name"`
+	Track      string `json:"track,omitempty"`
+	TickPolicy string `json:"tick_policy,omitempty"`
+	Frequency  string `json:"frequency,omitempty"`
+	Mode       string `json:"mode,omitempty"`
+	Present    string `json:"present,omitempty"`
+}
+
+// PerfEventInfo represents performance event configuration.
+type PerfEventInfo struct {
+	Name  string `json:"name"`
+	Event string `json:"event"`
 }
 
 // HostInfo holds basic information and statistics about a hypervisor host.
@@ -1068,18 +1360,23 @@ func (c *Connector) GetDomainHardware(hostID, vmName string) (*HardwareInfo, err
 	}
 
 	hardware := &HardwareInfo{
-		OSType:    def.OS.Type,
-		Disks:     def.Devices.Disks,
-		Networks:  def.Devices.Interfaces,
-		Videos:    def.Devices.Videos,
-		Consoles:  def.Devices.Consoles,
-		Hostdevs:  def.Devices.Hostdevs,
-		BlockDevs: def.Devices.BlockDevs,
-		IOThreads: def.Devices.IOThreads,
-		Mdevs:     def.Devices.Mdevs,
-		NUMANodes: def.Devices.NUMANodes,
-		Boot:      def.Devices.Boot,
-		CPU:       def.Devices.CPU,
+		Name:          def.Name,
+		UUID:          def.UUID,
+		Title:         def.Title,
+		Description:   def.Description,
+		Metadata:      def.Metadata.Content,
+		OSType:        def.OS.Type,
+		CurrentMemory: def.CurrentMemory.Value,
+		Disks:         def.Devices.Disks,
+		Networks:      def.Devices.Interfaces,
+		Videos:        def.Devices.Videos,
+		Consoles:      def.Devices.Consoles,
+		Hostdevs:      def.Devices.Hostdevs,
+		BlockDevs:     def.Devices.BlockDevs,
+		IOThreads:     def.Devices.IOThreads,
+		Mdevs:         def.Devices.Mdevs,
+		NUMANodes:     def.Devices.NUMANodes,
+		Boot:          def.Devices.Boot,
 	}
 
 	// Post-process disks to populate the unified 'Path' field.
@@ -1094,6 +1391,131 @@ func (c *Connector) GetDomainHardware(hostID, vmName string) (*HardwareInfo, err
 	// Normalize NUMA CPU lists (if present) by trimming whitespace.
 	for i := range hardware.NUMANodes {
 		hardware.NUMANodes[i].CPUs = strings.TrimSpace(hardware.NUMANodes[i].CPUs)
+	}
+
+	// Populate OS Configuration
+	if def.OS.Type != "" {
+		hardware.OSConfig = &OSConfigInfo{
+			Type:    def.OS.Type,
+			Arch:    def.OS.Loader.Type, // This might need adjustment based on actual XML structure
+			Machine: def.OS.Firmware.Value,
+		}
+		if def.OS.Bootmenu.Enable != "" {
+			hardware.OSConfig.BootMenu = &BootMenuInfo{
+				Enable:  def.OS.Bootmenu.Enable,
+				Timeout: def.OS.Bootmenu.Timeout,
+			}
+		}
+	}
+
+	// Populate SMBIOS Info
+	if def.OS.SmBIOS.Mode != "" {
+		hardware.SMBIOSInfo = []SMBIOSInfo{{Mode: def.OS.SmBIOS.Mode}}
+	}
+
+	// Populate CPU Configuration
+	if def.CPU.Mode != "" || def.CPU.Model.Name != "" {
+		hardware.CPUInfo = &CPUConfigInfo{
+			Mode:  def.CPU.Mode,
+			Model: def.CPU.Model.Name,
+		}
+		if def.CPU.Topology.Sockets > 0 || def.CPU.Topology.Cores > 0 || def.CPU.Topology.Threads > 0 {
+			hardware.CPUInfo.Topology = &CPUTopologyInfo{
+				Sockets: int(def.CPU.Topology.Sockets),
+				Cores:   int(def.CPU.Topology.Cores),
+				Threads: int(def.CPU.Topology.Threads),
+			}
+		}
+	}
+
+	// Populate CPU Features
+	for _, feature := range def.CPU.Features {
+		hardware.CPUFeatures = append(hardware.CPUFeatures, CPUFeatureInfo{
+			Name:   feature.Name,
+			Policy: feature.Policy,
+		})
+	}
+
+	// Populate Memory Backing
+	if def.MemoryBacking.Source.Type != "" || len(def.MemoryBacking.Hugepages.Page) > 0 {
+		hardware.MemoryBacking = &MemoryBackingInfo{
+			Source: def.MemoryBacking.Source.Type,
+			Access: def.MemoryBacking.Access.Mode,
+		}
+		if len(def.MemoryBacking.Hugepages.Page) > 0 {
+			hardware.MemoryBacking.HugePages = &HugePagesInfo{}
+			for _, page := range def.MemoryBacking.Hugepages.Page {
+				hardware.MemoryBacking.HugePages.Page = append(hardware.MemoryBacking.HugePages.Page, HugePageInfo{
+					Size:    strconv.FormatUint(page.Size, 10),
+					Unit:    page.Unit,
+					Nodeset: page.Nodeset,
+				})
+			}
+		}
+		// Set boolean flags
+		hardware.MemoryBacking.NoSharePages = def.MemoryBacking.Nosharepages != struct{}{}
+		hardware.MemoryBacking.Locked = def.MemoryBacking.Locked != struct{}{}
+	}
+
+	// Populate Hypervisor Features
+	if def.Features.PAE != (struct{}{}) {
+		hardware.HypervisorFeatures = append(hardware.HypervisorFeatures, HypervisorFeatureInfo{Name: "pae", State: "on"})
+	}
+	if def.Features.ACPI != (struct{}{}) {
+		hardware.HypervisorFeatures = append(hardware.HypervisorFeatures, HypervisorFeatureInfo{Name: "acpi", State: "on"})
+	}
+	if def.Features.APIC != (struct{}{}) {
+		hardware.HypervisorFeatures = append(hardware.HypervisorFeatures, HypervisorFeatureInfo{Name: "apic", State: "on"})
+	}
+	if def.Features.HAP != (struct{}{}) {
+		hardware.HypervisorFeatures = append(hardware.HypervisorFeatures, HypervisorFeatureInfo{Name: "hap", State: "on"})
+	}
+	if def.Features.Privnet != (struct{}{}) {
+		hardware.HypervisorFeatures = append(hardware.HypervisorFeatures, HypervisorFeatureInfo{Name: "privnet", State: "on"})
+	}
+	if def.Features.PVSpinlock.State != "" {
+		hardware.HypervisorFeatures = append(hardware.HypervisorFeatures, HypervisorFeatureInfo{Name: "pvspinlock", State: def.Features.PVSpinlock.State})
+	}
+	// Hyper-V features
+	if def.Features.HyperV.Relaxed.State != "" {
+		hardware.HypervisorFeatures = append(hardware.HypervisorFeatures, HypervisorFeatureInfo{Name: "hyperv_relaxed", State: def.Features.HyperV.Relaxed.State})
+	}
+	if def.Features.HyperV.VAPIC.State != "" {
+		hardware.HypervisorFeatures = append(hardware.HypervisorFeatures, HypervisorFeatureInfo{Name: "hyperv_vapic", State: def.Features.HyperV.VAPIC.State})
+	}
+	if def.Features.HyperV.Spinlocks.State != "" {
+		hardware.HypervisorFeatures = append(hardware.HypervisorFeatures, HypervisorFeatureInfo{Name: "hyperv_spinlocks", State: def.Features.HyperV.Spinlocks.State})
+	}
+	// KVM features
+	if def.Features.KVM.Hidden.State != "" {
+		hardware.HypervisorFeatures = append(hardware.HypervisorFeatures, HypervisorFeatureInfo{Name: "kvm_hidden", State: def.Features.KVM.Hidden.State})
+	}
+	if def.Features.KVM.HintDedicated.State != "" {
+		hardware.HypervisorFeatures = append(hardware.HypervisorFeatures, HypervisorFeatureInfo{Name: "kvm_hint_dedicated", State: def.Features.KVM.HintDedicated.State})
+	}
+
+	// Populate Lifecycle Actions
+	hardware.LifecycleActions = &LifecycleActionInfo{
+		OnPoweroff:    def.OnPoweroff,
+		OnReboot:      def.OnReboot,
+		OnCrash:       def.OnCrash,
+		OnLockFailure: def.OnLockfailure,
+	}
+
+	// Populate Clock Configuration
+	if def.Clock.Offset != "" {
+		hardware.ClockConfig = &ClockInfo{
+			Offset: def.Clock.Offset,
+		}
+		// Note: Timers would need additional parsing if present in XML
+	}
+
+	// Populate Performance Events
+	for _, event := range def.Perf.Event {
+		hardware.PerfEvents = append(hardware.PerfEvents, PerfEventInfo{
+			Name:  event.Name,
+			Event: event.State, // Using State as Event for now
+		})
 	}
 
 	return hardware, nil

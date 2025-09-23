@@ -91,6 +91,7 @@ type VirtualMachine struct {
 	// ('managed') or imported from libvirt ('imported'). Discovered VMs are
 	// not persisted until explicitly imported.
 	Source          string      `gorm:"size:32;default:'managed'" json:"source"`
+	Title           string      `json:"title"` // Short domain title
 	Description     string      `json:"description"`
 	State           VMState     `gorm:"default:'INITIALIZED'" json:"state"`        // Intended/target state
 	LibvirtState    VMState     `gorm:"default:'INITIALIZED'" json:"libvirtState"` // Observed state from libvirt (UNKNOWN when disconnected)
@@ -98,9 +99,11 @@ type VirtualMachine struct {
 	VCPUCount       uint        `json:"vcpuCount"`
 	CPUModel        string      `json:"cpuModel"`
 	CPUTopologyJSON string      `json:"cpuTopologyJson"`
-	MemoryBytes     uint64      `json:"memoryBytes"`
+	MemoryBytes     uint64      `json:"memoryBytes"`   // Maximum memory (maxMemory)
+	CurrentMemory   uint64      `json:"currentMemory"` // Current memory allocation
 	OSType          string      `json:"osType"`
 	IsTemplate      bool        `json:"isTemplate"`
+	Metadata        string      `gorm:"type:text" json:"metadata"` // Custom XML metadata
 	SyncStatus      SyncStatus  `gorm:"default:'UNKNOWN'" json:"syncStatus"`
 	DriftDetails    string      `json:"driftDetails"` // JSON blob storing drift information
 	NeedsRebuild    bool        `gorm:"default:false" json:"needsRebuild"`
@@ -882,6 +885,171 @@ type AttachmentIndex struct {
 	DeviceID     *uint  `gorm:"index"`                  // optional convenience: device's numeric id (nullable for multi-attach)
 }
 
+// --- OS Configuration ---
+
+// OSConfig stores OS-level configuration for a VM (loader, nvram, boot menu, etc.)
+type OSConfig struct {
+	gorm.Model
+	VMUUID            string `gorm:"index;unique"`
+	LoaderPath        string
+	LoaderType        string // 'rom', 'pflash'
+	LoaderReadonly    bool
+	LoaderSecure      bool
+	LoaderStateless   bool
+	NVramPath         string
+	NVramTemplate     string
+	NVramType         string // 'file', 'block', 'network'
+	BootMenuEnable    bool
+	BootMenuTimeout   uint
+	SMBIOSMode        string // 'emulate', 'host', 'sysinfo'
+	Firmware          string // 'bios', 'efi'
+	FirmwareFeatures  string `gorm:"type:text"` // JSON array of firmware features
+	BIOSUsesSerial    bool
+	BIOSRebootTimeout uint
+}
+
+// SMBIOSSystemInfo stores SMBIOS system information.
+type SMBIOSSystemInfo struct {
+	gorm.Model
+	VMUUID       string `gorm:"index"`
+	Type         string // 'bios', 'system', 'baseBoard', 'chassis', 'oemStrings', 'fwcfg'
+	Vendor       string
+	Version      string
+	Serial       string
+	Product      string
+	Manufacturer string
+	Asset        string
+	SKU          string
+	ConfigJSON   string `gorm:"type:text"` // Additional configuration as JSON
+}
+
+// --- CPU Configuration ---
+
+// CPUFeature stores individual CPU features for a VM.
+type CPUFeature struct {
+	gorm.Model
+	VMUUID  string `gorm:"index"`
+	Name    string
+	Policy  string // 'force', 'require', 'optional', 'disable', 'forbid'
+	Default bool   // Whether this is a default feature
+}
+
+// CPUTopology stores CPU topology information (sockets, cores, threads).
+type CPUTopology struct {
+	gorm.Model
+	VMUUID  string `gorm:"index;unique"`
+	Sockets uint
+	Cores   uint
+	Threads uint
+}
+
+// --- Memory Configuration ---
+
+// MemoryConfig consolidates memory backing and NUMA configuration.
+// config_type determines the type: 'backing', 'numa', 'tuning'
+type MemoryConfig struct {
+	gorm.Model
+	VMUUID     string `gorm:"index"`
+	ConfigType string `gorm:"size:32"` // 'backing', 'numa', 'tuning'
+	// Backing fields
+	SourceType   string
+	SizeKB       uint64
+	Mode         string // 'shared', 'private'
+	Nosharepages bool
+	Locked       bool
+	// NUMA fields
+	NodeID   int
+	MemoryKB uint64
+	CPUs     string // CPU list for NUMA node
+	// Tuning fields
+	MinGuarantee uint64
+	// Common fields
+	ConfigJSON string `gorm:"type:text"` // Additional configuration
+}
+
+// --- Security Configuration ---
+
+// SecurityLabel stores security label configuration for a VM.
+type SecurityLabel struct {
+	gorm.Model
+	VMUUID        string `gorm:"index"`
+	Type          string // 'dynamic', 'static', 'none'
+	SecurityModel string `gorm:"column:model"` // 'selinux', 'apparmor', 'dac'
+	Label         string
+	Baselabel     string
+	Relabel       bool
+}
+
+// LaunchSecurity stores launch security configuration (SEV, SEV-SNP, etc.)
+type LaunchSecurity struct {
+	gorm.Model
+	VMUUID string `gorm:"index;unique"`
+	Type   string // 'sev', 'sev-snp', 's390-pv'
+	// SEV/SEV-SNP fields
+	CBitPos         uint
+	ReducedPhysBits uint
+	Policy          uint64
+	DHCert          string
+	Session         string
+	// SEV-SNP specific
+	AuthorKey bool
+	VCEK      bool
+	IDBlock   string
+	IDAuth    string
+	HostData  string
+	// S390-PV fields
+	// (minimal for now, can be extended)
+}
+
+// --- Hypervisor Features ---
+
+// HypervisorFeature stores hypervisor-specific features (KVM, Xen, Hyper-V).
+type HypervisorFeature struct {
+	gorm.Model
+	VMUUID     string `gorm:"index"`
+	Type       string // 'kvm', 'xen', 'hyperv', 'pvspinlock', etc.
+	Name       string
+	State      string // 'on', 'off', 'default'
+	Value      string // Optional value for features that need it
+	ConfigJSON string `gorm:"type:text"` // Additional configuration
+}
+
+// --- Domain Lifecycle ---
+
+// LifecycleAction stores lifecycle event actions (on_poweroff, on_reboot, etc.)
+type LifecycleAction struct {
+	gorm.Model
+	VMUUID        string `gorm:"index;unique"`
+	OnPoweroff    string // 'destroy', 'restart', 'preserve', 'rename-restart'
+	OnReboot      string // 'destroy', 'restart', 'preserve', 'rename-restart'
+	OnCrash       string // 'destroy', 'restart', 'preserve', 'rename-restart', 'coredump-destroy', 'coredump-restart'
+	OnLockfailure string // 'poweroff', 'restart', 'pause', 'ignore'
+}
+
+// --- Clock Configuration ---
+
+// Clock stores clock configuration for a VM.
+type Clock struct {
+	gorm.Model
+	VMUUID     string `gorm:"index;unique"`
+	Offset     string // 'utc', 'localtime', 'timezone', 'variable'
+	Timezone   string // Timezone name when offset='timezone'
+	Basis      string // 'utc' or 'localtime' when offset='variable'
+	Adjustment int64  // Seconds adjustment when offset='variable'
+	ConfigJSON string `gorm:"type:text"` // Timer configurations
+}
+
+// --- Performance Monitoring ---
+
+// PerfEvent stores performance monitoring event configuration.
+type PerfEvent struct {
+	gorm.Model
+	VMUUID     string `gorm:"index"`
+	Name       string
+	State      string // 'on', 'off'
+	ConfigJSON string `gorm:"type:text"` // Additional configuration
+}
+
 // InitDB initializes and returns a GORM database instance.
 func InitDB(dataSourceName string) (*gorm.DB, error) {
 	db, err := gorm.Open(sqlite.Open(dataSourceName), &gorm.Config{})
@@ -967,6 +1135,25 @@ func InitDB(dataSourceName string) (*gorm.DB, error) {
 		&SCSIControllerAttachment{},
 		&IOThread{},
 		&IOThreadAttachment{},
+		// New OS Configuration tables
+		&OSConfig{},
+		&SMBIOSSystemInfo{},
+		// New CPU Configuration tables
+		&CPUFeature{},
+		&CPUTopology{},
+		// New Memory Configuration (consolidated)
+		&MemoryConfig{},
+		// New Security tables
+		&SecurityLabel{},
+		&LaunchSecurity{},
+		// New Hypervisor Features table
+		&HypervisorFeature{},
+		// New Lifecycle table
+		&LifecycleAction{},
+		// New Clock table
+		&Clock{},
+		// New Performance Monitoring table
+		&PerfEvent{},
 		&User{},
 		&Role{},
 		&Permission{},

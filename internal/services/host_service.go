@@ -3,6 +3,7 @@ package services
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -2072,6 +2073,330 @@ func (s *HostService) syncVMHardware(tx *gorm.DB, vmUUID string, hostID string, 
 			mda = mdaList[0]
 		}
 		changed = true
+	}
+
+	// --- Sync OS Configuration ---
+	if hardware.OSConfig != nil {
+		osConfig := storage.OSConfig{
+			VMUUID:         vmUUID,
+			LoaderPath:     hardware.OSConfig.Init, // This might need adjustment based on actual XML structure
+			LoaderType:     hardware.OSConfig.Arch,
+			BootMenuEnable: hardware.OSConfig.BootMenu != nil && hardware.OSConfig.BootMenu.Enable == "yes",
+		}
+		if hardware.OSConfig.BootMenu != nil {
+			if timeout, err := strconv.Atoi(hardware.OSConfig.BootMenu.Timeout); err == nil {
+				osConfig.BootMenuTimeout = uint(timeout)
+			}
+		}
+		if hardware.OSConfig.Type != "" {
+			osConfig.Firmware = hardware.OSConfig.Type
+		}
+
+		var existingOS []storage.OSConfig
+		tx.Where("vm_uuid = ?", vmUUID).Limit(1).Find(&existingOS)
+		if len(existingOS) == 0 {
+			if err := tx.Create(&osConfig).Error; err != nil {
+				return false, err
+			}
+			changed = true
+		} else {
+			// Update existing
+			if err := tx.Model(&existingOS[0]).Updates(map[string]interface{}{
+				"loader_path":       osConfig.LoaderPath,
+				"loader_type":       osConfig.LoaderType,
+				"boot_menu_enable":  osConfig.BootMenuEnable,
+				"boot_menu_timeout": osConfig.BootMenuTimeout,
+				"firmware":          osConfig.Firmware,
+			}).Error; err != nil {
+				return false, err
+			}
+			changed = true
+		}
+	}
+
+	// --- Sync SMBIOS Info ---
+	if len(hardware.SMBIOSInfo) > 0 {
+		for _, smbios := range hardware.SMBIOSInfo {
+			smbiosConfig := storage.SMBIOSSystemInfo{
+				VMUUID: vmUUID,
+				Type:   "smbios", // Default type
+			}
+			// Store mode in ConfigJSON for now
+			configJSON, _ := json.Marshal(map[string]string{"mode": smbios.Mode})
+			smbiosConfig.ConfigJSON = string(configJSON)
+
+			var existingSMBIOS []storage.SMBIOSSystemInfo
+			tx.Where("vm_uuid = ?", vmUUID).Limit(1).Find(&existingSMBIOS)
+			if len(existingSMBIOS) == 0 {
+				if err := tx.Create(&smbiosConfig).Error; err != nil {
+					return false, err
+				}
+				changed = true
+			} else {
+				if err := tx.Model(&existingSMBIOS[0]).Update("config_json", smbiosConfig.ConfigJSON).Error; err != nil {
+					return false, err
+				}
+				changed = true
+			}
+		}
+	}
+
+	// --- Sync CPU Features ---
+	for _, feature := range hardware.CPUFeatures {
+		cpuFeature := storage.CPUFeature{
+			VMUUID: vmUUID,
+			Name:   feature.Name,
+			Policy: feature.Policy,
+		}
+		var existingFeatures []storage.CPUFeature
+		tx.Where("vm_uuid = ? AND name = ?", vmUUID, feature.Name).Limit(1).Find(&existingFeatures)
+		if len(existingFeatures) == 0 {
+			if err := tx.Create(&cpuFeature).Error; err != nil {
+				return false, err
+			}
+			changed = true
+		} else {
+			if err := tx.Model(&existingFeatures[0]).Update("policy", cpuFeature.Policy).Error; err != nil {
+				return false, err
+			}
+			changed = true
+		}
+	}
+
+	// --- Sync CPU Topology ---
+	if hardware.CPUInfo != nil && hardware.CPUInfo.Topology != nil {
+		cpuTopology := storage.CPUTopology{
+			VMUUID:  vmUUID,
+			Sockets: uint(hardware.CPUInfo.Topology.Sockets),
+			Cores:   uint(hardware.CPUInfo.Topology.Cores),
+			Threads: uint(hardware.CPUInfo.Topology.Threads),
+		}
+		var existingTopology []storage.CPUTopology
+		tx.Where("vm_uuid = ?", vmUUID).Limit(1).Find(&existingTopology)
+		if len(existingTopology) == 0 {
+			if err := tx.Create(&cpuTopology).Error; err != nil {
+				return false, err
+			}
+			changed = true
+		} else {
+			if err := tx.Model(&existingTopology[0]).Updates(map[string]interface{}{
+				"sockets": cpuTopology.Sockets,
+				"cores":   cpuTopology.Cores,
+				"threads": cpuTopology.Threads,
+			}).Error; err != nil {
+				return false, err
+			}
+			changed = true
+		}
+	}
+
+	// --- Sync Memory Configuration ---
+	if hardware.MemoryBacking != nil {
+		memConfig := storage.MemoryConfig{
+			VMUUID:       vmUUID,
+			ConfigType:   "backing",
+			SourceType:   hardware.MemoryBacking.Source,
+			Nosharepages: hardware.MemoryBacking.NoSharePages,
+			Locked:       hardware.MemoryBacking.Locked,
+		}
+		if hardware.MemoryBacking.HugePages != nil {
+			hugePagesJSON, _ := json.Marshal(hardware.MemoryBacking.HugePages.Page)
+			memConfig.ConfigJSON = string(hugePagesJSON)
+		}
+
+		var existingMem []storage.MemoryConfig
+		tx.Where("vm_uuid = ? AND config_type = ?", vmUUID, "backing").Limit(1).Find(&existingMem)
+		if len(existingMem) == 0 {
+			if err := tx.Create(&memConfig).Error; err != nil {
+				return false, err
+			}
+			changed = true
+		} else {
+			if err := tx.Model(&existingMem[0]).Updates(map[string]interface{}{
+				"source_type":  memConfig.SourceType,
+				"nosharepages": memConfig.Nosharepages,
+				"locked":       memConfig.Locked,
+				"config_json":  memConfig.ConfigJSON,
+			}).Error; err != nil {
+				return false, err
+			}
+			changed = true
+		}
+	}
+
+	// --- Sync Security Labels ---
+	for _, label := range hardware.SecurityLabels {
+		relabel := false
+		if label.Relabel == "yes" {
+			relabel = true
+		}
+		secLabel := storage.SecurityLabel{
+			VMUUID:  vmUUID,
+			Type:    label.Type,
+			Label:   label.Label,
+			Relabel: relabel,
+		}
+		var existingLabels []storage.SecurityLabel
+		tx.Where("vm_uuid = ? AND type = ?", vmUUID, label.Type).Limit(1).Find(&existingLabels)
+		if len(existingLabels) == 0 {
+			if err := tx.Create(&secLabel).Error; err != nil {
+				return false, err
+			}
+			changed = true
+		} else {
+			if err := tx.Model(&existingLabels[0]).Updates(map[string]interface{}{
+				"label":   secLabel.Label,
+				"relabel": secLabel.Relabel,
+			}).Error; err != nil {
+				return false, err
+			}
+			changed = true
+		}
+	}
+
+	// --- Sync Launch Security ---
+	if hardware.LaunchSecurity != nil {
+		launchSec := storage.LaunchSecurity{
+			VMUUID: vmUUID,
+			Type:   hardware.LaunchSecurity.Type,
+		}
+		// Convert string fields to appropriate types
+		if cbitpos, err := strconv.ParseUint(hardware.LaunchSecurity.CBitPos, 10, 32); err == nil {
+			launchSec.CBitPos = uint(cbitpos)
+		}
+		if reducedBits, err := strconv.ParseUint(hardware.LaunchSecurity.ReducedPhysBits, 10, 32); err == nil {
+			launchSec.ReducedPhysBits = uint(reducedBits)
+		}
+		if policy, err := strconv.ParseUint(hardware.LaunchSecurity.Policy, 10, 64); err == nil {
+			launchSec.Policy = policy
+		}
+		launchSec.DHCert = hardware.LaunchSecurity.DHCert
+		launchSec.Session = hardware.LaunchSecurity.Session
+
+		var existingLaunch []storage.LaunchSecurity
+		tx.Where("vm_uuid = ?", vmUUID).Limit(1).Find(&existingLaunch)
+		if len(existingLaunch) == 0 {
+			if err := tx.Create(&launchSec).Error; err != nil {
+				return false, err
+			}
+			changed = true
+		} else {
+			if err := tx.Model(&existingLaunch[0]).Updates(map[string]interface{}{
+				"type":              launchSec.Type,
+				"cbitpos":           launchSec.CBitPos,
+				"reduced_phys_bits": launchSec.ReducedPhysBits,
+				"policy":            launchSec.Policy,
+				"dh_cert":           launchSec.DHCert,
+				"session":           launchSec.Session,
+			}).Error; err != nil {
+				return false, err
+			}
+			changed = true
+		}
+	}
+
+	// --- Sync Hypervisor Features ---
+	for _, feature := range hardware.HypervisorFeatures {
+		hvFeature := storage.HypervisorFeature{
+			VMUUID: vmUUID,
+			Name:   feature.Name,
+			State:  feature.State,
+		}
+		var existingHV []storage.HypervisorFeature
+		tx.Where("vm_uuid = ? AND name = ?", vmUUID, feature.Name).Limit(1).Find(&existingHV)
+		if len(existingHV) == 0 {
+			if err := tx.Create(&hvFeature).Error; err != nil {
+				return false, err
+			}
+			changed = true
+		} else {
+			if err := tx.Model(&existingHV[0]).Update("state", hvFeature.State).Error; err != nil {
+				return false, err
+			}
+			changed = true
+		}
+	}
+
+	// --- Sync Lifecycle Actions ---
+	if hardware.LifecycleActions != nil {
+		lifecycle := storage.LifecycleAction{
+			VMUUID:        vmUUID,
+			OnPoweroff:    hardware.LifecycleActions.OnPoweroff,
+			OnReboot:      hardware.LifecycleActions.OnReboot,
+			OnCrash:       hardware.LifecycleActions.OnCrash,
+			OnLockfailure: hardware.LifecycleActions.OnLockFailure,
+		}
+
+		var existingLifecycle []storage.LifecycleAction
+		tx.Where("vm_uuid = ?", vmUUID).Limit(1).Find(&existingLifecycle)
+		if len(existingLifecycle) == 0 {
+			if err := tx.Create(&lifecycle).Error; err != nil {
+				return false, err
+			}
+			changed = true
+		} else {
+			if err := tx.Model(&existingLifecycle[0]).Updates(map[string]interface{}{
+				"on_poweroff":    lifecycle.OnPoweroff,
+				"on_reboot":      lifecycle.OnReboot,
+				"on_crash":       lifecycle.OnCrash,
+				"on_lockfailure": lifecycle.OnLockfailure,
+			}).Error; err != nil {
+				return false, err
+			}
+			changed = true
+		}
+	}
+
+	// --- Sync Clock Configuration ---
+	if hardware.ClockConfig != nil {
+		clock := storage.Clock{
+			VMUUID: vmUUID,
+			Offset: hardware.ClockConfig.Offset,
+		}
+		if len(hardware.ClockConfig.Timers) > 0 {
+			timersJSON, _ := json.Marshal(hardware.ClockConfig.Timers)
+			clock.ConfigJSON = string(timersJSON)
+		}
+
+		var existingClock []storage.Clock
+		tx.Where("vm_uuid = ?", vmUUID).Limit(1).Find(&existingClock)
+		if len(existingClock) == 0 {
+			if err := tx.Create(&clock).Error; err != nil {
+				return false, err
+			}
+			changed = true
+		} else {
+			if err := tx.Model(&existingClock[0]).Updates(map[string]interface{}{
+				"offset":      clock.Offset,
+				"config_json": clock.ConfigJSON,
+			}).Error; err != nil {
+				return false, err
+			}
+			changed = true
+		}
+	}
+
+	// --- Sync Performance Events ---
+	for _, event := range hardware.PerfEvents {
+		perfEvent := storage.PerfEvent{
+			VMUUID: vmUUID,
+			Name:   event.Name,
+			State:  event.Event, // Event field contains the state ('on'/'off')
+		}
+
+		var existingPerf []storage.PerfEvent
+		tx.Where("vm_uuid = ? AND name = ?", vmUUID, event.Name).Limit(1).Find(&existingPerf)
+		if len(existingPerf) == 0 {
+			if err := tx.Create(&perfEvent).Error; err != nil {
+				return false, err
+			}
+			changed = true
+		} else {
+			if err := tx.Model(&existingPerf[0]).Update("state", perfEvent.State).Error; err != nil {
+				return false, err
+			}
+			changed = true
+		}
 	}
 
 	return changed, nil
