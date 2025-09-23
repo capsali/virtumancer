@@ -1020,22 +1020,33 @@ func (s *HostService) ListDiscoveredVMs(hostID string) ([]libvirt.VMInfo, error)
 
 // ImportVM imports a single discovered VM into the database by name.
 func (s *HostService) ImportVM(hostID, vmName string) error {
+	log.Infof("ImportVM started - hostID: %s, vmName: %s", hostID, vmName)
+
 	// Prevent concurrent syncs for the same host
 	mu, _ := s.syncMutex.LoadOrStore(hostID, &sync.Mutex{})
 	mu.(*sync.Mutex).Lock()
 	defer mu.(*sync.Mutex).Unlock()
 
 	// Get domain info to obtain UUID for marking imported
+	log.Verbosef("Getting domain info for VM %s on host %s", vmName, hostID)
 	vmInfo, err := s.connector.GetDomainInfo(hostID, vmName)
 	if err != nil {
+		log.Errorf("Failed to get domain info for VM %s on host %s: %v", vmName, hostID, err)
 		return err
 	}
+	log.Verbosef("Successfully got domain info for VM %s: UUID=%s, State=%v", vmName, vmInfo.UUID, vmInfo.State)
+
+	log.Verbosef("Starting VM ingestion for %s from libvirt", vmName)
 	changed, err := s.ingestVMFromLibvirt(hostID, vmName)
 	if err != nil {
+		log.Errorf("Failed to ingest VM %s from libvirt: %v", vmName, err)
 		return err
 	}
+	log.Verbosef("VM ingestion completed for %s, changed: %v", vmName, changed)
+
 	if changed {
 		// Mark as imported in discovered_vms
+		log.Verbosef("Marking discovered VM %s (UUID: %s) as imported", vmName, vmInfo.UUID)
 		if err := storage.MarkDiscoveredVMImported(s.db, hostID, vmInfo.UUID); err != nil {
 			log.Verbosef("Warning: failed to mark discovered VM %s as imported: %v", vmName, err)
 		}
@@ -1177,22 +1188,29 @@ func (s *HostService) UpdateVMState(hostID, vmName, state string) error {
 // in libvirt. It encapsulates the previous ingestion logic that used to live
 // in detectDriftOrIngestVM.
 func (s *HostService) ingestVMFromLibvirt(hostID, vmName string) (bool, error) {
+	log.Verbosef("ingestVMFromLibvirt started - hostID: %s, vmName: %s", hostID, vmName)
+
 	vmInfo, err := s.connector.GetDomainInfo(hostID, vmName)
 	if err != nil {
+		log.Errorf("Failed to get domain info in ingestVMFromLibvirt for %s: %v", vmName, err)
 		return false, err
 	}
+	log.Verbosef("Got domain info in ingestVMFromLibvirt: %s (UUID: %s)", vmName, vmInfo.UUID)
 
 	tx := s.db.Begin()
 	defer func() {
 		if r := recover(); r != nil {
+			log.Errorf("Panic during VM ingestion for %s: %v", vmName, r)
 			tx.Rollback()
 		}
 	}()
 
 	// Attempt to restore soft-deleted VM with same domain_uuid
+	log.Verbosef("Checking for soft-deleted VMs with UUID %s", vmInfo.UUID)
 	var softVMs []storage.VirtualMachine
 	tx.Unscoped().Where("domain_uuid = ?", vmInfo.UUID).Limit(1).Find(&softVMs)
 	if len(softVMs) > 0 {
+		log.Verbosef("Found soft-deleted VM to restore: %s", softVMs[0].Name)
 		softVM := softVMs[0]
 		if softVM.DeletedAt.Valid {
 			softVM.HostID = hostID
@@ -1237,13 +1255,16 @@ func (s *HostService) ingestVMFromLibvirt(hostID, vmName string) (bool, error) {
 	}
 
 	// Check conflict where domain_uuid exists on different host
+	log.Verbosef("Checking for domain UUID conflicts for %s", vmInfo.UUID)
 	var conflicting []storage.VirtualMachine
 	tx.Where("domain_uuid = ? AND host_id != ?", vmInfo.UUID, hostID).Limit(1).Find(&conflicting)
 	if len(conflicting) > 0 {
+		log.Errorf("Domain UUID conflict for %s: already exists on host %s", vmInfo.UUID, conflicting[0].HostID)
 		tx.Rollback()
 		return false, fmt.Errorf("VM with domain UUID %s already exists on different host %s", vmInfo.UUID, conflicting[0].HostID)
 	}
 
+	log.Verbosef("Creating new VM record for %s (UUID: %s)", vmName, vmInfo.UUID)
 	newVM := storage.VirtualMachine{
 		HostID:       hostID,
 		Name:         vmInfo.Name,

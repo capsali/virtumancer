@@ -206,10 +206,16 @@ func (h *APIHandler) ListDiscoveredVMs(w http.ResponseWriter, r *http.Request) {
 func (h *APIHandler) ImportVM(w http.ResponseWriter, r *http.Request) {
 	hostID := chi.URLParam(r, "hostID")
 	vmName := chi.URLParam(r, "vmName")
+
+	log.Infof("ImportVM request received - hostID: %s, vmName: %s", hostID, vmName)
+
 	if err := h.HostService.ImportVM(hostID, vmName); err != nil {
+		log.Errorf("ImportVM failed - hostID: %s, vmName: %s, error: %v", hostID, vmName, err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	log.Infof("ImportVM completed successfully - hostID: %s, vmName: %s", hostID, vmName)
 	w.WriteHeader(http.StatusAccepted)
 }
 

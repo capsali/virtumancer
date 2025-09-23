@@ -171,7 +171,7 @@ export const useAppStore = defineStore('app', () => {
       });
       
       wsManager.on('disconnect', () => {
-        uiStore.addToast('Lost connection to server', 'warning', 5000);
+        uiStore.addToast('Lost connection to server', 'warning');
       });
       
       wsManager.on('reconnect', () => {
@@ -214,7 +214,7 @@ export const useAppStore = defineStore('app', () => {
     
     window.addEventListener('offline', () => {
       isOnline.value = false;
-      uiStore.addToast('Connection lost - working offline', 'warning', 5000);
+      uiStore.addToast('Connection lost - working offline', 'warning');
     });
   };
 
@@ -260,7 +260,7 @@ export const useAppStore = defineStore('app', () => {
       uiStore.addToast('Data refreshed successfully', 'success', 3000);
     } catch (error) {
       console.error('Force refresh failed:', error);
-      uiStore.addToast('Failed to refresh data', 'error', 5000);
+      uiStore.addToast('Failed to refresh data', 'error');
     } finally {
       uiStore.setLoading(false);
     }

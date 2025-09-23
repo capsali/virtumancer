@@ -31,6 +31,11 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/NetworkTopologyView.vue')
   },
   {
+    path: '/logs',
+    name: 'logs',
+    component: () => import('@/views/LogsView.vue')
+  },
+  {
     path: '/error-demo',
     name: 'error-demo',
     component: () => import('@/components/ui/ErrorHandlingDemo.vue')

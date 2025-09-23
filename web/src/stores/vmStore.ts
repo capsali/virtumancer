@@ -289,15 +289,51 @@ export const useVMStore = defineStore('virtualMachines', () => {
   };
 
   const handleError = (operation: string, error: unknown): void => {
+    let errorMessage = 'An unexpected error occurred';
+    let errorCode = 'UNKNOWN_ERROR';
+    let errorDetails = error;
+
+    if (error instanceof ApiError) {
+      errorMessage = error.message;
+      errorCode = error.code || 'API_ERROR';
+      errorDetails = error.details;
+    } else if (error instanceof Error) {
+      errorMessage = error.message;
+      errorCode = 'ERROR';
+      errorDetails = {
+        name: error.name,
+        message: error.message,
+        stack: error.stack
+      };
+    } else if (typeof error === 'string') {
+      errorMessage = error;
+      errorCode = 'STRING_ERROR';
+    } else if (error && typeof error === 'object') {
+      try {
+        errorMessage = JSON.stringify(error);
+        errorCode = 'OBJECT_ERROR';
+        errorDetails = error;
+      } catch (e) {
+        errorMessage = 'Failed to serialize error object';
+        errorCode = 'SERIALIZATION_ERROR';
+        errorDetails = { originalError: error, serializationError: e };
+      }
+    }
+
     const appError: AppError = {
-      message: error instanceof ApiError ? error.message : 'An unexpected error occurred',
-      code: error instanceof ApiError ? error.code : 'UNKNOWN_ERROR',
-      details: error instanceof ApiError ? error.details : error,
+      message: errorMessage,
+      code: errorCode,
+      details: errorDetails,
       timestamp: new Date()
     };
     
     errors.value[operation] = appError;
-    console.error(`VM store error in ${operation}:`, appError);
+    console.error(`VM store error in ${operation}:`, {
+      message: errorMessage,
+      code: errorCode,
+      details: errorDetails,
+      originalError: error
+    });
 
     // Also add to error recovery service for enhanced handling
     errorRecoveryService.addError(

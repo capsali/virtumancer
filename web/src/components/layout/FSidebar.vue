@@ -6,7 +6,23 @@
       sidebarClasses
     ]"
   >
-    <!-- Logo Section -->
+    <!  {
+    id: 'network',
+    label: 'Network Topology',
+    icon: 'M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0',
+    active: false,
+    path: '/network'
+  },
+  {
+    id: 'logs',
+    label: 'System Logs',
+    description: 'View application logs',
+    icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
+    active: false,
+    path: '/logs'
+  },
+  {
+    id: 'error-demo',ection -->
     <div class="p-6 border-b border-white/10">
       <div class="flex items-center gap-3">
         <div class="w-10 h-10 bg-gradient-to-br from-primary-500 to-accent-500 rounded-xl flex items-center justify-center shadow-neon-blue">
