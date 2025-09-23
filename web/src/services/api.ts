@@ -10,7 +10,7 @@ import type {
 } from '@/types';
 
 // Base API configuration
-const API_BASE_URL = '/api/v1';
+const API_BASE_URL = 'https://localhost:8888/api/v1';
 
 class ApiError extends Error {
   constructor(
@@ -126,15 +126,15 @@ export const hostApi = {
   },
 
   async getById(id: string): Promise<Host> {
-    return apiClient.get<Host>(`/hosts/${id}`);
+    return apiClient.get<Host>(`/hosts/${id}/info`);
   },
 
   async create(hostData: Omit<Host, 'id'>): Promise<Host> {
     return apiClient.post<Host>('/hosts', hostData);
   },
 
-  async update(id: string, hostData: Partial<Host>): Promise<Host> {
-    return apiClient.put<Host>(`/hosts/${id}`, hostData);
+  async update(id: string, updates: Partial<Host>): Promise<Host> {
+    return apiClient.put<Host>(`/hosts/${id}`, updates);
   },
 
   async delete(id: string): Promise<void> {
@@ -153,84 +153,97 @@ export const hostApi = {
     return apiClient.get<HostStats>(`/hosts/${id}/stats`);
   },
 
+  async getVMs(id: string): Promise<VirtualMachine[]> {
+    return apiClient.get<VirtualMachine[]>(`/hosts/${id}/vms`);
+  },
+
   async getDiscoveredVMs(id: string): Promise<DiscoveredVM[]> {
     return apiClient.get<DiscoveredVM[]>(`/hosts/${id}/discovered-vms`);
   },
 
   async importAllVMs(id: string): Promise<void> {
-    return apiClient.post(`/hosts/${id}/import-all`);
+    return apiClient.post(`/hosts/${id}/vms/import-all`);
+  },
+
+  async getPorts(id: string): Promise<any[]> {
+    return apiClient.get<any[]>(`/hosts/${id}/ports`);
   }
 };
 
 // VM API methods
 export const vmApi = {
-  async getAll(hostId?: string): Promise<VirtualMachine[]> {
-    const endpoint = hostId ? `/vms?hostId=${hostId}` : '/vms';
-    return apiClient.get<VirtualMachine[]>(endpoint);
+  async getAll(hostId: string): Promise<VirtualMachine[]> {
+    return apiClient.get<VirtualMachine[]>(`/hosts/${hostId}/vms`);
   },
 
-  async getById(uuid: string): Promise<VirtualMachine> {
-    return apiClient.get<VirtualMachine>(`/vms/${uuid}`);
+  async getByHost(hostId: string): Promise<VirtualMachine[]> {
+    return apiClient.get<VirtualMachine[]>(`/hosts/${hostId}/vms`);
   },
 
   async create(vmData: Omit<VirtualMachine, 'uuid' | 'createdAt' | 'updatedAt'>): Promise<VirtualMachine> {
-    return apiClient.post<VirtualMachine>('/vms', vmData);
+    return apiClient.post<VirtualMachine>(`/hosts/${vmData.hostId}/vms`, vmData);
   },
 
-  async update(uuid: string, vmData: Partial<VirtualMachine>): Promise<VirtualMachine> {
-    return apiClient.put<VirtualMachine>(`/vms/${uuid}`, vmData);
+  async update(uuid: string, updates: Partial<VirtualMachine>): Promise<VirtualMachine> {
+    // Note: This might need adjustment based on actual backend API
+    return apiClient.put<VirtualMachine>(`/vms/${uuid}`, updates);
   },
 
   async delete(uuid: string): Promise<void> {
+    // Note: This might need adjustment based on actual backend API  
     return apiClient.delete(`/vms/${uuid}`);
   },
 
-  async start(uuid: string): Promise<void> {
-    return apiClient.post(`/vms/${uuid}/start`);
+  async start(hostId: string, vmName: string): Promise<void> {
+    return apiClient.post(`/hosts/${hostId}/vms/${vmName}/start`);
   },
 
-  async stop(uuid: string): Promise<void> {
-    return apiClient.post(`/vms/${uuid}/stop`);
+  async shutdown(hostId: string, vmName: string): Promise<void> {
+    return apiClient.post(`/hosts/${hostId}/vms/${vmName}/shutdown`);
   },
 
-  async restart(uuid: string): Promise<void> {
-    return apiClient.post(`/vms/${uuid}/restart`);
+  async reboot(hostId: string, vmName: string): Promise<void> {
+    return apiClient.post(`/hosts/${hostId}/vms/${vmName}/reboot`);
   },
 
-  async pause(uuid: string): Promise<void> {
-    return apiClient.post(`/vms/${uuid}/pause`);
+  async forceOff(hostId: string, vmName: string): Promise<void> {
+    return apiClient.post(`/hosts/${hostId}/vms/${vmName}/forceoff`);
   },
 
-  async unpause(uuid: string): Promise<void> {
-    return apiClient.post(`/vms/${uuid}/unpause`);
+  async forceReset(hostId: string, vmName: string): Promise<void> {
+    return apiClient.post(`/hosts/${hostId}/vms/${vmName}/forcereset`);
   },
 
-  async suspend(uuid: string): Promise<void> {
-    return apiClient.post(`/vms/${uuid}/suspend`);
+  async getStats(hostId: string, vmName: string): Promise<VMStats> {
+    return apiClient.get<VMStats>(`/hosts/${hostId}/vms/${vmName}/stats`);
   },
 
-  async resume(uuid: string): Promise<void> {
-    return apiClient.post(`/vms/${uuid}/resume`);
+  async getHardware(hostId: string, vmName: string): Promise<VMHardware> {
+    return apiClient.get<VMHardware>(`/hosts/${hostId}/vms/${vmName}/hardware`);
   },
 
-  async getStats(uuid: string): Promise<VMStats> {
-    return apiClient.get<VMStats>(`/vms/${uuid}/stats`);
+  async updateState(hostId: string, vmName: string, state: string): Promise<void> {
+    return apiClient.put(`/hosts/${hostId}/vms/${vmName}/state`, { state });
   },
 
-  async getHardware(uuid: string): Promise<VMHardware> {
-    return apiClient.get<VMHardware>(`/vms/${uuid}/hardware`);
+  async import(hostId: string, vmName: string): Promise<void> {
+    return apiClient.post(`/hosts/${hostId}/vms/${vmName}/import`);
   },
 
-  async updateHardware(uuid: string, hardware: Partial<VMHardware>): Promise<VMHardware> {
-    return apiClient.put<VMHardware>(`/vms/${uuid}/hardware`, hardware);
+  async sync(hostId: string, vmName: string): Promise<void> {
+    return apiClient.post(`/hosts/${hostId}/vms/${vmName}/sync-from-libvirt`);
   },
 
-  async import(hostId: string, vmUuid: string): Promise<VirtualMachine> {
-    return apiClient.post<VirtualMachine>(`/vms/import`, { hostId, vmUuid });
+  async rebuild(hostId: string, vmName: string): Promise<void> {
+    return apiClient.post(`/hosts/${hostId}/vms/${vmName}/rebuild-from-db`);
   },
 
-  async reconcile(uuid: string): Promise<void> {
-    return apiClient.post(`/vms/${uuid}/reconcile`);
+  async getPortAttachments(hostId: string, vmName: string): Promise<any[]> {
+    return apiClient.get<any[]>(`/hosts/${hostId}/vms/${vmName}/port-attachments`);
+  },
+
+  async getVideoAttachments(hostId: string, vmName: string): Promise<any[]> {
+    return apiClient.get<any[]>(`/hosts/${hostId}/vms/${vmName}/video-attachments`);
   }
 };
 
@@ -242,7 +255,7 @@ export class WebSocketManager {
   private reconnectDelay = 1000;
   private listeners = new Map<string, Set<Function>>();
 
-  constructor(private url: string = 'ws://localhost:8080/ws') {}
+  constructor(private url: string = 'wss://localhost:8888/ws') {}
 
   connect(): Promise<void> {
     return new Promise((resolve, reject) => {

@@ -79,13 +79,15 @@ export const useVMStore = defineStore('virtualMachines', () => {
     clearError('fetchVMs');
     
     try {
-      const data = await vmApi.getAll(hostId);
-      if (hostId) {
-        // Update only VMs for this host
-        vms.value = vms.value.filter(vm => vm.hostId !== hostId).concat(data);
-      } else {
-        vms.value = data;
+      if (!hostId) {
+        // If no hostId provided, clear VMs and return
+        vms.value = [];
+        return;
       }
+      
+      const data = await vmApi.getAll(hostId);
+      // Update only VMs for this host
+      vms.value = vms.value.filter(vm => vm.hostId !== hostId).concat(data);
     } catch (error) {
       handleError('fetchVMs', error);
       throw error;
@@ -147,36 +149,32 @@ export const useVMStore = defineStore('virtualMachines', () => {
   };
 
   // VM Control Actions
-  const startVM = async (uuid: string): Promise<void> => {
-    return performVMAction(uuid, 'STARTING', () => vmApi.start(uuid));
+  const startVM = async (hostId: string, vmName: string): Promise<void> => {
+    return performVMAction(`${hostId}:${vmName}`, 'STARTING', () => vmApi.start(hostId, vmName));
   };
 
-  const stopVM = async (uuid: string): Promise<void> => {
-    return performVMAction(uuid, 'STOPPING', () => vmApi.stop(uuid));
+  const stopVM = async (hostId: string, vmName: string): Promise<void> => {
+    return performVMAction(`${hostId}:${vmName}`, 'STOPPING', () => vmApi.shutdown(hostId, vmName));
   };
 
-  const restartVM = async (uuid: string): Promise<void> => {
-    return performVMAction(uuid, 'REBOOTING', () => vmApi.restart(uuid));
+  const restartVM = async (hostId: string, vmName: string): Promise<void> => {
+    return performVMAction(`${hostId}:${vmName}`, 'REBOOTING', () => vmApi.reboot(hostId, vmName));
   };
 
-  const pauseVM = async (uuid: string): Promise<void> => {
-    return performVMAction(uuid, 'PAUSING', () => vmApi.pause(uuid));
+  const forceOffVM = async (hostId: string, vmName: string): Promise<void> => {
+    return performVMAction(`${hostId}:${vmName}`, 'STOPPING', () => vmApi.forceOff(hostId, vmName));
   };
 
-  const unpauseVM = async (uuid: string): Promise<void> => {
-    return performVMAction(uuid, 'UNPAUSING', () => vmApi.unpause(uuid));
+  const forceResetVM = async (hostId: string, vmName: string): Promise<void> => {
+    return performVMAction(`${hostId}:${vmName}`, 'REBOOTING', () => vmApi.forceReset(hostId, vmName));
   };
 
-  const suspendVM = async (uuid: string): Promise<void> => {
-    return performVMAction(uuid, 'SUSPENDING', () => vmApi.suspend(uuid));
+  const syncVM = async (hostId: string, vmName: string): Promise<void> => {
+    return performVMAction(`${hostId}:${vmName}`, 'SCHEDULING', () => vmApi.sync(hostId, vmName));
   };
 
-  const resumeVM = async (uuid: string): Promise<void> => {
-    return performVMAction(uuid, 'RESUMING', () => vmApi.resume(uuid));
-  };
-
-  const reconcileVM = async (uuid: string): Promise<void> => {
-    return performVMAction(uuid, 'SCHEDULING', () => vmApi.reconcile(uuid));
+  const rebuildVM = async (hostId: string, vmName: string): Promise<void> => {
+    return performVMAction(`${hostId}:${vmName}`, 'REBUILDING', () => vmApi.rebuild(hostId, vmName));
   };
 
   // Helper function for VM actions
@@ -209,58 +207,62 @@ export const useVMStore = defineStore('virtualMachines', () => {
   };
 
   // Data fetching actions
-  const fetchVMStats = async (uuid: string): Promise<void> => {
-    loading.value.vmStats[uuid] = true;
+  const fetchVMStats = async (hostId: string, vmName: string): Promise<void> => {
+    const key = `${hostId}:${vmName}`;
+    loading.value.vmStats[key] = true;
     clearError('fetchVMStats');
     
     try {
-      const stats = await vmApi.getStats(uuid);
-      vmStats.value[uuid] = stats;
+      const stats = await vmApi.getStats(hostId, vmName);
+      vmStats.value[key] = stats;
     } catch (error) {
       handleError('fetchVMStats', error);
       // Don't throw here, stats are optional
     } finally {
-      loading.value.vmStats[uuid] = false;
+      loading.value.vmStats[key] = false;
     }
   };
 
-  const fetchVMHardware = async (uuid: string): Promise<void> => {
-    loading.value.vmHardware[uuid] = true;
+  const fetchVMHardware = async (hostId: string, vmName: string): Promise<void> => {
+    const key = `${hostId}:${vmName}`;
+    loading.value.vmHardware[key] = true;
     clearError('fetchVMHardware');
     
     try {
-      const hardware = await vmApi.getHardware(uuid);
-      vmHardware.value[uuid] = hardware;
+      const hardware = await vmApi.getHardware(hostId, vmName);
+      vmHardware.value[key] = hardware;
     } catch (error) {
       handleError('fetchVMHardware', error);
       throw error;
     } finally {
-      loading.value.vmHardware[uuid] = false;
+      loading.value.vmHardware[key] = false;
     }
   };
 
-  const updateVMHardware = async (uuid: string, hardware: Partial<VMHardware>): Promise<void> => {
-    loading.value.vmHardware[uuid] = true;
+  const updateVMHardware = async (hostId: string, vmName: string, hardware: Partial<VMHardware>): Promise<void> => {
+    const key = `${hostId}:${vmName}`;
+    loading.value.vmHardware[key] = true;
     clearError('updateVMHardware');
     
     try {
-      const updatedHardware = await vmApi.updateHardware(uuid, hardware);
-      vmHardware.value[uuid] = updatedHardware;
+      // For now, just store locally until backend supports this
+      console.log('Hardware update requested:', { hostId, vmName, hardware });
+      // TODO: Implement when backend supports hardware updates
     } catch (error) {
       handleError('updateVMHardware', error);
       throw error;
     } finally {
-      loading.value.vmHardware[uuid] = false;
+      loading.value.vmHardware[key] = false;
     }
   };
 
-  const importVM = async (hostId: string, vmUuid: string): Promise<VirtualMachine> => {
+  const importVM = async (hostId: string, vmName: string): Promise<void> => {
     clearError('importVM');
     
     try {
-      const importedVM = await vmApi.import(hostId, vmUuid);
-      vms.value.push(importedVM);
-      return importedVM;
+      await vmApi.import(hostId, vmName);
+      // Refresh VMs list after import
+      await fetchVMs(hostId);
     } catch (error) {
       handleError('importVM', error);
       throw error;
@@ -324,9 +326,12 @@ export const useVMStore = defineStore('virtualMachines', () => {
   };
 
   // Bulk operations
-  const fetchAllVMStats = async (): Promise<void> => {
-    const activeVMList = vms.value.filter(vm => vm.state === 'ACTIVE');
-    const promises = activeVMList.map(vm => fetchVMStats(vm.uuid));
+  const fetchAllVMStats = async (hostId?: string): Promise<void> => {
+    const activeVMList = hostId 
+      ? vms.value.filter(vm => vm.hostId === hostId && vm.state === 'ACTIVE')
+      : vms.value.filter(vm => vm.state === 'ACTIVE');
+    
+    const promises = activeVMList.map(vm => fetchVMStats(vm.hostId, vm.name));
     await Promise.allSettled(promises);
   };
 
@@ -335,7 +340,7 @@ export const useVMStore = defineStore('virtualMachines', () => {
       ? vms.value.filter(vm => vm.hostId === hostId && vm.state === 'ACTIVE')
       : vms.value.filter(vm => vm.state === 'ACTIVE');
     
-    const promises = targetVMs.map(vm => stopVM(vm.uuid));
+    const promises = targetVMs.map(vm => stopVM(vm.hostId, vm.name));
     await Promise.allSettled(promises);
   };
 
@@ -367,11 +372,10 @@ export const useVMStore = defineStore('virtualMachines', () => {
     startVM,
     stopVM,
     restartVM,
-    pauseVM,
-    unpauseVM,
-    suspendVM,
-    resumeVM,
-    reconcileVM,
+    forceOffVM,
+    forceResetVM,
+    syncVM,
+    rebuildVM,
     
     // Data fetching
     fetchVMStats,
