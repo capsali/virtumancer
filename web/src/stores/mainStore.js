@@ -424,7 +424,7 @@ export const useMainStore = defineStore('main', () => {
         if (!hostId) return null;
         try {
             const controller = new AbortController();
-            const id = setTimeout(() => controller.abort(), 5000);
+            const id = setTimeout(() => controller.abort(), 10000);
             const response = await fetch(`/api/v1/hosts/${hostId}/info`, { signal: controller.signal });
             clearTimeout(id);
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
@@ -558,7 +558,7 @@ export const useMainStore = defineStore('main', () => {
         if (!hostId) return [];
         try {
             const controller = new AbortController();
-            const id = setTimeout(() => controller.abort(), 5000);
+            const id = setTimeout(() => controller.abort(), 10000);
             const response = await fetch(`/api/v1/hosts/${hostId}/vms`, { signal: controller.signal });
             clearTimeout(id);
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);

@@ -632,10 +632,11 @@ func (s *HostService) GetVMsForHostFromDB(hostID string) ([]VMView, error) {
 	}
 
 	// Check if host is connected to populate live data
-	hostConnected := false
-	if _, err := s.connector.GetConnection(hostID); err == nil {
-		hostConnected = true
-	}
+	// Temporarily disabled for performance
+	// hostConnected := false
+	// if _, err := s.connector.GetConnection(hostID); err == nil {
+	//     hostConnected = true
+	// }
 
 	var vmViews []VMView
 	for _, dbVM := range dbVMs {
@@ -654,13 +655,16 @@ func (s *HostService) GetVMsForHostFromDB(hostID string) ([]VMView, error) {
 		}
 
 		// Populate live data if host is connected
-		if hostConnected {
-			if vmInfo, err := s.connector.GetDomainInfo(hostID, dbVM.Name); err == nil {
-				liveData = libvirt.VMInfo{
-					Uptime: vmInfo.Uptime,
+		// Temporarily disabled for performance - uptime can be fetched separately if needed
+		/*
+			if hostConnected {
+				if vmInfo, err := s.connector.GetDomainInfo(hostID, dbVM.Name); err == nil {
+					liveData = libvirt.VMInfo{
+						Uptime: vmInfo.Uptime,
+					}
 				}
 			}
-		}
+		*/
 
 		vmViews = append(vmViews, VMView{
 			Name:            dbVM.Name,
@@ -973,6 +977,11 @@ func (s *HostService) ListDiscoveredVMs(hostID string) ([]libvirt.VMInfo, error)
 
 // ImportVM imports a single discovered VM into the database by name.
 func (s *HostService) ImportVM(hostID, vmName string) error {
+	// Prevent concurrent syncs for the same host
+	mu, _ := s.syncMutex.LoadOrStore(hostID, &sync.Mutex{})
+	mu.(*sync.Mutex).Lock()
+	defer mu.(*sync.Mutex).Unlock()
+
 	// Get domain info to obtain UUID for marking imported
 	vmInfo, err := s.connector.GetDomainInfo(hostID, vmName)
 	if err != nil {
@@ -996,25 +1005,26 @@ func (s *HostService) ImportVM(hostID, vmName string) error {
 
 // ImportAllVMs imports all discovered VMs on the host.
 func (s *HostService) ImportAllVMs(hostID string) error {
-	vms, err := s.connector.ListAllDomains(hostID)
+	// Get discovered VMs from database instead of all libvirt domains
+	discoveredVMs, err := storage.ListDiscoveredVMsByHost(s.db, hostID)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to list discovered VMs: %w", err)
 	}
 	anyImported := false
-	for _, vm := range vms {
-		// Skip if already in DB
-		var existing []storage.VirtualMachine
-		s.db.Where("host_id = ? AND domain_uuid = ?", hostID, vm.UUID).Limit(1).Find(&existing)
-		if len(existing) > 0 {
-			continue
-		}
-		if changed, ierr := s.ingestVMFromLibvirt(hostID, vm.Name); ierr != nil {
-			log.Verbosef("ImportAllVMs: failed to import VM %s on host %s: %v", vm.Name, hostID, ierr)
+	for _, discVM := range discoveredVMs {
+		// Acquire mutex for each individual import to reduce contention
+		mu, _ := s.syncMutex.LoadOrStore(hostID, &sync.Mutex{})
+		mu.(*sync.Mutex).Lock()
+		changed, ierr := s.ingestVMFromLibvirt(hostID, discVM.Name)
+		mu.(*sync.Mutex).Unlock()
+
+		if ierr != nil {
+			log.Verbosef("ImportAllVMs: failed to import VM %s on host %s: %v", discVM.Name, hostID, ierr)
 		} else if changed {
 			anyImported = true
 			// Mark as imported in discovered_vms
-			if err := storage.MarkDiscoveredVMImported(s.db, hostID, vm.UUID); err != nil {
-				log.Verbosef("Warning: failed to mark discovered VM %s as imported: %v", vm.Name, err)
+			if err := storage.MarkDiscoveredVMImported(s.db, hostID, discVM.DomainUUID); err != nil {
+				log.Verbosef("Warning: failed to mark discovered VM %s as imported: %v", discVM.Name, err)
 			}
 		}
 	}
@@ -1202,6 +1212,13 @@ func (s *HostService) detectDriftOrIngestVM(hostID, vmName string, isInitialSync
 		// the VM truly no longer exists in libvirt, so prune stale DB entries.
 		var dbVM storage.VirtualMachine
 		if err := s.db.Where("host_id = ? AND name = ?", hostID, vmName).First(&dbVM).Error; err == nil {
+			// Don't prune VMs that were created very recently (within last 5 minutes)
+			// to avoid pruning VMs that were just imported but may not be immediately
+			// visible to libvirt due to timing issues
+			if time.Since(dbVM.CreatedAt) < 5*time.Minute {
+				log.Verbosef("Skipping pruning recently created VM %s (created %v ago)", vmName, time.Since(dbVM.CreatedAt))
+				return false, fmt.Errorf("could not fetch info for VM %s on host %s: %w", vmName, hostID, err)
+			}
 			log.Verbosef("Pruning VM %s from database as it's no longer in libvirt.", vmName)
 			tx := s.db.Begin()
 			if err := tx.Where("vm_uuid = ?", dbVM.UUID).Delete(&storage.AttachmentIndex{}).Error; err != nil {
@@ -2452,6 +2469,13 @@ func (s *HostService) syncHostVMs(hostID string) (bool, error) {
 
 	for _, dbVM := range dbVMs {
 		if _, exists := liveVMUUIDs[dbVM.DomainUUID]; !exists {
+			// Don't prune VMs that were created very recently (within last 5 minutes)
+			// to avoid pruning VMs that were just imported but may not be immediately
+			// visible to libvirt due to timing issues
+			if time.Since(dbVM.CreatedAt) < 5*time.Minute {
+				log.Verbosef("Skipping pruning recently created VM %s (created %v ago)", dbVM.Name, time.Since(dbVM.CreatedAt))
+				continue
+			}
 			// Ensure connector is connected to the host; if not, skip pruning as the
 			// missing VM may be due to a transient connection issue.
 			if _, connErr := s.connector.GetConnection(hostID); connErr != nil {
