@@ -1,5 +1,5 @@
 <template>
-  <div id="app" class="relative min-h-screen overflow-hidden bg-slate-900">
+  <div id="app" :class="['relative min-h-screen overflow-hidden bg-slate-900', themeClasses]">
     <!-- Animated Background -->
     <div class="fixed inset-0 bg-gradient-to-br from-slate-900 via-purple-900/20 to-slate-900">
       <!-- Floating Background Elements -->
@@ -14,6 +14,7 @@
       <FSidebar
         v-model:collapsed="sidebarCollapsed"
         @navigate="handleNavigation"
+        @update:collapsed="handleSidebarToggle"
       />
 
       <!-- Main Content Area -->
@@ -49,6 +50,9 @@
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-5-5 5-5h-5m-6 0H4l5 5-5 5h5m2-5a3 3 0 11-6 0 3 3 0 016 0z"/>
                 </svg>
               </FButton>
+
+              <!-- Theme Toggle -->
+              <FThemeToggle />
             </div>
           </div>
         </header>
@@ -156,13 +160,44 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import FSidebar from './components/layout/FSidebar.vue';
 import FCard from './components/ui/FCard.vue';
 import FButton from './components/ui/FButton.vue';
 import FInput from './components/ui/FInput.vue';
+import FThemeToggle from './components/ui/FThemeToggle.vue';
+import { useTheme, initializeTheme } from './composables/useTheme';
+import { useAppStore, useUIStore, useHostStore, useVMStore } from './stores';
 
-const sidebarCollapsed = ref(false);
+// Initialize theme system
+onMounted(async () => {
+  initializeTheme();
+  
+  // Initialize application stores
+  try {
+    const appStore = useAppStore();
+    await appStore.initialize();
+  } catch (error) {
+    console.error('Failed to initialize application:', error);
+  }
+});
+
+// Cleanup on unmount
+onUnmounted(() => {
+  const appStore = useAppStore();
+  appStore.cleanup();
+});
+
+const { themeClasses } = useTheme();
+
+// Store instances
+const uiStore = useUIStore();
+const hostStore = useHostStore();
+const vmStore = useVMStore();
+const appStore = useAppStore();
+
+// Use real data from stores
+const sidebarCollapsed = ref(uiStore.sidebarCollapsed);
 
 const currentView = ref({
   id: 'dashboard',
@@ -170,12 +205,13 @@ const currentView = ref({
   status: 'All Systems Operational'
 });
 
-const stats = ref([
+// Use computed stats from stores
+const stats = computed(() => [
   {
     id: 'vms',
     label: 'Virtual Machines',
-    value: '24',
-    change: '+3 this month',
+    value: vmStore.vms.length.toString(),
+    change: `${vmStore.activeVMs.length} running`,
     trend: 'up' as const,
     iconBg: 'bg-gradient-to-br from-primary-500 to-primary-600',
     iconPath: 'M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z',
@@ -184,29 +220,29 @@ const stats = ref([
   {
     id: 'hosts',
     label: 'Active Hosts',
-    value: '8',
-    change: '+1 this week',
-    trend: 'up' as const,
+    value: hostStore.connectedHosts.length.toString(),
+    change: `${hostStore.hosts.length} total`,
+    trend: hostStore.connectedHosts.length > 0 ? 'up' : 'down' as const,
     iconBg: 'bg-gradient-to-br from-accent-500 to-accent-600',
     iconPath: 'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10',
     glowColor: 'accent' as const
   },
   {
-    id: 'cpu',
-    label: 'CPU Usage',
-    value: '68%',
-    change: '-5% from last hour',
-    trend: 'down' as const,
+    id: 'system',
+    label: 'System Status',
+    value: appStore.connectionStatus === 'connected' ? 'Online' : 'Offline',
+    change: appStore.healthStatus,
+    trend: appStore.healthStatus === 'healthy' ? 'up' : 'down' as const,
     iconBg: 'bg-gradient-to-br from-neon-purple to-neon-pink',
     iconPath: 'M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z',
     glowColor: 'neon-purple' as const
   },
   {
-    id: 'storage',
-    label: 'Storage Used',
-    value: '2.4TB',
-    change: '+120GB this week',
-    trend: 'up' as const,
+    id: 'sync',
+    label: 'Last Sync',
+    value: appStore.lastSyncTime ? new Date(appStore.lastSyncTime).toLocaleTimeString() : 'Never',
+    change: appStore.isSyncing ? 'Syncing...' : 'Up to date',
+    trend: 'stable' as const,
     iconBg: 'bg-gradient-to-br from-green-500 to-green-600',
     iconPath: 'M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4',
     glowColor: 'primary' as const
@@ -249,11 +285,18 @@ const features = ref([
   }
 ]);
 
+// Navigation and UI handlers
 const handleNavigation = (item: any) => {
   currentView.value = {
     id: item.id,
     title: item.label,
     status: 'Active'
   };
+  uiStore.setCurrentView(item.id, [item.label]);
+};
+
+const handleSidebarToggle = (collapsed: boolean) => {
+  sidebarCollapsed.value = collapsed;
+  uiStore.setSidebarCollapsed(collapsed);
 };
 </script>
