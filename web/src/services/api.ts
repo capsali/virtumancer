@@ -99,7 +99,21 @@ class ApiClient {
         throw apiError;
       }
 
-      const data = await response.json();
+      // Check if response has content before parsing JSON
+      const contentType = response.headers.get('content-type');
+      
+      // Handle empty responses (204 No Content, empty body, etc.)
+      if (response.status === 204 || !contentType?.includes('application/json')) {
+        return undefined as T;
+      }
+      
+      // Check if response body is empty
+      const text = await response.text();
+      if (!text.trim()) {
+        return undefined as T;
+      }
+      
+      const data = JSON.parse(text);
       return data;
     } catch (error) {
       if (error instanceof ApiError) {
@@ -225,14 +239,70 @@ export const hostApi = {
   }
 };
 
+// Backend VM response interface (snake_case from Go)
+interface BackendVMResponse {
+  name: string;
+  uuid: string;
+  domain_uuid: string;
+  description: string;
+  vcpu_count: number;
+  memory_bytes: number;
+  is_template: boolean;
+  cpu_model: string;
+  cpu_topology_json: string;
+  os_type: string;
+  task_state: string;
+  sync_status: string;
+  drift_details: string;
+  needs_rebuild: boolean;
+  state: string;
+  libvirtState: string;
+  graphics: {
+    vnc: boolean;
+    spice: boolean;
+  };
+  max_mem: number;
+  memory: number;
+  cpu_time: number;
+  uptime: number;
+}
+
+// Transform backend VM response to frontend VirtualMachine interface
+function transformBackendVMToFrontend(backendVM: BackendVMResponse, hostId: string): VirtualMachine {
+  return {
+    uuid: backendVM.uuid,
+    hostId: hostId,
+    name: backendVM.name,
+    domainUuid: backendVM.domain_uuid,
+    source: 'managed' as const, // VMs from this endpoint are managed (imported)
+    title: backendVM.name, // Use name as title for now
+    description: backendVM.description,
+    state: backendVM.state as any,
+    libvirtState: backendVM.libvirtState as any,
+    taskState: backendVM.task_state as any,
+    vcpuCount: backendVM.vcpu_count,
+    cpuModel: backendVM.cpu_model,
+    memoryMB: Math.round(backendVM.memory_bytes / (1024 * 1024)), // Convert bytes to MB
+    osType: backendVM.os_type,
+    bootDevice: '', // Not provided by backend, set default
+    diskSizeGB: 0, // Not provided by backend, set default  
+    networkInterface: '', // Not provided by backend, set default
+    syncStatus: backendVM.sync_status as any,
+    createdAt: '', // Not provided by backend, set default
+    updatedAt: '', // Not provided by backend, set default
+  };
+}
+
 // VM API methods
 export const vmApi = {
   async getAll(hostId: string): Promise<VirtualMachine[]> {
-    return apiClient.get<VirtualMachine[]>(`/hosts/${hostId}/vms`);
+    const backendVMs = await apiClient.get<BackendVMResponse[]>(`/hosts/${hostId}/vms`);
+    return backendVMs.map(vm => transformBackendVMToFrontend(vm, hostId));
   },
 
   async getByHost(hostId: string): Promise<VirtualMachine[]> {
-    return apiClient.get<VirtualMachine[]>(`/hosts/${hostId}/vms`);
+    const backendVMs = await apiClient.get<BackendVMResponse[]>(`/hosts/${hostId}/vms`);
+    return backendVMs.map(vm => transformBackendVMToFrontend(vm, hostId));
   },
 
   async create(vmData: Omit<VirtualMachine, 'uuid' | 'createdAt' | 'updatedAt'>): Promise<VirtualMachine> {

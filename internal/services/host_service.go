@@ -51,6 +51,17 @@ type VMView struct {
 	Uptime  int64  `json:"uptime"`
 }
 
+// ProcessedVMStats holds frontend-friendly VM statistics with calculated metrics
+type ProcessedVMStats struct {
+	CPUPercent  float64 `json:"cpu_percent"`
+	MemoryMB    float64 `json:"memory_mb"`
+	DiskReadMB  float64 `json:"disk_read_mb"`
+	DiskWriteMB float64 `json:"disk_write_mb"`
+	NetworkRxMB float64 `json:"network_rx_mb"`
+	NetworkTxMB float64 `json:"network_tx_mb"`
+	Uptime      int64   `json:"uptime"`
+}
+
 // DashboardStats holds aggregated system-wide statistics for the dashboard.
 type DashboardStats struct {
 	Infrastructure struct {
@@ -161,7 +172,7 @@ type HostServiceProvider interface {
 	RemoveHost(hostID string) error
 	ConnectToAllHosts()
 	GetVMsForHostFromDB(hostID string) ([]VMView, error)
-	GetVMStats(hostID, vmName string) (*libvirt.VMStats, error)
+	GetVMStats(hostID, vmName string) (*ProcessedVMStats, error)
 	GetVMHardwareAndDetectDrift(hostID, vmName string) (*libvirt.HardwareInfo, error)
 	UpdateVMState(hostID, vmName, state string) error
 	GetPortsForHostFromDB(hostID string) ([]storage.Port, error)
@@ -2653,17 +2664,84 @@ func (s *HostService) syncHostVMs(hostID string) (bool, error) {
 	return overallChanged, nil
 }
 
-func (s *HostService) GetVMStats(hostID, vmName string) (*libvirt.VMStats, error) {
+func (s *HostService) GetVMStats(hostID, vmName string) (*ProcessedVMStats, error) {
+
 	// Check if host is connected
 	if _, err := s.connector.GetConnection(hostID); err != nil {
 		return nil, fmt.Errorf("host %s is not connected", hostID)
 	}
 
-	stats := s.monitor.GetLastKnownStats(hostID, vmName)
-	if stats != nil {
-		return stats, nil
+	// Get raw stats from monitoring or libvirt
+	var rawStats *libvirt.VMStats
+	cachedStats := s.monitor.GetLastKnownStats(hostID, vmName)
+	if cachedStats != nil {
+		rawStats = cachedStats
+	} else {
+		var err error
+		rawStats, err = s.connector.GetDomainStats(hostID, vmName)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get VM stats: %w", err)
+		}
 	}
-	return s.connector.GetDomainStats(hostID, vmName)
+
+	// Transform raw stats to processed frontend-friendly format
+	return s.transformVMStats(hostID, vmName, rawStats)
+}
+
+// transformVMStats converts raw libvirt stats to frontend-friendly processed stats
+func (s *HostService) transformVMStats(hostID, vmName string, rawStats *libvirt.VMStats) (*ProcessedVMStats, error) {
+	if rawStats == nil {
+		return &ProcessedVMStats{}, nil
+	}
+
+	// Calculate total disk I/O (sum across all devices)
+	var totalDiskReadBytes, totalDiskWriteBytes int64
+	for _, disk := range rawStats.DiskStats {
+		totalDiskReadBytes += disk.ReadBytes
+		totalDiskWriteBytes += disk.WriteBytes
+	}
+
+	// Calculate total network I/O (sum across all interfaces)
+	var totalNetworkRxBytes, totalNetworkTxBytes int64
+	for _, net := range rawStats.NetStats {
+		totalNetworkRxBytes += net.ReadBytes
+		totalNetworkTxBytes += net.WriteBytes
+	}
+
+	// Calculate CPU percentage (requires previous sample for accurate calculation)
+	cpuPercent := s.calculateCPUPercent(hostID, vmName, rawStats.CpuTime)
+
+	// Calculate uptime (requires VM start time)
+	uptime := s.calculateVMUptime(hostID, vmName)
+
+	// Convert memory from KB to MB
+	memoryMB := float64(rawStats.Memory) / 1024.0
+
+	return &ProcessedVMStats{
+		CPUPercent:  cpuPercent,
+		MemoryMB:    memoryMB,
+		DiskReadMB:  float64(totalDiskReadBytes) / (1024 * 1024),  // Convert bytes to MB
+		DiskWriteMB: float64(totalDiskWriteBytes) / (1024 * 1024), // Convert bytes to MB
+		NetworkRxMB: float64(totalNetworkRxBytes) / (1024 * 1024), // Convert bytes to MB
+		NetworkTxMB: float64(totalNetworkTxBytes) / (1024 * 1024), // Convert bytes to MB
+		Uptime:      uptime,
+	}, nil
+}
+
+// calculateCPUPercent calculates CPU percentage based on previous CPU time sample
+func (s *HostService) calculateCPUPercent(hostID, vmName string, currentCpuTime uint64) float64 {
+	// For now, return 0.0 - proper implementation would require storing previous samples
+	// and calculating: (currentCpuTime - prevCpuTime) / (currentTime - prevTime) * 100
+	// This would need a separate service to track CPU time samples over time
+	return 0.0
+}
+
+// calculateVMUptime calculates VM uptime in seconds
+func (s *HostService) calculateVMUptime(hostID, vmName string) int64 {
+	// For now, return 0 - proper implementation would need to track VM start times
+	// This could be done by storing start timestamps when VMs are started
+	// or by getting this info from libvirt domain info
+	return 0
 }
 
 // --- VM Actions ---

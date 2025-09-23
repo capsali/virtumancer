@@ -15,6 +15,7 @@ import (
 	"github.com/capsali/virtumancer/internal/storage"
 	"github.com/capsali/virtumancer/internal/ws"
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -60,11 +61,16 @@ func (h *APIHandler) CreateHost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate required fields
-	if host.ID == "" || host.URI == "" {
-		apiErr := NewAPIError(ErrorCodeValidation, "Missing required fields", "Host ID and URI are required")
+	// Validate required fields - only URI is required, ID will be generated if not provided
+	if host.URI == "" {
+		apiErr := NewAPIError(ErrorCodeValidation, "Missing required fields", "Host URI is required")
 		WriteError(w, apiErr, http.StatusBadRequest)
 		return
+	}
+
+	// Generate ID if not provided
+	if host.ID == "" {
+		host.ID = uuid.New().String()
 	}
 
 	newHost, err := h.HostService.AddHost(host)
@@ -211,22 +217,43 @@ func (h *APIHandler) ImportVM(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.HostService.ImportVM(hostID, vmName); err != nil {
 		log.Errorf("ImportVM failed - hostID: %s, vmName: %s, error: %v", hostID, vmName, err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		h.HandleError(w, err, "import_vm")
 		return
 	}
 
 	log.Infof("ImportVM completed successfully - hostID: %s, vmName: %s", hostID, vmName)
+
+	// Return a JSON response instead of empty body
+	response := map[string]interface{}{
+		"success": true,
+		"message": "VM imported successfully",
+		"vm_name": vmName,
+		"host_id": hostID,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
+	json.NewEncoder(w).Encode(response)
 }
 
 // ImportAllVMs imports all discovered VMs on a host.
 func (h *APIHandler) ImportAllVMs(w http.ResponseWriter, r *http.Request) {
 	hostID := chi.URLParam(r, "hostID")
 	if err := h.HostService.ImportAllVMs(hostID); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		h.HandleError(w, err, "import_all_vms")
 		return
 	}
+
+	// Return a JSON response
+	response := map[string]interface{}{
+		"success": true,
+		"message": "All VMs imported successfully",
+		"host_id": hostID,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
+	json.NewEncoder(w).Encode(response)
 }
 
 // ImportSelectedVMs imports selected discovered VMs by their domain UUIDs.
@@ -248,11 +275,21 @@ func (h *APIHandler) ImportSelectedVMs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.HostService.ImportSelectedVMs(hostID, req.DomainUUIDs); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		h.HandleError(w, err, "import_selected_vms")
 		return
 	}
 
+	// Return a JSON response
+	response := map[string]interface{}{
+		"success":        true,
+		"message":        "Selected VMs imported successfully",
+		"host_id":        hostID,
+		"imported_count": len(req.DomainUUIDs),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
+	json.NewEncoder(w).Encode(response)
 }
 
 // DeleteSelectedDiscoveredVMs removes selected discovered VMs from the database.
@@ -274,11 +311,21 @@ func (h *APIHandler) DeleteSelectedDiscoveredVMs(w http.ResponseWriter, r *http.
 	}
 
 	if err := h.HostService.DeleteSelectedDiscoveredVMs(hostID, req.DomainUUIDs); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		h.HandleError(w, err, "delete_discovered_vms")
 		return
 	}
 
+	// Return a JSON response
+	response := map[string]interface{}{
+		"success":       true,
+		"message":       "Selected discovered VMs deleted successfully",
+		"host_id":       hostID,
+		"deleted_count": len(req.DomainUUIDs),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
+	json.NewEncoder(w).Encode(response)
 }
 
 func (h *APIHandler) GetVMStats(w http.ResponseWriter, r *http.Request) {

@@ -25,7 +25,7 @@
           'px-3 py-1 rounded-full text-sm font-medium',
           getVMStateBadgeClass(vm.state)
         ]">
-          {{ vm.state.toLowerCase() }}
+          {{ (vm.state || 'UNKNOWN').toLowerCase() }}
         </span>
       </div>
     </div>
@@ -103,15 +103,15 @@
         <div class="space-y-3">
           <div class="flex justify-between">
             <span class="text-slate-400">CPU Cores:</span>
-            <span class="text-white font-medium">{{ vm.vcpuCount }}</span>
+            <span class="text-white font-medium">{{ vm.vcpuCount || 0 }}</span>
           </div>
           <div class="flex justify-between">
             <span class="text-slate-400">Memory:</span>
-            <span class="text-white font-medium">{{ formatBytes(vm.memoryMB * 1024 * 1024) }}</span>
+            <span class="text-white font-medium">{{ formatBytes((vm.memoryMB || 0) * 1024 * 1024) }}</span>
           </div>
           <div class="flex justify-between">
             <span class="text-slate-400">Disk Size:</span>
-            <span class="text-white font-medium">{{ vm.diskSizeGB }} GB</span>
+            <span class="text-white font-medium">{{ vm.diskSizeGB || 0 }} GB</span>
           </div>
           <div class="flex justify-between">
             <span class="text-slate-400">CPU Model:</span>
@@ -199,19 +199,19 @@
       
       <div v-if="vmStats" class="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div class="text-center p-3 bg-white/5 rounded-lg">
-          <div class="text-2xl font-bold text-primary-400">{{ vmStats.cpu_percent.toFixed(1) }}%</div>
+          <div class="text-2xl font-bold text-primary-400">{{ (vmStats.cpu_percent || 0).toFixed(1) }}%</div>
           <div class="text-sm text-slate-400">CPU Usage</div>
         </div>
         <div class="text-center p-3 bg-white/5 rounded-lg">
-          <div class="text-2xl font-bold text-accent-400">{{ formatBytes(vmStats.memory_mb * 1024 * 1024) }}</div>
+          <div class="text-2xl font-bold text-accent-400">{{ formatBytes((vmStats.memory_mb || 0) * 1024 * 1024) }}</div>
           <div class="text-sm text-slate-400">Memory Usage</div>
         </div>
         <div class="text-center p-3 bg-white/5 rounded-lg">
-          <div class="text-2xl font-bold text-secondary-400">{{ formatBytes(vmStats.disk_read_mb * 1024 * 1024) }}</div>
+          <div class="text-2xl font-bold text-secondary-400">{{ formatBytes((vmStats.disk_read_mb || 0) * 1024 * 1024) }}</div>
           <div class="text-sm text-slate-400">Disk Read</div>
         </div>
         <div class="text-center p-3 bg-white/5 rounded-lg">
-          <div class="text-2xl font-bold text-primary-400">{{ formatUptime(vmStats.uptime) }}</div>
+          <div class="text-2xl font-bold text-primary-400">{{ formatUptime(vmStats.uptime || 0) }}</div>
           <div class="text-sm text-slate-400">Uptime</div>
         </div>
       </div>

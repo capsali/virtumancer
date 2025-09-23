@@ -52,15 +52,15 @@
           }
         ]"
       >
-        <button
+        <router-link
+          :to="item.path"
           :class="[
-            'w-full flex items-center gap-3 p-3 text-left transition-all duration-300',
+            'w-full flex items-center gap-3 p-3 text-left transition-all duration-300 no-underline',
             {
               'text-white': item.active,
               'text-slate-300 hover:text-white': !item.active
             }
           ]"
-          @click="handleNavigation(item)"
         >
           <!-- Icon -->
           <div :class="[
@@ -95,14 +95,14 @@
           <!-- Active Indicator -->
           <div
             v-if="item.active"
-            class="absolute right-0 top-1/2 transform -translate-y-1/2 w-1 h-8 bg-gradient-to-b from-primary-400 to-accent-400 rounded-l-full"
+            class="absolute right-0 top-1/2 transform -translate-y-1/2 w-1 h-8 bg-gradient-to-b from-primary-400 to-accent-400 rounded-l-full pointer-events-none"
           ></div>
-        </button>
+        </router-link>
 
         <!-- Hover Glow Effect -->
         <div
           v-if="!item.active"
-          class="absolute inset-0 bg-gradient-to-r from-primary-600/0 via-primary-600/5 to-accent-600/0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl"
+          class="absolute inset-0 bg-gradient-to-r from-primary-600/0 via-primary-600/5 to-accent-600/0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl pointer-events-none"
         ></div>
       </div>
     </div>
@@ -207,6 +207,14 @@ const navigationItems = ref<NavigationItem[]>([
     path: '/network'
   },
   {
+    id: 'logs',
+    label: 'System Logs',
+    description: 'View application logs',
+    icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
+    active: false,
+    path: '/logs'
+  },
+  {
     id: 'error-demo',
     label: 'Error Demo',
     icon: 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.268 16.5c-.77.833.192 2.5 1.732 2.5z',
@@ -243,13 +251,5 @@ const toggleCollapse = () => {
   emit('update:collapsed', collapsed.value);
 };
 
-const handleNavigation = (item: NavigationItem) => {
-  // Navigate using Vue Router
-  router.push(item.path).catch(err => {
-    // Handle navigation errors gracefully
-    if (err.name !== 'NavigationDuplicated') {
-      console.error('Navigation error:', err);
-    }
-  });
-};
+// Navigation is now handled automatically by router-link
 </script>

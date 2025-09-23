@@ -200,6 +200,11 @@ const loadDashboardData = async () => {
       stoppedVMs: vmStore.vms.length - vmStore.activeVMs.length
     };
     dashboardStats.value.health.lastSync = new Date().toISOString();
+    
+    // Ensure recentActivitiesData has a fallback value
+    if (!recentActivitiesData.value) {
+      recentActivitiesData.value = [];
+    }
   } finally {
     isLoading.value = false;
   }
@@ -255,6 +260,11 @@ const stats = computed(() => {
 
 // Format recent activities for display with icon mapping
 const recentActivities = computed(() => {
+  // Add null check to prevent map error
+  if (!recentActivitiesData.value || !Array.isArray(recentActivitiesData.value)) {
+    return [];
+  }
+  
   return recentActivitiesData.value.map(activity => {
     let iconPath = '';
     let type = '';
