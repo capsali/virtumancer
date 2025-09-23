@@ -8,6 +8,7 @@ localhost.crt
 localhost.key
 
 # Frontend (inside web/ directory)
+web/_archived_src_20250923_195611
 web/node_modules
 web/dist
 web/coverage
