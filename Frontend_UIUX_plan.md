@@ -79,3 +79,49 @@ The UI will use a proven, three-pane layout optimized for information density an
     2.  **User Roles & Permissions**: Integrate a robust authentication system.
     3.  **High Availability (HA) Management**: A simplified UI for managing HA groups and policies.
     4.  **Backup & Restore**: A dedicated interface for scheduling and running backups.
+
+## 4. Network Topology Visualization
+
+### Overview
+The Network Topology View provides a comprehensive visualization of the virtualization infrastructure, offering both detailed grid layouts and interactive network diagrams. This view enables administrators to quickly understand the datacenter structure and navigate between resources.
+
+### Key Features
+
+#### Dual View Modes
+1. **Grid View**: 
+   - Host cards with detailed VM information
+   - Real-time statistics dashboard
+   - Status indicators and resource utilization
+   - Quick navigation to host/VM details
+
+2. **Network Diagram**: 
+   - Interactive SVG-based topology visualization
+   - Circular layout with logical host positioning
+   - VM nodes clustered around their hosts
+   - Color-coded status indicators
+   - Click-to-navigate functionality
+
+#### Visual Design Principles
+- **Glass Morphism Effects**: Modern translucent cards with backdrop blur
+- **Neon Glow States**: Dynamic glow effects based on resource status
+- **Status Color Coding**: Consistent green/red/yellow status indicators
+- **Smooth Animations**: Hover effects and state transitions
+- **Responsive Layout**: Adaptive design for all screen sizes
+
+#### Real-time Integration
+- **WebSocket Updates**: Automatic refresh based on infrastructure changes
+- **Live Status**: Real-time host and VM state visualization
+- **Performance Indicators**: Dynamic resource utilization display
+- **Error Handling**: Graceful degradation for disconnected hosts
+
+### Implementation Status
+✅ **Completed**: Full implementation with both grid and network views
+✅ **Tested**: Interactive navigation and real-time updates
+✅ **Documented**: Comprehensive component documentation available
+
+### Technical Details
+- **Component**: `NetworkTopologyView.vue`
+- **Store Integration**: Utilizes `hostStore` and `vmStore`
+- **API Dependencies**: Hosts and VMs REST endpoints
+- **Real-time**: WebSocket event handling for live updates
+- **Documentation**: See `docs/network-topology-view-documentation.md`

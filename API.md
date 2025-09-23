@@ -207,5 +207,41 @@ Messages are sent as JSON objects with type and payload fields.
         \]  
       }  
     }  
-  }  
+  }
+
+## **Network Topology Visualization**
+
+The Virtumancer frontend provides a comprehensive network topology view that visualizes the infrastructure in two modes:
+
+### **Grid View**
+- Displays hosts as cards with detailed VM information
+- Shows real-time statistics (total hosts, VMs, connected hosts, active VMs)
+- Interactive host and VM cards with navigation links
+- Status indicators with color coding
+
+### **Network Diagram View**
+- Interactive SVG-based network topology
+- Circular layout with hosts positioned around the center
+- VM nodes positioned around their respective hosts
+- Color-coded status indicators for hosts and VMs
+- Interactive elements with click navigation
+- Legend showing status color mappings
+
+### **Status Color Coding**
+- **Connected/Active**: Green (#10b981)
+- **Disconnected/Stopped**: Red (#ef4444)
+- **Paused/Warning**: Yellow (#f59e0b)
+- **Error**: Dark Red (#dc2626)
+
+### **Data Sources**
+The network topology view uses the following API endpoints:
+- `GET /api/v1/hosts` - Retrieves all hosts for topology display
+- `GET /api/v1/hosts/:id/vms` - Fetches VMs for each connected host
+
+### **Real-time Updates**
+The topology view automatically updates based on WebSocket events:
+- `hosts-changed` - Triggers refresh of host topology data
+- `vms-changed` - Updates VM display for the affected host
+
+For detailed implementation information, see `docs/network-topology-view-documentation.md`.  
 
