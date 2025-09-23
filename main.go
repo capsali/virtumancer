@@ -108,6 +108,11 @@ func main() {
 		// Console routes
 		r.Get("/hosts/{hostID}/vms/{vmName}/console", apiHandler.HandleVMConsole)
 		r.Get("/hosts/{hostID}/vms/{vmName}/spice", apiHandler.HandleSpiceConsole)
+
+		// Dashboard routes
+		r.Get("/dashboard/stats", apiHandler.GetDashboardStats)
+		r.Get("/dashboard/activity", apiHandler.GetDashboardActivity)
+		r.Get("/dashboard/overview", apiHandler.GetDashboardOverview)
 	})
 
 	// WebSocket route for UI updates

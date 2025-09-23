@@ -342,6 +342,64 @@ export class WebSocketManager {
   }
 }
 
+// Dashboard API methods
+export const dashboardApi = {
+  async getStats(): Promise<{
+    infrastructure: {
+      totalHosts: number;
+      connectedHosts: number;
+      totalVMs: number;
+      runningVMs: number;
+      stoppedVMs: number;
+    };
+    resources: {
+      totalMemoryGB: number;
+      usedMemoryGB: number;
+      memoryUtilization: number;
+      totalCPUs: number;
+      allocatedCPUs: number;
+      cpuUtilization: number;
+    };
+    health: {
+      systemStatus: string;
+      lastSync: string;
+      errors: number;
+      warnings: number;
+    };
+  }> {
+    return apiClient.get('/dashboard/stats');
+  },
+
+  async getActivity(): Promise<{
+    activities: Array<{
+      id: string;
+      type: 'vm_state_change' | 'host_connect' | 'host_disconnect' | 'system';
+      message: string;
+      hostId: string;
+      vmUuid?: string;
+      vmName?: string;
+      timestamp: string;
+      severity: 'info' | 'warning' | 'error';
+      details?: string;
+    }>;
+    pagination: {
+      total: number;
+      page: number;
+      limit: number;
+    };
+  }> {
+    return apiClient.get('/dashboard/activity');
+  },
+
+  async getOverview(): Promise<{
+    stats: any;
+    activities: any[];
+    timestamp: string;
+  }> {
+    return apiClient.get('/dashboard/overview');
+  }
+};
+
 // Export singleton WebSocket manager
 export const wsManager = new WebSocketManager();
 

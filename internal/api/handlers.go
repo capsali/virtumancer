@@ -2,7 +2,12 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"strconv"
+	"time"
+
+	log "github.com/capsali/virtumancer/internal/logging"
 
 	"github.com/capsali/virtumancer/internal/console"
 	"github.com/capsali/virtumancer/internal/libvirt"
@@ -387,4 +392,73 @@ func (h *APIHandler) UpdateVMState(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// --- Dashboard Endpoints ---
+
+// GetDashboardStats returns aggregated system-wide statistics.
+func (h *APIHandler) GetDashboardStats(w http.ResponseWriter, r *http.Request) {
+	stats, err := h.HostService.GetDashboardStats()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(stats)
+}
+
+// GetDashboardActivity returns recent system activity events.
+func (h *APIHandler) GetDashboardActivity(w http.ResponseWriter, r *http.Request) {
+	// Get limit from query parameters, default to 10
+	limitStr := r.URL.Query().Get("limit")
+	limit := 10
+	if limitStr != "" {
+		if parsedLimit, err := strconv.Atoi(limitStr); err == nil && parsedLimit > 0 {
+			limit = parsedLimit
+		}
+	}
+
+	activities, err := h.HostService.GetDashboardActivity(limit)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	response := map[string]interface{}{
+		"activities": activities,
+		"pagination": map[string]interface{}{
+			"total": len(activities),
+			"page":  1,
+			"limit": limit,
+		},
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+// GetDashboardOverview returns combined dashboard data for initial page load.
+func (h *APIHandler) GetDashboardOverview(w http.ResponseWriter, r *http.Request) {
+	stats, err := h.HostService.GetDashboardStats()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to get stats: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	activities, err := h.HostService.GetDashboardActivity(5)
+	if err != nil {
+		// Don't fail the whole request for activities, just log and continue
+		log.Printf("Warning: failed to get activities: %v", err)
+		activities = []services.ActivityEntry{} // empty array
+	}
+
+	response := map[string]interface{}{
+		"stats":      stats,
+		"activities": activities,
+		"timestamp":  time.Now().Format(time.RFC3339),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }

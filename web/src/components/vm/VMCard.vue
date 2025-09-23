@@ -1,13 +1,14 @@
 <template>
   <FCard
     :class="[
-      'transition-all duration-300',
+      'transition-all duration-300 cursor-pointer',
       vm.state === 'ACTIVE' ? 'border-green-400/30' : 
       vm.state === 'ERROR' ? 'border-red-400/30' : 'border-white/10'
     ]"
     :border-glow="vm.state === 'ACTIVE'"
     :glow-color="vm.state === 'ACTIVE' ? 'accent' : 'primary'"
     interactive
+    @click="viewDetails"
   >
     <div class="space-y-4">
       <!-- VM Header -->
@@ -63,7 +64,7 @@
       </div>
 
       <!-- VM Actions -->
-      <div class="flex gap-2 pt-2 border-t border-white/10">
+      <div class="flex gap-2 pt-2 border-t border-white/10" @click.stop>
         <!-- Power Controls -->
         <FButton
           v-if="vm.state === 'STOPPED' || vm.state === 'PAUSED'"
@@ -175,6 +176,7 @@
 
 <script setup lang="ts">
 import { ref, defineEmits } from 'vue';
+import { useRouter } from 'vue-router';
 import FCard from '@/components/ui/FCard.vue';
 import FButton from '@/components/ui/FButton.vue';
 import type { VirtualMachine } from '@/types';
@@ -185,6 +187,7 @@ interface Props {
 }
 
 const props = defineProps<Props>();
+const router = useRouter();
 
 const emit = defineEmits<{
   action: [action: string, hostId: string, vmName: string];
@@ -228,18 +231,14 @@ const handleAdvancedAction = (action: string): void => {
 
 const openConsole = (): void => {
   showAdvanced.value = false;
-  // Open console in new window
-  const baseUrl = import.meta.env.DEV 
-    ? window.location.origin  // Use current origin with proxy in development
-    : 'https://localhost:8888';  // Direct connection in production
-  const consoleUrl = `${baseUrl}/hosts/${props.hostId}/vms/${props.vm.name}/console`;
-  window.open(consoleUrl, '_blank', 'width=800,height=600');
+  // Navigate to SPICE console route
+  router.push(`/spice/${props.hostId}/${props.vm.name}`);
 };
 
 const viewDetails = (): void => {
   showAdvanced.value = false;
   // Navigate to VM details page
-  console.log('View VM details:', props.vm);
+  router.push(`/hosts/${props.hostId}/vms/${props.vm.name}`);
 };
 
 // Close dropdown when clicking outside

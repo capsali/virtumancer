@@ -266,7 +266,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { useVMStore } from '@/stores/vmStore';
 import { useUIStore } from '@/stores/uiStore';
 import FCard from '@/components/ui/FCard.vue';
@@ -280,6 +280,7 @@ interface Props {
 
 const props = defineProps<Props>();
 const route = useRoute();
+const router = useRouter();
 
 const vmStore = useVMStore();
 const uiStore = useUIStore();
@@ -372,11 +373,8 @@ const handleVMAction = async (action: string): Promise<void> => {
 const openConsole = (): void => {
   if (!vm.value) return;
   
-  const baseUrl = import.meta.env.DEV 
-    ? window.location.origin  // Use current origin with proxy in development
-    : 'https://localhost:8888';  // Direct connection in production
-  const consoleUrl = `${baseUrl}/hosts/${props.hostId}/vms/${vm.value.name}/console`;
-  window.open(consoleUrl, '_blank', 'width=800,height=600');
+  // Navigate to SPICE console route
+  router.push(`/spice/${props.hostId}/${vm.value.name}`);
 };
 
 // Utility functions

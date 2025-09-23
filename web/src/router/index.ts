@@ -20,6 +20,12 @@ const routes: RouteRecordRaw[] = [
     props: true
   },
   {
+    path: '/spice/:hostId/:vmName',
+    name: 'spice-console',
+    component: () => import('@/views/SpiceView.vue'),
+    props: true
+  },
+  {
     path: '/network',
     name: 'network-topology',
     component: () => import('@/views/NetworkTopologyView.vue')

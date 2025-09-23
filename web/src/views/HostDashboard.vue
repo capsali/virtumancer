@@ -166,9 +166,22 @@
 
         <!-- VM Lists -->
         <div v-if="activeVMTab === 'managed'" class="space-y-4">
-          <h3 class="text-lg font-semibold text-white">Managed VMs</h3>
+          <div class="flex items-center justify-between">
+            <h3 class="text-lg font-semibold text-white">Managed VMs</h3>
+            <FButton
+              v-if="selectedHost && selectedHost.state === 'CONNECTED'"
+              variant="primary"
+              @click="openCreateVMModal"
+              class="flex items-center gap-2"
+            >
+              ➕ Create VM
+            </FButton>
+          </div>
           <div v-if="managedVMs.length === 0" class="text-center py-8 text-slate-400">
-            No managed VMs found. Import some VMs to get started.
+            <p>No managed VMs found.</p>
+            <p v-if="selectedHost && selectedHost.state === 'CONNECTED'" class="mt-2">
+              <FButton variant="primary" @click="openCreateVMModal">Create your first VM</FButton>
+            </p>
           </div>
           <VMCard
             v-for="vm in managedVMs"
@@ -202,13 +215,22 @@
       @submit="handleAddHost"
     />
 
+    <!-- Create VM Modal -->
+    <CreateVMModal
+      v-if="selectedHost"
+      :open="modals.createVM"
+      :host-id="selectedHost.id"
+      @close="closeCreateVMModal"
+      @vm-created="handleVMCreated"
+    />
+
     <!-- Host Settings Modal -->
     <HostSettingsModal
       :open="modals.hostSettings"
-      :host="selectedHostForSettings"
+      :host-id="selectedHostForSettings?.id"
       @close="closeHostModal"
-      @save="handleSaveHost"
-      @delete="handleDeleteHost"
+      @host-updated="handleHostUpdated"
+      @host-deleted="handleHostDeleted"
     />
   </div>
 </template>
@@ -221,6 +243,7 @@ import FButton from '@/components/ui/FButton.vue';
 import VMCard from '@/components/vm/VMCard.vue';
 import DiscoveredVMCard from '@/components/vm/DiscoveredVMCard.vue';
 import AddHostModal from '@/components/modals/AddHostModal.vue';
+import CreateVMModal from '@/components/modals/CreateVMModal.vue';
 import HostSettingsModal from '@/components/modals/HostSettingsModal.vue';
 import type { Host, VirtualMachine, DiscoveredVM } from '@/types';
 
@@ -236,6 +259,7 @@ const selectedHostForSettings = ref<Host | null>(null);
 
 const modals = ref({
   addHost: false,
+  createVM: false,
   hostSettings: false
 });
 
@@ -357,11 +381,26 @@ const handleVMAction = async (action: string, hostId: string, vmName: string): P
       case 'reboot':
         await vmStore.restartVM(hostId, vmName);
         break;
-      // Add more actions as needed
+      case 'forceOff':
+        await vmStore.forceOffVM(hostId, vmName);
+        break;
+      case 'forceReset':
+        await vmStore.forceResetVM(hostId, vmName);
+        break;
+      case 'sync':
+        await vmStore.syncVM(hostId, vmName);
+        break;
+      case 'rebuild':
+        await vmStore.rebuildVM(hostId, vmName);
+        break;
+      default:
+        throw new Error(`Unknown VM action: ${action}`);
     }
     uiStore.addToast(`VM ${action} initiated`, 'success');
   } catch (error) {
-    uiStore.addToast(`Failed to ${action} VM`, 'error');
+    const errorMessage = error instanceof Error ? error.message : `Failed to ${action} VM`;
+    uiStore.addToast(errorMessage, 'error');
+    console.error('VM action error:', error);
   }
 };
 
@@ -372,6 +411,14 @@ const openAddHostModal = (): void => {
 
 const closeAddHostModal = (): void => {
   modals.value.addHost = false;
+};
+
+const openCreateVMModal = (): void => {
+  modals.value.createVM = true;
+};
+
+const closeCreateVMModal = (): void => {
+  modals.value.createVM = false;
 };
 
 const openHostModal = (host: Host): void => {
@@ -394,32 +441,41 @@ const handleAddHost = async (hostData: Omit<Host, 'id'>): Promise<void> => {
   }
 };
 
-const handleSaveHost = async (hostData: Partial<Host>): Promise<void> => {
-  if (!selectedHostForSettings.value) return;
-  
+const handleVMCreated = async (vm: VirtualMachine): Promise<void> => {
   try {
-    await hostStore.updateHost(selectedHostForSettings.value.id, hostData);
-    uiStore.addToast('Host updated successfully', 'success');
-    closeHostModal();
+    uiStore.addToast(`VM "${vm.name}" created successfully`, 'success');
+    closeCreateVMModal();
+    // Refresh the VM list for the current host
+    if (selectedHost.value) {
+      await vmStore.fetchVMs(selectedHost.value.id);
+    }
   } catch (error) {
-    uiStore.addToast('Failed to update host', 'error');
+    uiStore.addToast('Failed to update VM list', 'error');
   }
 };
 
-const handleDeleteHost = async (): Promise<void> => {
-  if (!selectedHostForSettings.value) return;
-  
+const handleHostUpdated = async (host: Host): Promise<void> => {
   try {
-    await hostStore.deleteHost(selectedHostForSettings.value.id);
-    uiStore.addToast('Host deleted successfully', 'success');
+    uiStore.addToast('Host settings updated successfully', 'success');
     closeHostModal();
-    
-    // Clear selection if this was the selected host
-    if (selectedHostId.value === selectedHostForSettings.value.id) {
+    // Refresh host data
+    await hostStore.fetchHosts();
+  } catch (error) {
+    uiStore.addToast('Failed to refresh host data', 'error');
+  }
+};
+
+const handleHostDeleted = async (hostId: string): Promise<void> => {
+  try {
+    uiStore.addToast('Host removed successfully', 'success');
+    closeHostModal();
+    // Refresh host data and clear selection if needed
+    await hostStore.fetchHosts();
+    if (selectedHostId.value === hostId) {
       selectedHostId.value = null;
     }
   } catch (error) {
-    uiStore.addToast('Failed to delete host', 'error');
+    uiStore.addToast('Failed to refresh host data', 'error');
   }
 };
 

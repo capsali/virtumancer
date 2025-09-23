@@ -16,7 +16,10 @@
         :glow-color="stat.glowColor"
         interactive
       >
-        <div class="flex items-center gap-4">
+        <div v-if="isLoading" class="flex items-center justify-center h-20">
+          <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500"></div>
+        </div>
+        <div v-else class="flex items-center gap-4">
           <div :class="[
             'w-12 h-12 rounded-xl flex items-center justify-center',
             stat.iconBg
@@ -119,66 +122,186 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import FCard from '@/components/ui/FCard.vue';
 import FButton from '@/components/ui/FButton.vue';
 import AddHostModal from '@/components/modals/AddHostModal.vue';
-import { useAppStore, useHostStore, useVMStore } from '@/stores';
+import { useAppStore, useHostStore, useVMStore, useUIStore } from '@/stores';
+import { dashboardApi } from '@/services/api';
 
 const router = useRouter();
 const hostStore = useHostStore();
 const vmStore = useVMStore();
 const appStore = useAppStore();
+const uiStore = useUIStore();
 
 // Modal state
 const showAddHostModal = ref(false);
 
-// Dashboard statistics
-const stats = computed(() => [
-  {
-    id: 'vms',
-    label: 'Virtual Machines',
-    value: vmStore.vms.length.toString(),
-    change: `${vmStore.activeVMs.length} running`,
-    trend: 'up' as const,
-    iconBg: 'bg-gradient-to-br from-primary-500 to-primary-600',
-    iconPath: 'M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z',
-    glowColor: 'primary' as const
+// Dashboard data
+const dashboardStats = ref({
+  infrastructure: {
+    totalHosts: 0,
+    connectedHosts: 0,
+    totalVMs: 0,
+    runningVMs: 0,
+    stoppedVMs: 0
   },
-  {
-    id: 'hosts',
-    label: 'Active Hosts',
-    value: hostStore.connectedHosts.length.toString(),
-    change: `${hostStore.hosts.length} total`,
-    trend: hostStore.connectedHosts.length > 0 ? 'up' : 'down' as const,
-    iconBg: 'bg-gradient-to-br from-accent-500 to-accent-600',
-    iconPath: 'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10',
-    glowColor: 'accent' as const
+  resources: {
+    totalMemoryGB: 0,
+    usedMemoryGB: 0,
+    memoryUtilization: 0,
+    totalCPUs: 0,
+    allocatedCPUs: 0,
+    cpuUtilization: 0
   },
-  {
-    id: 'system',
-    label: 'System Status',
-    value: appStore.connectionStatus === 'connected' ? 'Online' : 'Offline',
-    change: appStore.healthStatus,
-    trend: appStore.healthStatus === 'healthy' ? 'up' : 'down' as const,
-    iconBg: 'bg-gradient-to-br from-neon-purple to-neon-pink',
-    iconPath: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z',
-    glowColor: 'neon-purple' as const
-  },
-  {
-    id: 'sync',
-    label: 'Last Sync',
-    value: appStore.lastSyncTime ? new Date(appStore.lastSyncTime).toLocaleTimeString() : 'Never',
-    change: appStore.isSyncing ? 'Syncing...' : 'Up to date',
-    trend: 'stable' as const,
-    iconBg: 'bg-gradient-to-br from-green-500 to-green-600',
-    iconPath: 'M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15',
-    glowColor: 'primary' as const
+  health: {
+    systemStatus: 'healthy',
+    lastSync: new Date().toISOString(),
+    errors: 0,
+    warnings: 0
   }
-]);
+});
 
-// Quick action buttons
+const recentActivitiesData = ref<Array<{
+  id: string;
+  type: 'vm_state_change' | 'host_connect' | 'host_disconnect' | 'system';
+  message: string;
+  hostId: string;
+  vmUuid?: string;
+  vmName?: string;
+  timestamp: string;
+  severity: 'info' | 'warning' | 'error';
+  details?: string;
+}>>([]);
+
+const isLoading = ref(true);
+
+// Load dashboard data using the new backend endpoints
+const loadDashboardData = async () => {
+  isLoading.value = true;
+  try {
+    const [statsResponse, activityResponse] = await Promise.all([
+      dashboardApi.getStats(),
+      dashboardApi.getActivity()
+    ]);
+    
+    dashboardStats.value = statsResponse;
+    recentActivitiesData.value = activityResponse.activities;
+  } catch (error) {
+    console.error('Failed to load dashboard data:', error);
+    // Fallback to store data if API fails
+    dashboardStats.value.infrastructure = {
+      totalHosts: hostStore.hosts.length,
+      connectedHosts: hostStore.connectedHosts.length,
+      totalVMs: vmStore.vms.length,
+      runningVMs: vmStore.activeVMs.length,
+      stoppedVMs: vmStore.vms.length - vmStore.activeVMs.length
+    };
+    dashboardStats.value.health.lastSync = new Date().toISOString();
+  } finally {
+    isLoading.value = false;
+  }
+};
+
+// Dashboard statistics computed from real data
+const stats = computed(() => {
+  const data = dashboardStats.value;
+  
+  return [
+    {
+      id: 'vms',
+      label: 'Virtual Machines',
+      value: data.infrastructure.totalVMs.toString(),
+      change: `${data.infrastructure.runningVMs} running`,
+      trend: data.infrastructure.runningVMs > 0 ? 'up' : 'stable' as const,
+      iconBg: 'bg-gradient-to-br from-primary-500 to-primary-600',
+      iconPath: 'M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z',
+      glowColor: 'primary' as const
+    },
+    {
+      id: 'hosts',
+      label: 'Active Hosts',
+      value: data.infrastructure.connectedHosts.toString(),
+      change: `${data.infrastructure.totalHosts} total`,
+      trend: data.infrastructure.connectedHosts > 0 ? 'up' : 'down' as const,
+      iconBg: 'bg-gradient-to-br from-accent-500 to-accent-600',
+      iconPath: 'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10',
+      glowColor: 'accent' as const
+    },
+    {
+      id: 'memory',
+      label: 'Memory Usage',
+      value: data.resources.memoryUtilization > 0 ? `${Math.round(data.resources.memoryUtilization)}%` : 'N/A',
+      change: data.resources.totalMemoryGB > 0 ? `${Math.round(data.resources.usedMemoryGB)} GB used` : 'No data',
+      trend: data.resources.memoryUtilization > 80 ? 'down' : 'stable' as const,
+      iconBg: 'bg-gradient-to-br from-neon-purple to-neon-pink',
+      iconPath: 'M8 16l2.879-2.879m0 0a3 3 0 104.243-4.242 3 3 0 00-4.243 4.242zM21 12a9 9 0 11-18 0 9 9 0 0118 0z',
+      glowColor: 'neon-purple' as const
+    },
+    {
+      id: 'cpu',
+      label: 'CPU Allocation',
+      value: data.resources.allocatedCPUs.toString(),
+      change: `${data.resources.totalCPUs} total CPUs`,
+      trend: 'stable' as const,
+      iconBg: 'bg-gradient-to-br from-green-500 to-green-600',
+      iconPath: 'M13 10V3L4 14h7v7l9-11h-7z',
+      glowColor: 'primary' as const
+    }
+  ];
+});
+
+// Format recent activities for display with icon mapping
+const recentActivities = computed(() => {
+  return recentActivitiesData.value.map(activity => {
+    let iconPath = '';
+    let type = '';
+    
+    // Map activity types to icons and display types
+    switch (activity.type) {
+      case 'vm_state_change':
+        iconPath = 'M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z';
+        type = 'vm';
+        break;
+      case 'host_connect':
+      case 'host_disconnect':
+        iconPath = 'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10';
+        type = 'host';
+        break;
+      case 'system':
+      default:
+        iconPath = 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z';
+        type = 'system';
+        break;
+    }
+    
+    return {
+      ...activity,
+      iconPath,
+      type,
+      title: activity.message, // Use message as title for backward compatibility
+      description: activity.details || `Activity on host ${activity.hostId}`,
+      timestamp: formatTimestamp(activity.timestamp)
+    };
+  });
+});
+
+// Utility function to format timestamps
+const formatTimestamp = (timestamp: string) => {
+  const date = new Date(timestamp);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins} min ago`;
+  if (diffMins < 1440) return `${Math.floor(diffMins / 60)} hr ago`;
+  return `${Math.floor(diffMins / 1440)} day ago`;
+};
+
+// Quick action buttons - now with real functionality
 const quickActions = ref([
   {
     id: 'hosts',
@@ -226,49 +349,12 @@ const quickActions = ref([
     buttonText: 'View Metrics',
     glowColor: 'neon-purple' as const,
     action: () => {
-      // TODO: Navigate to monitoring dashboard
-      console.log('Monitoring dashboard would open here');
+      // Refresh dashboard data to show latest metrics
+      loadDashboardData();
+      uiStore.addToast('Dashboard data refreshed', 'success', 3000);
     }
   }
 ]);
-
-// Recent activity (mock data for now)
-const recentActivities = computed(() => {
-  interface Activity {
-    type: string;
-    title: string;
-    description: string;
-    timestamp: string;
-    iconPath: string;
-  }
-  
-  const activities: Activity[] = [];
-  
-  // Add VM activities
-  vmStore.vms.slice(0, 3).forEach(vm => {
-    const host = hostStore.hosts.find(h => h.id === vm.hostId);
-    activities.push({
-      type: 'vm',
-      title: `${vm.name} is ${vm.state}`,
-      description: `Virtual machine on ${host?.uri || 'unknown host'}`,
-      timestamp: 'Just now',
-      iconPath: 'M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z'
-    });
-  });
-  
-  // Add host activities
-  hostStore.connectedHosts.slice(0, 2).forEach(host => {
-    activities.push({
-      type: 'host',
-      title: `${host.uri} connected`,
-      description: `Hypervisor host is online and ready`,
-      timestamp: '5 min ago',
-      iconPath: 'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10'
-    });
-  });
-  
-  return activities.slice(0, 5); // Show only latest 5 activities
-});
 
 const handleActionClick = (action: any) => {
   if (action.action) {
@@ -278,9 +364,16 @@ const handleActionClick = (action: any) => {
 
 const handleHostAdded = (host: any) => {
   console.log('Host added successfully:', host);
+  // Refresh dashboard data
+  loadDashboardData();
   // Optionally navigate to the new host
   if (host?.id) {
     router.push(`/hosts/${host.id}`);
   }
 };
+
+// Load data on component mount
+onMounted(() => {
+  loadDashboardData();
+});
 </script>
