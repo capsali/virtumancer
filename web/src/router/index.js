@@ -3,6 +3,7 @@ import HomeView from '../views/HomeView.vue'
 import HostDashboard from '@/components/views/HostDashboard.vue'
 import VmView from '@/components/views/VmView.vue'
 import Datacenter from '@/components/views/Datacenter.vue'
+import NetworkView from '@/components/views/NetworkView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -27,6 +28,11 @@ const router = createRouter({
           name: 'vm-view',
           component: VmView,
           props: true,
+        },
+        {
+          path: 'network',
+          name: 'network',
+          component: NetworkView,
         },
       ],
     },
