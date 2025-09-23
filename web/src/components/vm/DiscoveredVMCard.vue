@@ -28,7 +28,7 @@
       <div class="grid grid-cols-2 gap-4 text-sm">
         <div>
           <span class="text-slate-400">UUID:</span>
-          <span class="text-white ml-2 font-mono text-xs">{{ vm.uuid.slice(0, 8) }}...</span>
+          <span class="text-white ml-2 font-mono text-xs">{{ vm.domain_uuid.slice(0, 8) }}...</span>
         </div>
         <div>
           <span class="text-slate-400">State:</span>

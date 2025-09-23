@@ -194,15 +194,14 @@
 
         <div v-if="activeVMTab === 'discovered'" class="space-y-4">
           <h3 class="text-lg font-semibold text-white">Discovered VMs</h3>
-          <div v-if="discoveredVMs.length === 0" class="text-center py-8 text-slate-400">
-            No discovered VMs found.
-          </div>
-          <DiscoveredVMCard
-            v-for="vm in discoveredVMs"
-            :key="vm.uuid"
-            :vm="vm"
+          <DiscoveredVMBulkManager
+            :vms="[...discoveredVMs]"
             :host-id="selectedHost.id"
-            @import="importVM"
+            :importing="!!loading.hostImportAll"
+            :deleting="false"
+            @bulk-import="handleBulkImport"
+            @bulk-delete="handleBulkDelete"
+            @single-import="importVM"
           />
         </div>
       </div>
@@ -242,6 +241,7 @@ import FCard from '@/components/ui/FCard.vue';
 import FButton from '@/components/ui/FButton.vue';
 import VMCard from '@/components/vm/VMCard.vue';
 import DiscoveredVMCard from '@/components/vm/DiscoveredVMCard.vue';
+import DiscoveredVMBulkManager from '@/components/vm/DiscoveredVMBulkManager.vue';
 import AddHostModal from '@/components/modals/AddHostModal.vue';
 import CreateVMModal from '@/components/modals/CreateVMModal.vue';
 import HostSettingsModal from '@/components/modals/HostSettingsModal.vue';
@@ -366,6 +366,35 @@ const importVM = async (hostId: string, vmName: string): Promise<void> => {
     ]);
   } catch (error) {
     uiStore.addToast(`Failed to import VM ${vmName}`, 'error');
+  }
+};
+
+const handleBulkImport = async (domainUUIDs: string[]): Promise<void> => {
+  if (!selectedHost.value) return;
+  
+  try {
+    await hostStore.importSelectedVMs(selectedHost.value.id, domainUUIDs);
+    uiStore.addToast(`${domainUUIDs.length} VMs imported successfully`, 'success');
+    // Refresh both lists
+    await Promise.all([
+      vmStore.fetchVMs(selectedHost.value.id),
+      hostStore.refreshDiscoveredVMs(selectedHost.value.id)
+    ]);
+  } catch (error) {
+    uiStore.addToast(`Failed to import selected VMs`, 'error');
+  }
+};
+
+const handleBulkDelete = async (domainUUIDs: string[]): Promise<void> => {
+  if (!selectedHost.value) return;
+  
+  try {
+    await hostStore.deleteSelectedDiscoveredVMs(selectedHost.value.id, domainUUIDs);
+    uiStore.addToast(`${domainUUIDs.length} discovered VMs removed`, 'success');
+    // Refresh discovered VMs list
+    await hostStore.refreshDiscoveredVMs(selectedHost.value.id);
+  } catch (error) {
+    uiStore.addToast(`Failed to remove selected VMs`, 'error');
   }
 };
 

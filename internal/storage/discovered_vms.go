@@ -64,3 +64,19 @@ func DeleteDiscoveredVMByDomainUUID(db *gorm.DB, hostID, domainUUID string) erro
 func MarkDiscoveredVMImported(db *gorm.DB, hostID, domainUUID string) error {
 	return db.Model(&DiscoveredVM{}).Where("host_id = ? AND domain_uuid = ?", hostID, domainUUID).Updates(map[string]interface{}{"imported": true}).Error
 }
+
+// BulkDeleteDiscoveredVMs removes multiple discovered VM records by their domain UUIDs.
+func BulkDeleteDiscoveredVMs(db *gorm.DB, hostID string, domainUUIDs []string) error {
+	if len(domainUUIDs) == 0 {
+		return nil
+	}
+	return db.Where("host_id = ? AND domain_uuid IN ?", hostID, domainUUIDs).Delete(&DiscoveredVM{}).Error
+}
+
+// BulkMarkDiscoveredVMsImported marks multiple discovered VMs as imported.
+func BulkMarkDiscoveredVMsImported(db *gorm.DB, hostID string, domainUUIDs []string) error {
+	if len(domainUUIDs) == 0 {
+		return nil
+	}
+	return db.Model(&DiscoveredVM{}).Where("host_id = ? AND domain_uuid IN ?", hostID, domainUUIDs).Updates(map[string]interface{}{"imported": true}).Error
+}

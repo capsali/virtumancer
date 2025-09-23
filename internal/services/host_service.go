@@ -171,6 +171,8 @@ type HostServiceProvider interface {
 	ListDiscoveredVMs(hostID string) ([]libvirt.VMInfo, error)
 	ImportVM(hostID, vmName string) error
 	ImportAllVMs(hostID string) error
+	ImportSelectedVMs(hostID string, domainUUIDs []string) error
+	DeleteSelectedDiscoveredVMs(hostID string, domainUUIDs []string) error
 	SyncVMFromLibvirt(hostID, vmName string) error
 	RebuildVMFromDB(hostID, vmName string) error
 	StartVM(hostID, vmName string) error
@@ -1073,6 +1075,64 @@ func (s *HostService) ImportAllVMs(hostID string) error {
 		s.broadcastVMsChanged(hostID)
 		s.broadcastDiscoveredVMsChanged(hostID)
 	}
+	return nil
+}
+
+// ImportSelectedVMs imports a list of discovered VMs by their domain UUIDs.
+func (s *HostService) ImportSelectedVMs(hostID string, domainUUIDs []string) error {
+	if len(domainUUIDs) == 0 {
+		return nil
+	}
+
+	// Get discovered VMs by UUIDs
+	var discoveredVMs []storage.DiscoveredVM
+	if err := s.db.Where("host_id = ? AND domain_uuid IN ? AND imported = 0", hostID, domainUUIDs).Find(&discoveredVMs).Error; err != nil {
+		return fmt.Errorf("failed to get selected discovered VMs: %w", err)
+	}
+
+	anyImported := false
+	importedUUIDs := make([]string, 0, len(discoveredVMs))
+
+	for _, discVM := range discoveredVMs {
+		// Acquire mutex for each individual import to reduce contention
+		mu, _ := s.syncMutex.LoadOrStore(hostID, &sync.Mutex{})
+		mu.(*sync.Mutex).Lock()
+		changed, ierr := s.ingestVMFromLibvirt(hostID, discVM.Name)
+		mu.(*sync.Mutex).Unlock()
+
+		if ierr != nil {
+			log.Verbosef("ImportSelectedVMs: failed to import VM %s on host %s: %v", discVM.Name, hostID, ierr)
+		} else if changed {
+			anyImported = true
+			importedUUIDs = append(importedUUIDs, discVM.DomainUUID)
+		}
+	}
+
+	// Mark imported VMs in bulk
+	if len(importedUUIDs) > 0 {
+		if err := storage.BulkMarkDiscoveredVMsImported(s.db, hostID, importedUUIDs); err != nil {
+			log.Verbosef("Warning: failed to mark selected discovered VMs as imported: %v", err)
+		}
+	}
+
+	if anyImported {
+		s.broadcastVMsChanged(hostID)
+		s.broadcastDiscoveredVMsChanged(hostID)
+	}
+	return nil
+}
+
+// DeleteSelectedDiscoveredVMs removes discovered VMs from the database by their domain UUIDs.
+func (s *HostService) DeleteSelectedDiscoveredVMs(hostID string, domainUUIDs []string) error {
+	if len(domainUUIDs) == 0 {
+		return nil
+	}
+
+	if err := storage.BulkDeleteDiscoveredVMs(s.db, hostID, domainUUIDs); err != nil {
+		return fmt.Errorf("failed to delete selected discovered VMs: %w", err)
+	}
+
+	s.broadcastDiscoveredVMsChanged(hostID)
 	return nil
 }
 

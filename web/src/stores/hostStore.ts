@@ -236,6 +236,32 @@ export const useHostStore = defineStore('hosts', () => {
     }
   };
 
+  const importSelectedVMs = async (hostId: string, domainUUIDs: string[]): Promise<void> => {
+    clearError('importSelectedVMs');
+    
+    try {
+      await hostApi.importSelectedVMs(hostId, domainUUIDs);
+      // Refresh discovered VMs after import
+      await refreshDiscoveredVMs(hostId);
+    } catch (error) {
+      handleError('importSelectedVMs', error);
+      throw error;
+    }
+  };
+
+  const deleteSelectedDiscoveredVMs = async (hostId: string, domainUUIDs: string[]): Promise<void> => {
+    clearError('deleteSelectedDiscoveredVMs');
+    
+    try {
+      await hostApi.deleteSelectedDiscoveredVMs(hostId, domainUUIDs);
+      // Refresh discovered VMs after deletion
+      await refreshDiscoveredVMs(hostId);
+    } catch (error) {
+      handleError('deleteSelectedDiscoveredVMs', error);
+      throw error;
+    }
+  };
+
   // Helper functions
   const selectHost = (id: string | null): void => {
     selectedHostId.value = id;
@@ -351,6 +377,8 @@ export const useHostStore = defineStore('hosts', () => {
     fetchHostStats,
     refreshDiscoveredVMs,
     importAllVMs,
+    importSelectedVMs,
+    deleteSelectedDiscoveredVMs,
     selectHost,
     getHostById,
     clearError,

@@ -106,8 +106,11 @@ class ApiClient {
     });
   }
 
-  async delete<T>(endpoint: string): Promise<T> {
-    return this.request<T>(endpoint, { method: 'DELETE' });
+  async delete<T>(endpoint: string, data?: any): Promise<T> {
+    return this.request<T>(endpoint, { 
+      method: 'DELETE',
+      body: data ? JSON.stringify(data) : undefined,
+    });
   }
 
   async patch<T>(endpoint: string, data?: any): Promise<T> {
@@ -165,6 +168,14 @@ export const hostApi = {
 
   async importAllVMs(id: string): Promise<void> {
     return apiClient.post(`/hosts/${id}/vms/import-all`);
+  },
+
+  async importSelectedVMs(id: string, domainUUIDs: string[]): Promise<void> {
+    return apiClient.post(`/hosts/${id}/vms/import-selected`, { domain_uuids: domainUUIDs });
+  },
+
+  async deleteSelectedDiscoveredVMs(id: string, domainUUIDs: string[]): Promise<void> {
+    return apiClient.delete(`/hosts/${id}/discovered-vms`, { domain_uuids: domainUUIDs });
   },
 
   async getPorts(id: string): Promise<any[]> {

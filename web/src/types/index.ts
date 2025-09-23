@@ -35,12 +35,17 @@ export interface VirtualMachine {
 export interface DiscoveredVM {
   uuid: string;
   name: string;
-  state: VMState;
-  vcpuCount: number;
-  memoryMB: number;
-  // Additional fields from libvirt discovery
+  domain_uuid: string;
+  host_id: string;
+  info_json?: string;
+  last_seen_at: string;
+  imported: boolean;
+  // Additional computed fields
+  state?: VMState;
+  vcpuCount?: number;
+  memoryMB?: number;
   osType?: string;
-  isActive: boolean;
+  isActive?: boolean;
 }
 
 export interface HostStats {

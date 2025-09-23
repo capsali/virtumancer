@@ -1,6 +1,64 @@
 # **Virtumancer API Documentation**
 
-Virtumancer exposes a RESTful HTTP API for management operations and a WebSocket API for real-time updates and monitoring.
+Virtumancer exposes a RESTful HTTP API for management operations and a WebSocket API for real-  * **Valid actions**: start, shutdown, reboot, destroy (force off), reset (force reset).  
+* **Response**: 204 No Content
+
+### **Discovered VM Management**
+
+#### **GET /api/v1/hosts/:hostId/discovered-vms**
+
+* **Description**: Retrieves a list of discovered VMs on a host that are not yet imported into Virtumancer management.  
+* **URL Parameters**:  
+  * hostId (string): The ID of the host.  
+* **Response**: 200 OK  
+  \[  
+    {  
+      "domain_uuid": "f47ac10b-58cc-4372-a567-0e02b2c3d479",  
+      "name": "discovered-vm-01",  
+      "host_id": "kvmsrv",  
+      "last_seen_at": "2023-10-27T12:00:00Z",  
+      "imported": false  
+    }  
+  \]
+
+#### **POST /api/v1/hosts/:hostId/vms/:vmName/import**
+
+* **Description**: Imports a single discovered VM into Virtumancer management.  
+* **URL Parameters**:  
+  * hostId (string): The ID of the host.  
+  * vmName (string): The name of the virtual machine to import.  
+* **Response**: 202 Accepted
+
+#### **POST /api/v1/hosts/:hostId/vms/import-all**
+
+* **Description**: Imports all discovered VMs on a host into Virtumancer management.  
+* **URL Parameters**:  
+  * hostId (string): The ID of the host.  
+* **Response**: 202 Accepted
+
+#### **POST /api/v1/hosts/:hostId/vms/import-selected**
+
+* **Description**: Imports selected discovered VMs by their domain UUIDs into Virtumancer management.  
+* **URL Parameters**:  
+  * hostId (string): The ID of the host.  
+* **Request Body**:  
+  {  
+    "domain_uuids": \["f47ac10b-58cc-4372-a567-0e02b2c3d479", "a1b2c3d4-5678-90ab-cdef-1234567890ab"\]  
+  }  
+* **Response**: 202 Accepted
+
+#### **DELETE /api/v1/hosts/:hostId/discovered-vms**
+
+* **Description**: Removes selected discovered VMs from the database by their domain UUIDs.  
+* **URL Parameters**:  
+  * hostId (string): The ID of the host.  
+* **Request Body**:  
+  {  
+    "domain_uuids": \["f47ac10b-58cc-4372-a567-0e02b2c3d479", "a1b2c3d4-5678-90ab-cdef-1234567890ab"\]  
+  }  
+* **Response**: 202 Accepted
+
+## **WebSocket API** updates and monitoring.
 
 ## **REST API**
 

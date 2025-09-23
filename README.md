@@ -111,6 +111,7 @@ For Virtumancer to connect to a remote host, the user running the Virtumancer ba
 ### **Frontend Documentation**
 - **Frontend_UIUX_plan.md**: UI/UX design philosophy and implementation plan
 - **docs/network-topology-view-documentation.md**: Network topology visualization component
+- **docs/discovered-vm-bulk-management.md**: Bulk operations for discovered VM management
 
 ### **Technical Documentation**
 - **docs/technology-stack-analysis.md**: Technology choices and architecture decisions
@@ -125,6 +126,14 @@ Virtumancer provides a comprehensive network topology view with two visualizatio
 - **Network Diagram**: Interactive SVG-based topology with circular layout and status indicators
 - **Real-time Updates**: Automatic refresh based on infrastructure changes via WebSockets
 - **Interactive Navigation**: Click-to-navigate between hosts and VMs
+
+### **Discovered VM Bulk Management**
+Comprehensive tools for managing multiple unmanaged VMs discovered on hosts:
+- **Multi-selection Interface**: Checkbox-based selection with select-all functionality
+- **Bulk Import Operations**: Import multiple VMs into management simultaneously
+- **Bulk Delete Operations**: Remove multiple discovered VMs from tracking
+- **Search and Filtering**: Real-time search by name or UUID with flexible sorting
+- **Progress Indicators**: Visual feedback during bulk operations with error handling
 
 ### **Modern UI/UX**
 - Glass morphism design with backdrop blur effects

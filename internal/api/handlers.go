@@ -201,6 +201,58 @@ func (h *APIHandler) ImportAllVMs(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusAccepted)
 }
 
+// ImportSelectedVMs imports selected discovered VMs by their domain UUIDs.
+func (h *APIHandler) ImportSelectedVMs(w http.ResponseWriter, r *http.Request) {
+	hostID := chi.URLParam(r, "hostID")
+
+	var req struct {
+		DomainUUIDs []string `json:"domain_uuids"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if len(req.DomainUUIDs) == 0 {
+		http.Error(w, "No domain UUIDs provided", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.HostService.ImportSelectedVMs(hostID, req.DomainUUIDs); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusAccepted)
+}
+
+// DeleteSelectedDiscoveredVMs removes selected discovered VMs from the database.
+func (h *APIHandler) DeleteSelectedDiscoveredVMs(w http.ResponseWriter, r *http.Request) {
+	hostID := chi.URLParam(r, "hostID")
+
+	var req struct {
+		DomainUUIDs []string `json:"domain_uuids"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if len(req.DomainUUIDs) == 0 {
+		http.Error(w, "No domain UUIDs provided", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.HostService.DeleteSelectedDiscoveredVMs(hostID, req.DomainUUIDs); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusAccepted)
+}
+
 func (h *APIHandler) GetVMStats(w http.ResponseWriter, r *http.Request) {
 	hostID := chi.URLParam(r, "hostID")
 	vmName := chi.URLParam(r, "vmName")
