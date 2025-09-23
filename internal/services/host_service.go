@@ -1107,6 +1107,12 @@ func (s *HostService) ingestVMFromLibvirt(hostID, vmName string) (bool, error) {
 					tx.Rollback()
 					return false, fmt.Errorf("failed to sync hardware for restored VM during ingestion: %w", err)
 				}
+				// Update OS type on the restored VM record
+				if hw.OSType != "" {
+					if err := tx.Model(&softVM).Update("os_type", hw.OSType).Error; err != nil {
+						log.Verbosef("Warning: failed to update OS type for restored VM %s: %v", vmName, err)
+					}
+				}
 			}
 			if cerr := tx.Commit().Error; cerr != nil {
 				return false, cerr
@@ -1161,6 +1167,13 @@ func (s *HostService) ingestVMFromLibvirt(hostID, vmName string) (bool, error) {
 		if _, err := s.syncVMHardware(tx, newVM.UUID, hostID, hw, &vmInfo.Graphics); err != nil {
 			tx.Rollback()
 			return false, fmt.Errorf("failed to sync hardware during ingestion: %w", err)
+		}
+		// Update OS type on the VM record
+		if hw.OSType != "" {
+			newVM.OSType = hw.OSType
+			if err := tx.Model(&newVM).Update("os_type", hw.OSType).Error; err != nil {
+				log.Verbosef("Warning: failed to update OS type for VM %s: %v", vmName, err)
+			}
 		}
 	}
 
@@ -2287,6 +2300,9 @@ func (s *HostService) SyncVMFromLibvirt(hostID, vmName string) error {
 		"SyncStatus":   storage.StatusSynced,
 		"DriftDetails": "",
 		"NeedsRebuild": false,
+	}
+	if hardwareInfo != nil && hardwareInfo.OSType != "" {
+		updates["OSType"] = hardwareInfo.OSType
 	}
 	if err := tx.Model(&vmToUpdate).Updates(updates).Error; err != nil {
 		tx.Rollback()

@@ -324,6 +324,11 @@ const loadPortAttachments = async () => {
     portAttachments.value = await mainStore.fetchVmPortAttachments(host.value.id, vm.value.name);
 }
 
+const syncLiveData = async () => {
+    if (!host.value || !vm.value) return;
+    await mainStore.syncVmFromLibvirt(host.value.id, vm.value.name);
+}
+
 </script>
 
 <template>
@@ -340,6 +345,7 @@ const loadPortAttachments = async () => {
         </span>
       </div>
       <div class="flex items-center space-x-2">
+         <button :disabled="isTaskActive || isReconcileLoading" @click="syncLiveData" class="px-4 py-2 text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 rounded-md transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed">Sync Live Data</button>
          <button :disabled="isTaskActive || isReconcileLoading" v-if="getVmDisplayState(vm, host).status === 'STOPPED'" @click="mainStore.startVm(host.id, vm.name)" class="px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-md transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed">Start</button>
          <template v-if="getVmDisplayState(vm, host).status === 'ACTIVE' || getVmDisplayState(vm, host).status === 'RUNNING'">
             <button :disabled="isTaskActive || isReconcileLoading" @click="mainStore.gracefulShutdownVm(host.id, vm.name)" class="px-4 py-2 text-sm font-medium text-white bg-yellow-600 hover:bg-yellow-700 rounded-md transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed">Shutdown</button>

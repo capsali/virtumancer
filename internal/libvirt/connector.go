@@ -92,6 +92,7 @@ type VMStats struct {
 
 // HardwareInfo holds the hardware configuration of a VM.
 type HardwareInfo struct {
+	OSType    string         `json:"os_type"`
 	Disks     []DiskInfo     `json:"disks"`
 	Networks  []NetworkInfo  `json:"networks"`
 	Videos    []VideoInfo    `json:"videos,omitempty"`
@@ -146,6 +147,9 @@ type NetworkInfo struct {
 
 // DomainHardwareXML is used for unmarshalling hardware info from the domain XML.
 type DomainHardwareXML struct {
+	OS struct {
+		Type string `xml:"type" json:"type"`
+	} `xml:"os" json:"os"`
 	Devices struct {
 		Disks      []DiskInfo     `xml:"disk"`
 		Interfaces []NetworkInfo  `xml:"interface"`
@@ -1064,6 +1068,7 @@ func (c *Connector) GetDomainHardware(hostID, vmName string) (*HardwareInfo, err
 	}
 
 	hardware := &HardwareInfo{
+		OSType:    def.OS.Type,
 		Disks:     def.Devices.Disks,
 		Networks:  def.Devices.Interfaces,
 		Videos:    def.Devices.Videos,
