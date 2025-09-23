@@ -24,7 +24,8 @@ func (DiscoveredVM) TableName() string {
 }
 
 // UpsertDiscoveredVM inserts or updates a discovered VM record, updating LastSeenAt only if it's older than 30 seconds.
-func UpsertDiscoveredVM(db *gorm.DB, d *DiscoveredVM) error {
+// Returns true if a change was made, false otherwise.
+func UpsertDiscoveredVM(db *gorm.DB, d *DiscoveredVM) (bool, error) {
 	var existing []DiscoveredVM
 	db.Where("host_id = ? AND domain_uuid = ?", d.HostID, d.DomainUUID).Limit(1).Find(&existing)
 	if len(existing) > 0 {
@@ -34,13 +35,13 @@ func UpsertDiscoveredVM(db *gorm.DB, d *DiscoveredVM) error {
 			existing[0].InfoJSON = d.InfoJSON
 			existing[0].LastSeenAt = time.Now()
 			existing[0].Imported = d.Imported
-			return db.Save(&existing[0]).Error
+			return true, db.Save(&existing[0]).Error
 		}
 		// No update needed
-		return nil
+		return false, nil
 	} else {
 		d.LastSeenAt = time.Now()
-		return db.Create(d).Error
+		return true, db.Create(d).Error
 	}
 }
 

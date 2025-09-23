@@ -70,8 +70,15 @@ onMounted(() => {
 // When hosts list changes, ensure discovered cache updates for new hosts
 watch(() => mainStore.hosts, (nv, ov) => {
   nv.forEach(host => {
+    // Auto-expand new hosts
+    if (!expandedHosts.value.hasOwnProperty(host.id)) {
+      expandedHosts.value[host.id] = true;
+    }
     if (!mainStore.discoveredByHost || !mainStore.discoveredByHost[host.id]) {
-      mainStore.refreshDiscoveredVMs(host.id).catch(() => {});
+      // Delay the refresh slightly to allow host connection to complete
+      setTimeout(() => {
+        mainStore.refreshDiscoveredVMs(host.id).catch(() => {});
+      }, 1000);
     }
   });
 }, { deep: true });

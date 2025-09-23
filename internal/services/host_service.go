@@ -840,14 +840,12 @@ func (s *HostService) SyncVMsForHost(hostID string) {
 	mu.(*sync.Mutex).Lock()
 	defer mu.(*sync.Mutex).Unlock()
 
-	changed, err := s.syncHostVMs(hostID)
+	_, err := s.syncHostVMs(hostID)
 	if err != nil {
 		log.Verbosef("Error during background VM sync for host %s: %v", hostID, err)
 		return
 	}
-	if changed {
-		s.broadcastVMsChanged(hostID)
-	}
+	// Note: syncHostVMs already broadcasts vms-changed and discovered-vms-changed if changed
 }
 
 // startVMPolling starts background polling of VM states for a connected host
@@ -959,6 +957,11 @@ func (s *HostService) ListDiscoveredVMs(hostID string) ([]libvirt.VMInfo, error)
 	// This will update the discovered_vms table and broadcast a vms-changed event
 	// when new rows are ingested/removed.
 	go func(id string) {
+		// Prevent concurrent syncs for the same host
+		mu, _ := s.syncMutex.LoadOrStore(id, &sync.Mutex{})
+		mu.(*sync.Mutex).Lock()
+		defer mu.(*sync.Mutex).Unlock()
+
 		_, err := s.syncHostVMs(id)
 		if err != nil {
 			log.Verbosef("background syncHostVMs failed for host %s: %v", id, err)
@@ -2433,10 +2436,12 @@ func (s *HostService) syncHostVMs(hostID string) (bool, error) {
 				DomainUUID: vmInfo.UUID,
 				InfoJSON:   "", // can populate later if needed
 			}
-			if err := storage.UpsertDiscoveredVM(s.db, &disc); err != nil {
+			if changed, err := storage.UpsertDiscoveredVM(s.db, &disc); err != nil {
 				log.Verbosef("Error upserting discovered VM %s: %v", vmInfo.Name, err)
+			} else if changed {
+				// Set overallChanged to notify frontend of discovered VM changes
+				overallChanged = true
 			}
-			// Don't set overallChanged for discovered VMs, as they are updated frequently
 		}
 	}
 
@@ -2474,6 +2479,23 @@ func (s *HostService) syncHostVMs(hostID string) (bool, error) {
 				continue
 			}
 			overallChanged = true
+		}
+	}
+
+	// Prune discovered VMs that are no longer in libvirt
+	var dbDiscoveredVMs []storage.DiscoveredVM
+	if err := s.db.Where("host_id = ? AND imported = 0", hostID).Find(&dbDiscoveredVMs).Error; err != nil {
+		return false, fmt.Errorf("could not get discovered VM records for pruning check: %w", err)
+	}
+
+	for _, dbDiscoveredVM := range dbDiscoveredVMs {
+		if _, exists := liveVMUUIDs[dbDiscoveredVM.DomainUUID]; !exists {
+			log.Verbosef("Pruning discovered VM %s (UUID: %s) from database as it's no longer in libvirt.", dbDiscoveredVM.Name, dbDiscoveredVM.DomainUUID)
+			if err := s.db.Where("host_id = ? AND domain_uuid = ?", hostID, dbDiscoveredVM.DomainUUID).Delete(&storage.DiscoveredVM{}).Error; err != nil {
+				log.Verbosef("Warning: failed to prune discovered VM %s: %v", dbDiscoveredVM.Name, err)
+			} else {
+				overallChanged = true
+			}
 		}
 	}
 

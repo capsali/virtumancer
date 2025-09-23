@@ -227,6 +227,8 @@ export const useMainStore = defineStore('main', () => {
                                     if (hostConnecting.value[message.payload.hostId]) {
                                         delete hostConnecting.value[message.payload.hostId];
                                     }
+                                    // Refresh discovered VMs now that the host is connected
+                                    try { await refreshDiscoveredVMs(message.payload.hostId); } catch (e) { console.warn('[mainStore] refreshDiscoveredVMs failed after host connect', message.payload.hostId, e); }
                                     // If the UI is currently viewing this host, subscribe to host stats
                                     try {
                                         if (currentlySubscribedHostId.value === message.payload.hostId || selectedHostId.value === message.payload.hostId) {
@@ -457,7 +459,18 @@ export const useMainStore = defineStore('main', () => {
             // shows the server state immediately when the host is added.
             hostConnecting.value[newHost.id] = true;
             try {
-                const [vms, infoFull] = await Promise.all([fetchVmsForHost(newHost.id), fetchHostInfoFull(newHost.id)]);
+                // Wait for host to be connected before fetching VMs and discovered VMs
+                let infoFull;
+                let attempts = 0;
+                const maxAttempts = 10; // Wait up to 5 seconds (10 * 500ms)
+                do {
+                    infoFull = await fetchHostInfoFull(newHost.id);
+                    if (infoFull && infoFull.connected) break;
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    attempts++;
+                } while (attempts < maxAttempts);
+
+                const vms = await fetchVmsForHost(newHost.id);
                 const entry = {
                     ...newHost,
                     connected: infoFull && typeof infoFull.connected !== 'undefined' ? !!infoFull.connected : ((newHost && typeof newHost.connected !== 'undefined') ? !!newHost.connected : false),
@@ -478,7 +491,18 @@ export const useMainStore = defineStore('main', () => {
                 });
                 (async () => {
                     try {
-                        const [vms, infoFull] = await Promise.all([fetchVmsForHost(newHost.id), fetchHostInfoFull(newHost.id)]);
+                        // Wait for host to be connected before fetching VMs and discovered VMs
+                        let infoFull;
+                        let attempts = 0;
+                        const maxAttempts = 10; // Wait up to 5 seconds (10 * 500ms)
+                        do {
+                            infoFull = await fetchHostInfoFull(newHost.id);
+                            if (infoFull && infoFull.connected) break;
+                            await new Promise(resolve => setTimeout(resolve, 500));
+                            attempts++;
+                        } while (attempts < maxAttempts);
+
+                        const vms = await fetchVmsForHost(newHost.id);
                         const refreshed = {
                             ...newHost,
                             connected: infoFull && typeof infoFull.connected !== 'undefined' ? !!infoFull.connected : ((newHost && typeof newHost.connected !== 'undefined') ? !!newHost.connected : false),
