@@ -10,7 +10,9 @@ import type {
 } from '@/types';
 
 // Base API configuration
-const API_BASE_URL = 'https://localhost:8888/api/v1';
+const API_BASE_URL = import.meta.env.DEV 
+  ? '/api/v1'  // Use proxy in development
+  : 'https://localhost:8888/api/v1';  // Direct connection in production
 
 class ApiError extends Error {
   constructor(
@@ -255,7 +257,10 @@ export class WebSocketManager {
   private reconnectDelay = 1000;
   private listeners = new Map<string, Set<Function>>();
 
-  constructor(private url: string = 'wss://localhost:8888/ws') {}
+  constructor(private url: string = import.meta.env.DEV 
+    ? `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`  // Use proxy in development
+    : 'wss://localhost:8888/ws'  // Direct connection in production
+  ) {}
 
   connect(): Promise<void> {
     return new Promise((resolve, reject) => {

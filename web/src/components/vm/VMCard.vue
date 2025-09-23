@@ -229,7 +229,10 @@ const handleAdvancedAction = (action: string): void => {
 const openConsole = (): void => {
   showAdvanced.value = false;
   // Open console in new window
-  const consoleUrl = `https://localhost:8888/hosts/${props.hostId}/vms/${props.vm.name}/console`;
+  const baseUrl = import.meta.env.DEV 
+    ? window.location.origin  // Use current origin with proxy in development
+    : 'https://localhost:8888';  // Direct connection in production
+  const consoleUrl = `${baseUrl}/hosts/${props.hostId}/vms/${props.vm.name}/console`;
   window.open(consoleUrl, '_blank', 'width=800,height=600');
 };
 
