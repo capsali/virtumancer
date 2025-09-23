@@ -54,7 +54,9 @@
               'bg-slate-600/50 group-hover:bg-slate-500/50': !item.active
             }
           ]">
-            <component :is="item.icon" class="w-5 h-5" />
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="item.icon"/>
+            </svg>
           </div>
 
           <!-- Label -->
@@ -140,93 +142,77 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
+import { useRouter, useRoute } from 'vue-router';
 
 interface NavigationItem {
   id: string;
   label: string;
-  description?: string;
-  icon: any;
+  icon: string;
   active: boolean;
-  badge?: string;
+  path: string;
+  badge?: number;
+  description?: string;
   badgeColor?: string;
-  route?: string;
 }
 
 interface Props {
   collapsed?: boolean;
 }
 
+interface Emits {
+  (e: 'update:collapsed', value: boolean): void;
+}
+
 const props = withDefaults(defineProps<Props>(), {
   collapsed: false
 });
 
-const emit = defineEmits<{
-  'update:collapsed': [value: boolean];
-  navigate: [item: NavigationItem];
-}>();
+const emit = defineEmits<Emits>();
+
+const router = useRouter();
+const route = useRoute();
 
 const collapsed = ref(props.collapsed);
 
-// Mock navigation items - replace with your actual navigation
 const navigationItems = ref<NavigationItem[]>([
   {
-    id: 'dashboard',
-    label: 'Dashboard',
-    description: 'Overview & metrics',
-    icon: 'div', // Replace with actual icon component
-    active: true,
-    route: '/dashboard'
-  },
-  {
-    id: 'vms',
-    label: 'Virtual Machines',
-    description: 'Manage VMs',
-    icon: 'div', // Replace with actual icon component
+    id: 'home',
+    label: 'Home',
+    icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6',
     active: false,
-    badge: '12',
-    badgeColor: 'bg-primary-500/20 text-primary-400',
-    route: '/vms'
-  },
-  {
-    id: 'hosts',
-    label: 'Hosts',
-    description: 'Hypervisor hosts',
-    icon: 'div', // Replace with actual icon component
-    active: false,
-    badge: '3',
-    badgeColor: 'bg-accent-500/20 text-accent-400',
-    route: '/hosts'
+    path: '/'
   },
   {
     id: 'network',
-    label: 'Networks',
-    description: 'Network topology',
-    icon: 'div', // Replace with actual icon component
+    label: 'Network Topology',
+    icon: 'M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0',
     active: false,
-    route: '/network'
-  },
-  {
-    id: 'storage',
-    label: 'Storage',
-    description: 'Storage pools',
-    icon: 'div', // Replace with actual icon component
-    active: false,
-    route: '/storage'
-  },
-  {
-    id: 'settings',
-    label: 'Settings',
-    description: 'Configuration',
-    icon: 'div', // Replace with actual icon component
-    active: false,
-    route: '/settings'
+    path: '/network'
   }
 ]);
 
+// Update active state based on current route
+const updateActiveState = () => {
+  navigationItems.value.forEach(item => {
+    item.active = route.path === item.path || 
+                  (item.path !== '/' && route.path.startsWith(item.path));
+  });
+};
+
+// Watch for route changes
+onMounted(() => {
+  updateActiveState();
+});
+
+// Watch route changes to update active state
+watch(() => route.path, () => {
+  updateActiveState();
+}, { immediate: true });
+
 const sidebarClasses = computed(() => [
   collapsed.value ? 'w-20' : 'w-72',
-  'h-screen fixed left-0 top-0 z-30'
+  'fixed left-0 top-0 h-full z-50'
 ]);
 
 const toggleCollapse = () => {
@@ -235,10 +221,12 @@ const toggleCollapse = () => {
 };
 
 const handleNavigation = (item: NavigationItem) => {
-  // Update active state
-  navigationItems.value.forEach(nav => nav.active = false);
-  item.active = true;
-  
-  emit('navigate', item);
+  // Navigate using Vue Router
+  router.push(item.path).catch(err => {
+    // Handle navigation errors gracefully
+    if (err.name !== 'NavigationDuplicated') {
+      console.error('Navigation error:', err);
+    }
+  });
 };
 </script>

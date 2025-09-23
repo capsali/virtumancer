@@ -97,6 +97,7 @@
 import { ref, reactive, watch } from 'vue';
 import FCard from '@/components/ui/FCard.vue';
 import FButton from '@/components/ui/FButton.vue';
+import { useHostStore } from '@/stores/hostStore';
 import type { Host } from '@/types';
 
 interface Props {
@@ -106,9 +107,14 @@ interface Props {
 const props = defineProps<Props>();
 
 const emit = defineEmits<{
+  'update:open': [value: boolean];
+  hostAdded: [host: Host];
   close: [];
   submit: [hostData: Omit<Host, 'id' | 'state' | 'createdAt' | 'updatedAt'>];
 }>();
+
+// Store
+const hostStore = useHostStore();
 
 // Form state
 const formData = reactive({
@@ -135,6 +141,7 @@ const resetForm = (): void => {
 
 const close = (): void => {
   if (!isLoading.value) {
+    emit('update:open', false);
     emit('close');
   }
 };
@@ -153,13 +160,22 @@ const handleSubmit = async (): Promise<void> => {
     
     const hostData = {
       uri: formData.uri.trim(),
-      auto_reconnect_disabled: formData.auto_reconnect_disabled
+      auto_reconnect_disabled: formData.auto_reconnect_disabled,
+      state: 'DISCONNECTED' as const,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
     };
     
+    // Add the host using the store
+    const newHost = await hostStore.addHost(hostData);
+    
+    // Emit the hostAdded event with the new host
+    emit('hostAdded', newHost);
     emit('submit', hostData);
     close();
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Failed to add host';
+  } finally {
     isLoading.value = false;
   }
 };
