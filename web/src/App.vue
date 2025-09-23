@@ -64,6 +64,9 @@
         </main>
       </div>
     </div>
+
+    <!-- Error Notifications -->
+    <ErrorNotificationManager />
   </div>
 </template>
 
@@ -75,8 +78,10 @@ import FCard from './components/ui/FCard.vue';
 import FButton from './components/ui/FButton.vue';
 import FInput from './components/ui/FInput.vue';
 import FThemeToggle from './components/ui/FThemeToggle.vue';
+import ErrorNotificationManager from './components/ui/ErrorNotificationManager.vue';
 import { useTheme, initializeTheme } from './composables/useTheme';
 import { useAppStore, useUIStore, useHostStore, useVMStore } from './stores';
+import { errorRecoveryService } from './services/errorRecovery';
 
 // Initialize theme system
 onMounted(async () => {
@@ -88,6 +93,12 @@ onMounted(async () => {
     await appStore.initialize();
   } catch (error) {
     console.error('Failed to initialize application:', error);
+    // Use error recovery service for initialization errors
+    errorRecoveryService.addError(
+      error as Error, 
+      'application_initialization',
+      { stage: 'startup' }
+    );
   }
 });
 
@@ -95,6 +106,9 @@ onMounted(async () => {
 onUnmounted(() => {
   const appStore = useAppStore();
   appStore.cleanup();
+  
+  // Cleanup error recovery service
+  errorRecoveryService.destroy();
 });
 
 const { themeClasses } = useTheme();

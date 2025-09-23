@@ -9,12 +9,15 @@ import type {
   PaginatedResponse 
 } from '@/types';
 
+// Import error recovery service for automatic error handling
+import { errorRecoveryService } from './errorRecovery';
+
 // Base API configuration
 const API_BASE_URL = import.meta.env.DEV 
   ? '/api/v1'  // Use proxy in development
   : 'https://localhost:8888/api/v1';  // Direct connection in production
 
-class ApiError extends Error {
+export class ApiError extends Error {
   constructor(
     message: string,
     public status: number,
@@ -38,6 +41,15 @@ class ApiClient {
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
+    return this.requestWithRecovery<T>(endpoint, options);
+  }
+
+  // Request method with automatic error recovery integration
+  private async requestWithRecovery<T>(
+    endpoint: string,
+    options: RequestInit = {},
+    operation?: string
+  ): Promise<T> {
     const url = `${this.baseURL}${endpoint}`;
     
     const config: RequestInit = {
@@ -53,22 +65,38 @@ class ApiClient {
       
       if (!response.ok) {
         let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        let errorCode = response.statusText;
         let errorDetails;
         
         try {
           const errorData = await response.json();
           errorMessage = errorData.message || errorMessage;
+          errorCode = errorData.code || errorCode;
           errorDetails = errorData;
         } catch {
           // If we can't parse the error response, use the default message
         }
         
-        throw new ApiError(
+        const apiError = new ApiError(
           errorMessage,
           response.status,
-          response.statusText,
+          errorCode,
           errorDetails
         );
+
+        // Add error to recovery service for automatic handling
+        errorRecoveryService.addError(
+          apiError,
+          operation || `${options.method || 'GET'} ${endpoint}`,
+          { 
+            url, 
+            status: response.status,
+            endpoint,
+            method: options.method || 'GET'
+          }
+        );
+        
+        throw apiError;
       }
 
       const data = await response.json();
@@ -79,45 +107,59 @@ class ApiClient {
       }
       
       // Network or other errors
-      throw new ApiError(
+      const networkError = new ApiError(
         error instanceof Error ? error.message : 'Unknown error occurred',
         0,
         'NETWORK_ERROR',
         error
       );
+
+      // Add network error to recovery service
+      errorRecoveryService.addError(
+        networkError,
+        operation || `${options.method || 'GET'} ${endpoint}`,
+        { 
+          url, 
+          endpoint,
+          method: options.method || 'GET',
+          networkError: true
+        }
+      );
+      
+      throw networkError;
     }
   }
 
-  async get<T>(endpoint: string): Promise<T> {
-    return this.request<T>(endpoint, { method: 'GET' });
+  async get<T>(endpoint: string, operation?: string): Promise<T> {
+    return this.requestWithRecovery<T>(endpoint, { method: 'GET' }, operation);
   }
 
-  async post<T>(endpoint: string, data?: any): Promise<T> {
-    return this.request<T>(endpoint, {
+  async post<T>(endpoint: string, data?: any, operation?: string): Promise<T> {
+    return this.requestWithRecovery<T>(endpoint, {
       method: 'POST',
       body: data ? JSON.stringify(data) : undefined,
-    });
+    }, operation);
   }
 
-  async put<T>(endpoint: string, data?: any): Promise<T> {
-    return this.request<T>(endpoint, {
+  async put<T>(endpoint: string, data?: any, operation?: string): Promise<T> {
+    return this.requestWithRecovery<T>(endpoint, {
       method: 'PUT',
       body: data ? JSON.stringify(data) : undefined,
-    });
+    }, operation);
   }
 
-  async delete<T>(endpoint: string, data?: any): Promise<T> {
-    return this.request<T>(endpoint, { 
+  async delete<T>(endpoint: string, data?: any, operation?: string): Promise<T> {
+    return this.requestWithRecovery<T>(endpoint, { 
       method: 'DELETE',
       body: data ? JSON.stringify(data) : undefined,
-    });
+    }, operation);
   }
 
-  async patch<T>(endpoint: string, data?: any): Promise<T> {
-    return this.request<T>(endpoint, {
+  async patch<T>(endpoint: string, data?: any, operation?: string): Promise<T> {
+    return this.requestWithRecovery<T>(endpoint, {
       method: 'PATCH',
       body: data ? JSON.stringify(data) : undefined,
-    });
+    }, operation);
   }
 }
 
@@ -127,31 +169,31 @@ const apiClient = new ApiClient();
 // Host API methods
 export const hostApi = {
   async getAll(): Promise<Host[]> {
-    return apiClient.get<Host[]>('/hosts');
+    return apiClient.get<Host[]>('/hosts', 'fetch_all_hosts');
   },
 
   async getById(id: string): Promise<Host> {
-    return apiClient.get<Host>(`/hosts/${id}/info`);
+    return apiClient.get<Host>(`/hosts/${id}/info`, `fetch_host_${id}`);
   },
 
   async create(hostData: Omit<Host, 'id'>): Promise<Host> {
-    return apiClient.post<Host>('/hosts', hostData);
+    return apiClient.post<Host>('/hosts', hostData, `create_host_${hostData.uri}`);
   },
 
   async update(id: string, updates: Partial<Host>): Promise<Host> {
-    return apiClient.put<Host>(`/hosts/${id}`, updates);
+    return apiClient.put<Host>(`/hosts/${id}`, updates, `update_host_${id}`);
   },
 
   async delete(id: string): Promise<void> {
-    return apiClient.delete(`/hosts/${id}`);
+    return apiClient.delete(`/hosts/${id}`, undefined, `delete_host_${id}`);
   },
 
   async connect(id: string): Promise<void> {
-    return apiClient.post(`/hosts/${id}/connect`);
+    return apiClient.post(`/hosts/${id}/connect`, undefined, `connect_host_${id}`);
   },
 
   async disconnect(id: string): Promise<void> {
-    return apiClient.post(`/hosts/${id}/disconnect`);
+    return apiClient.post(`/hosts/${id}/disconnect`, undefined, `disconnect_host_${id}`);
   },
 
   async getStats(id: string): Promise<HostStats> {
@@ -208,23 +250,23 @@ export const vmApi = {
   },
 
   async start(hostId: string, vmName: string): Promise<void> {
-    return apiClient.post(`/hosts/${hostId}/vms/${vmName}/start`);
+    return apiClient.post(`/hosts/${hostId}/vms/${vmName}/start`, undefined, `start_vm_${vmName}`);
   },
 
   async shutdown(hostId: string, vmName: string): Promise<void> {
-    return apiClient.post(`/hosts/${hostId}/vms/${vmName}/shutdown`);
+    return apiClient.post(`/hosts/${hostId}/vms/${vmName}/shutdown`, undefined, `shutdown_vm_${vmName}`);
   },
 
   async reboot(hostId: string, vmName: string): Promise<void> {
-    return apiClient.post(`/hosts/${hostId}/vms/${vmName}/reboot`);
+    return apiClient.post(`/hosts/${hostId}/vms/${vmName}/reboot`, undefined, `reboot_vm_${vmName}`);
   },
 
   async forceOff(hostId: string, vmName: string): Promise<void> {
-    return apiClient.post(`/hosts/${hostId}/vms/${vmName}/forceoff`);
+    return apiClient.post(`/hosts/${hostId}/vms/${vmName}/forceoff`, undefined, `force_off_vm_${vmName}`);
   },
 
   async forceReset(hostId: string, vmName: string): Promise<void> {
-    return apiClient.post(`/hosts/${hostId}/vms/${vmName}/forcereset`);
+    return apiClient.post(`/hosts/${hostId}/vms/${vmName}/forcereset`, undefined, `force_reset_vm_${vmName}`);
   },
 
   async getStats(hostId: string, vmName: string): Promise<VMStats> {
@@ -413,6 +455,3 @@ export const dashboardApi = {
 
 // Export singleton WebSocket manager
 export const wsManager = new WebSocketManager();
-
-// Export ApiError for error handling in stores
-export { ApiError };

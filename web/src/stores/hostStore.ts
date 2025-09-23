@@ -8,6 +8,7 @@ import type {
   AppError 
 } from '@/types';
 import { hostApi, wsManager, ApiError } from '@/services/api';
+import { errorRecoveryService } from '@/services/errorRecovery';
 
 export const useHostStore = defineStore('hosts', () => {
   // State
@@ -285,6 +286,17 @@ export const useHostStore = defineStore('hosts', () => {
     
     errors.value[operation] = appError;
     console.error(`Host store error in ${operation}:`, appError);
+
+    // Also add to error recovery service for enhanced handling
+    errorRecoveryService.addError(
+      error as Error,
+      operation,
+      {
+        store: 'hostStore',
+        selectedHostId: selectedHostId.value,
+        hostCount: hosts.value.length
+      }
+    );
   };
 
   // Connection state debouncing watcher

@@ -8,6 +8,7 @@ import type {
   VMTaskState 
 } from '@/types';
 import { vmApi, wsManager, ApiError } from '@/services/api';
+import { errorRecoveryService } from '@/services/errorRecovery';
 
 export const useVMStore = defineStore('virtualMachines', () => {
   // State
@@ -296,6 +297,17 @@ export const useVMStore = defineStore('virtualMachines', () => {
     
     errors.value[operation] = appError;
     console.error(`VM store error in ${operation}:`, appError);
+
+    // Also add to error recovery service for enhanced handling
+    errorRecoveryService.addError(
+      error as Error,
+      operation,
+      {
+        store: 'vmStore',
+        selectedVMId: selectedVMId.value,
+        vmCount: vms.value.length
+      }
+    );
   };
 
   // WebSocket integration for real-time updates

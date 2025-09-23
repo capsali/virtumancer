@@ -189,6 +189,13 @@ const navigationItems = ref<NavigationItem[]>([
     icon: 'M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0',
     active: false,
     path: '/network'
+  },
+  {
+    id: 'error-demo',
+    label: 'Error Demo',
+    icon: 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.268 16.5c-.77.833.192 2.5 1.732 2.5z',
+    active: false,
+    path: '/error-demo'
   }
 ]);
 

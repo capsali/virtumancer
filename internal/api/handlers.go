@@ -55,14 +55,24 @@ func (h *APIHandler) HealthCheck(w http.ResponseWriter, r *http.Request) {
 func (h *APIHandler) CreateHost(w http.ResponseWriter, r *http.Request) {
 	var host storage.Host
 	if err := json.NewDecoder(r.Body).Decode(&host); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		apiErr := NewAPIError(ErrorCodeValidation, "Invalid request body", "Failed to parse JSON request")
+		WriteError(w, apiErr, http.StatusBadRequest)
 		return
 	}
+
+	// Validate required fields
+	if host.ID == "" || host.URI == "" {
+		apiErr := NewAPIError(ErrorCodeValidation, "Missing required fields", "Host ID and URI are required")
+		WriteError(w, apiErr, http.StatusBadRequest)
+		return
+	}
+
 	newHost, err := h.HostService.AddHost(host)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		h.HandleError(w, err, "create_host")
 		return
 	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(newHost)
@@ -71,7 +81,7 @@ func (h *APIHandler) CreateHost(w http.ResponseWriter, r *http.Request) {
 func (h *APIHandler) GetHosts(w http.ResponseWriter, r *http.Request) {
 	hosts, err := h.HostService.GetAllHosts()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		h.HandleError(w, err, "fetch_all_hosts")
 		return
 	}
 
@@ -119,8 +129,12 @@ func (h *APIHandler) GetHostInfo(w http.ResponseWriter, r *http.Request) {
 // ConnectHost triggers a connection attempt for the given host id.
 func (h *APIHandler) ConnectHost(w http.ResponseWriter, r *http.Request) {
 	hostID := chi.URLParam(r, "hostID")
+	if !h.ValidateRequest(w, r, "hostID") {
+		return
+	}
+
 	if err := h.HostService.EnsureHostConnectedForced(hostID); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		h.HandleError(w, err, "connect_host")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -129,8 +143,12 @@ func (h *APIHandler) ConnectHost(w http.ResponseWriter, r *http.Request) {
 // DisconnectHost requests a disconnect for the given host id.
 func (h *APIHandler) DisconnectHost(w http.ResponseWriter, r *http.Request) {
 	hostID := chi.URLParam(r, "hostID")
+	if !h.ValidateRequest(w, r, "hostID") {
+		return
+	}
+
 	if err := h.HostService.DisconnectHost(hostID, true); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		h.HandleError(w, err, "disconnect_host")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -138,8 +156,12 @@ func (h *APIHandler) DisconnectHost(w http.ResponseWriter, r *http.Request) {
 
 func (h *APIHandler) DeleteHost(w http.ResponseWriter, r *http.Request) {
 	hostID := chi.URLParam(r, "hostID")
+	if !h.ValidateRequest(w, r, "hostID") {
+		return
+	}
+
 	if err := h.HostService.RemoveHost(hostID); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		h.HandleError(w, err, "delete_host")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -359,7 +381,7 @@ func (h *APIHandler) StartVM(w http.ResponseWriter, r *http.Request) {
 	hostID := chi.URLParam(r, "hostID")
 	vmName := chi.URLParam(r, "vmName")
 	if err := h.HostService.StartVM(hostID, vmName); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		h.HandleError(w, err, fmt.Sprintf("start_vm_%s", vmName))
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -369,7 +391,7 @@ func (h *APIHandler) ShutdownVM(w http.ResponseWriter, r *http.Request) {
 	hostID := chi.URLParam(r, "hostID")
 	vmName := chi.URLParam(r, "vmName")
 	if err := h.HostService.ShutdownVM(hostID, vmName); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		h.HandleError(w, err, fmt.Sprintf("shutdown_vm_%s", vmName))
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
