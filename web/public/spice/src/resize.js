@@ -30,57 +30,33 @@
 **  window size) is tricky, and the consensus seems to be that Javascript is
 **  the only right way to do it.
 **--------------------------------------------------------------------------*/
-
 function resize_helper(sc)
 {
-    var screenElement = document.getElementById(sc.screen_id);
+    var w = document.getElementById(sc.screen_id).clientWidth;
     var m = document.getElementById(sc.message_id);
 
-    /* Get container dimensions */
-    var container = document.getElementById('spice-area');
-    var containerWidth = container ? container.clientWidth : window.innerWidth;
-    var containerHeight = container ? container.clientHeight : window.innerHeight - 20;
+    /* Resize vertically; basically we leave a 20 pixel margin
+         at the bottom, and use the position of the message window
+         to figure out how to resize */
 
-    /* Account for message div if visible */
+    var h = window.innerHeight - 20;
+
+    /* Screen height based on debug console visibility  */
     if (m != null)
     {
         if (window.getComputedStyle(m).getPropertyValue("display") == 'none')
         {
             /* Get console height from spice.css .spice-message */
             var mh = parseInt(window.getComputedStyle(m).getPropertyValue("height"), 10);
-            containerHeight = containerHeight - mh;
+            h = h - mh;
         }
         else
         {
             /* Show both div elements - spice-area and message-div */
-            containerHeight = containerHeight - m.offsetHeight - m.clientHeight;
+            h = h - m.offsetHeight - m.clientHeight;
         }
     }
 
-    /* Assume 16:9 aspect ratio for typical displays */
-    var aspectRatio = 16 / 9;
-    
-    /* Calculate dimensions that fit within container while maintaining aspect ratio */
-    var fitByWidth = {
-        width: containerWidth,
-        height: containerWidth / aspectRatio
-    };
-    
-    var fitByHeight = {
-        width: containerHeight * aspectRatio,
-        height: containerHeight
-    };
-    
-    /* Choose the fit that doesn't exceed container bounds */
-    var finalDimensions;
-    if (fitByWidth.height <= containerHeight) {
-        finalDimensions = fitByWidth;
-    } else {
-        finalDimensions = fitByHeight;
-    }
-
-    var w = finalDimensions.width;
-    var h = finalDimensions.height;
 
     /* Xorg requires height be a multiple of 8; round down */
     if (h % 8 > 0)
@@ -89,6 +65,7 @@ function resize_helper(sc)
     /* Xorg requires width be a multiple of 8; round down */
     if (w % 8 > 0)
         w -= (w % 8);
+
 
     sc.resize_window(0, w, h, 32, 0, 0);
     sc.spice_resize_timer = undefined;

@@ -1,0 +1,197 @@
+/*
+ * Responsive SPICE CSS for VirtuMancer
+ * Overrides default spice.css to make console fit properly within containers
+ */
+
+/* Reset body and html to work within iframe container */
+html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background-color: #000000 !important; /* Pure black background */
+    font-family: "Lucida Grande", "Lucida Sans Unicode", "Helvetica Neue", Helvetica, Arial, Verdana, sans-serif;
+    box-sizing: border-box;
+}
+
+/* Hide the login section since we're using auto-connect */
+#login {
+    display: none;
+}
+
+/* Make spice-area fill the container (not viewport) and prevent overflow */
+#spice-area {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    background-color: #000000 !important; /* Pure black background */
+    overflow: hidden;
+    box-sizing: border-box;
+    contain: layout size;
+}
+
+/* Make spice-screen responsive and centered with strict containment */
+.spice-screen {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0 !important;
+    padding: 0 !important;
+    background-color: #000000 !important; /* Pure black background */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    contain: layout size style;
+    box-sizing: border-box;
+}
+
+/* Container for canvas to ensure proper centering */
+.spice-screen > div {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+
+/* Ensure SPICE client containers never exceed bounds */
+.spice-screen * {
+    max-width: 100% !important;
+    box-sizing: border-box;
+}
+
+/* Ensure the canvas scales properly and stays within bounds */
+.spice-screen canvas {
+    max-width: 100% !important;
+    max-height: 100% !important;
+    width: auto !important;
+    height: auto !important;
+    object-fit: contain;
+    display: block;
+    margin: 0 auto;
+    border: none !important;
+    outline: none !important;
+    image-rendering: auto;
+    box-sizing: border-box;
+    position: relative;
+    background-color: transparent !important;
+}
+
+/* Remove any margins or gaps around the canvas */
+.spice-screen canvas:only-child {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: contain;
+}
+
+/* Hide the message div completely */
+.spice-message,
+#message-div {
+    display: none !important;
+    visibility: hidden !important;
+}
+
+.spice-message p,
+.spice-message-warning,
+.spice-message-error {
+    display: none !important;
+}
+
+/* Hide debug div by default */
+#debug-div {
+    display: none;
+}
+
+/* Hide file transfer area completely */
+#spice-xfer-area {
+    display: none !important;
+    visibility: hidden !important;
+}
+
+/* Responsive scaling for different screen sizes */
+@media (max-width: 768px) {
+    .spice-message {
+        bottom: 20px;
+        font-size: 10px;
+        max-width: 90vw;
+    }
+}
+
+@media (max-width: 480px) {
+    .spice-message {
+        bottom: 30px;
+        font-size: 9px;
+        padding: 6px 10px;
+    }
+}
+
+/* High DPI display optimizations */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+    .spice-screen canvas {
+        image-rendering: -webkit-optimize-contrast;
+        image-rendering: crisp-edges;
+    }
+}
+
+/* Force canvas to stay within bounds regardless of inline styles */
+.spice-screen canvas,
+.spice-screen canvas[style*="width"],
+.spice-screen canvas[style] {
+    width: auto !important;
+    height: auto !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+}
+
+/* Additional overflow protection */
+.spice-screen canvas {
+    transform: scale(1) !important;
+    transform-origin: center !important;
+}
+
+/* Ultimate safety net - prevent ANY element from exceeding bounds */
+* {
+    max-width: 100% !important;
+}
+
+body, html {
+    overflow-x: hidden !important;
+    overflow-y: hidden !important;
+}
+
+/* Ensure iframe content never creates horizontal scrollbars */
+#spice-area, .spice-screen, .spice-screen * {
+    overflow-x: hidden !important;
+}
+
+/* Hide any remaining SPICE UI elements that might show messages */
+.spice-connection-status,
+.spice-info,
+.spice-status,
+div[class*="message"],
+div[class*="info"],
+div[class*="status"],
+p[class*="message"] {
+    display: none !important;
+    visibility: hidden !important;
+}
+
+/* Ensure only the canvas is visible */
+.spice-screen > *:not(canvas):not(div) {
+    display: none !important;
+}

@@ -1,20 +1,10 @@
 body
 {
-  background-color: #000000;
+  background-color: #999999;
   color: #000000; margin: 0; padding: 0;
   font-family: "Lucida Grande", "Lucida Sans Unicode", "Helvetica Neue", Helvetica, Arial, Verdana, sans-serif;
   font-size: 12pt;
   line-height: 1.5em;
-  height: 100%;
-  width: 100%;
-  overflow: hidden;
-}
-
-html {
-  height: 100%;
-  width: 100%;
-  margin: 0;
-  padding: 0;
 }
 
 * { margin: 0; }
@@ -74,36 +64,25 @@ html {
 #spice-area
 {
     height: 100%;
-    width: 100%;
+    width: 95%;
     padding: 0;
-    margin: 0;
-    border: none;
-    -webkit-box-shadow: none;
-    -moz-box-shadow: none;
-    box-shadow: none;
-    -moz-border-radius: 0;
-    -webkit-border-radius: 0;
-    border-radius: 0;
+    margin-left: auto;
+    margin-right: auto;
+    border: solid #222222 1px;
+    -webkit-box-shadow: 5px 5px 5px rgba(0, 0, 0, 0.2);
+    -moz-box-shadow: 5px 5px 5px rgba(0, 0, 0, 0.2);
+    box-shadow: 5px 5px 5px rgba(0, 0, 0, 0.2);
+    -moz-border-radius: 10px;
+    -webkit-border-radius: 10px;
+    border-radius: 10px;
 }
 .spice-screen
 {
-    min-height: 100%;
+    min-height: 600px;
     height: 100%;
-    width: 100%;
-    margin: 0;
+    margin: 10px;
     padding: 0;
-    background-color: #000000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    position: relative;
-}
-
-.spice-screen canvas {
-    max-width: 100%;
-    max-height: 100%;
-    object-fit: contain;
-    background-color: #000000;
+    background-color: #333333;
 }
 .spice-message {
     width: 700px;

@@ -1,0 +1,359 @@
+<!doctype html>
+<html>
+    <head>
+        <title>SPICE Console - VirtuMancer</title>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+        
+        <!-- Use responsive CSS instead of default spice.css -->
+        <link rel="stylesheet" type="text/css" href="spice_responsive.css" />
+
+        <!-- ES2015/ES6 modules polyfill -->
+        <script type="module">
+            window._spice_has_module_support = true;
+        </script>
+        <script>
+            window.addEventListener("load", function() {
+                if (window._spice_has_module_support) return;
+                var loader = document.createElement("script");
+                loader.src = "thirdparty/browser-es-module-loader/dist/" +
+                    "browser-es-module-loader.js";
+                document.head.appendChild(loader);
+            });
+        </script>
+
+        <script type="module" crossorigin="anonymous">
+            import * as SpiceHtml5 from './src/main.js';
+
+            var host = null, port = null;
+            var sc;
+            var DEBUG = 0;
+
+            function spice_error(e)
+            {
+                console.error("SPICE connection error:", e);
+                disconnect();
+                
+                // Send error status to parent window
+                if (window.parent && window.parent !== window) {
+                    window.parent.postMessage({
+                        type: 'spice-status',
+                        status: 'Error'
+                    }, '*');
+                }
+            }
+
+            function connect(password)
+            {
+                var scheme = "ws://";
+                var uri;
+
+                if (ENCRYPT)
+                    scheme = "wss://";
+
+                var query = window.location.search.substring(1);
+                var vars = query.split('&');
+                for (var i = 0; i < vars.length; i++) {
+                    var pair = vars[i].split('=');
+                    if (pair[0] == 'host') host = decodeURIComponent(pair[1]);
+                    else if (pair[0] == 'port') port = decodeURIComponent(pair[1]);
+                    else if (pair[0] == 'encrypt') ENCRYPT = decodeURIComponent(pair[1]);
+                    else if (pair[0] == 'password') password = decodeURIComponent(pair[1]);
+                    else if (pair[0] == 'path') path = decodeURIComponent(pair[1]);
+                }
+
+                if ((!host) || (!port)) {
+                    console.log("must specify host and port in URL");
+                    return;
+                }
+
+                if (sc) {
+                    sc.stop();
+                }
+
+                uri = scheme + host + ":" + port;
+                if (path) {
+                    uri += path[0] == '/' ? path : ('/' + path);
+                }
+
+                // Notify parent of connection attempt
+                if (window.parent && window.parent !== window) {
+                    window.parent.postMessage({
+                        type: 'spice-status',
+                        status: 'Connecting'
+                    }, '*');
+                }
+
+                try {
+                    sc = new SpiceHtml5.SpiceMainConn({
+                        uri: uri, 
+                        screen_id: "spice-screen", 
+                        dump_id: null,  // Disable debug output
+                        message_id: null,  // Disable message output 
+                        password: password, 
+                        onerror: spice_error, 
+                        onagent: agent_connected
+                    });
+                } catch (e) {
+                    console.error("SPICE connection error:", e.toString());
+                    spice_error(e);
+                }
+            }
+
+            function disconnect()
+            {
+                console.log(">> disconnect");
+                if (sc) {
+                    sc.stop();
+                }
+                
+                // Clean up file transfer area
+                if (window.File && window.FileReader && window.FileList && window.Blob) {
+                    var spice_xfer_area = document.getElementById('spice-xfer-area');
+                    if (spice_xfer_area != null) {
+                        document.getElementById('spice-area').removeChild(spice_xfer_area);
+                    }
+                    document.getElementById('spice-area').removeEventListener('dragover', SpiceHtml5.handle_file_dragover, false);
+                    document.getElementById('spice-area').removeEventListener('drop', SpiceHtml5.handle_file_drop, false);
+                }
+                
+                // Notify parent of disconnection
+                if (window.parent && window.parent !== window) {
+                    window.parent.postMessage({
+                        type: 'spice-status',
+                        status: 'Disconnected'
+                    }, '*');
+                }
+                
+                console.log("<< disconnect");
+            }
+
+            function agent_connected(sc)
+            {
+                console.log("SPICE agent connected");
+                
+                // Clean up any message elements that might have been created
+                setTimeout(() => {
+                    const messageElements = document.querySelectorAll('#message-div, .spice-message, [class*="message"], [class*="status"], [class*="info"]');
+                    messageElements.forEach(el => {
+                        el.style.display = 'none';
+                        el.style.visibility = 'hidden';
+                        el.remove();
+                    });
+                }, 50);
+                
+                // Set up resize handling
+                window.addEventListener('resize', function() {
+                    SpiceHtml5.handle_resize.call(sc);
+                    ensureProperScaling();
+                });
+                
+                window.spice_connection = sc;
+
+                // Handle initial resize
+                SpiceHtml5.resize_helper(sc);
+                
+                // Ensure proper scaling after a short delay
+                setTimeout(ensureProperScaling, 100);
+
+                // Set up hidden file transfer area for SPICE functionality
+                if (window.File && window.FileReader && window.FileList && window.Blob) {
+                    var spice_xfer_area = document.createElement("div");
+                    spice_xfer_area.setAttribute('id', 'spice-xfer-area');
+                    spice_xfer_area.style.display = 'none'; // Keep hidden
+                    document.getElementById('spice-area').appendChild(spice_xfer_area);
+                    
+                    // Set up event listeners for programmatic file drops
+                    document.getElementById('spice-area').addEventListener('dragover', SpiceHtml5.handle_file_dragover, false);
+                    document.getElementById('spice-area').addEventListener('drop', SpiceHtml5.handle_file_drop, false);
+                } else {
+                    console.log("File API is not supported");
+                }
+                
+                // Notify parent of successful connection
+                if (window.parent && window.parent !== window) {
+                    window.parent.postMessage({
+                        type: 'spice-status',
+                        status: 'Connected'
+                    }, '*');
+                }
+            }
+
+            function ensureProperScaling() {
+                const canvas = document.querySelector('.spice-screen canvas');
+                if (canvas) {
+                    // Remove any inline styles that might interfere with CSS scaling
+                    canvas.style.width = '';
+                    canvas.style.height = '';
+                    canvas.style.position = '';
+                    canvas.style.transform = '';
+                    
+                    // Get container dimensions
+                    const container = document.getElementById('spice-screen');
+                    if (container) {
+                        const containerRect = container.getBoundingClientRect();
+                        const canvasNaturalWidth = canvas.width;
+                        const canvasNaturalHeight = canvas.height;
+                        
+                        if (canvasNaturalWidth > 0 && canvasNaturalHeight > 0) {
+                            // Calculate aspect ratios
+                            const containerAspect = containerRect.width / containerRect.height;
+                            const canvasAspect = canvasNaturalWidth / canvasNaturalHeight;
+                            
+                            // Scale to fit within container while maintaining aspect ratio
+                            // Always use the more restrictive dimension to prevent overflow
+                            let displayWidth, displayHeight;
+                            
+                            // Calculate both possible dimensions
+                            const widthBasedHeight = containerRect.width / canvasAspect;
+                            const heightBasedWidth = containerRect.height * canvasAspect;
+                            
+                            // Choose the scaling that keeps both dimensions within bounds
+                            if (widthBasedHeight <= containerRect.height) {
+                                // Width-constrained scaling fits
+                                displayWidth = Math.min(containerRect.width, canvasNaturalWidth);
+                                displayHeight = widthBasedHeight;
+                            } else {
+                                // Height-constrained scaling
+                                displayHeight = Math.min(containerRect.height, canvasNaturalHeight);
+                                displayWidth = heightBasedWidth;
+                            }
+                            
+                            // Ensure we never exceed container bounds with safety margin
+                            displayWidth = Math.min(displayWidth, containerRect.width * 0.98); // 2% padding
+                            displayHeight = Math.min(displayHeight, containerRect.height * 0.98);
+                            
+                            // Double-check dimensions don't exceed container
+                            if (displayWidth > containerRect.width || displayHeight > containerRect.height) {
+                                // Fallback: use pure CSS scaling
+                                canvas.style.width = 'auto';
+                                canvas.style.height = 'auto';
+                                canvas.style.maxWidth = '100%';
+                                canvas.style.maxHeight = '100%';
+                                canvas.style.objectFit = 'contain';
+                                console.log('Using CSS-only scaling as fallback');
+                            } else {
+                                // Apply calculated dimensions with CSS constraints
+                                canvas.style.width = Math.floor(displayWidth) + 'px';
+                                canvas.style.height = Math.floor(displayHeight) + 'px';
+                                canvas.style.maxWidth = '100%';
+                                canvas.style.maxHeight = '100%';
+                                canvas.style.objectFit = 'contain';
+                            }
+                        }
+                    }
+                    
+                    // Force a reflow to apply scaling
+                    canvas.offsetHeight;
+                    
+                    console.log('Canvas scaling applied:', {
+                        naturalWidth: canvas.width,
+                        naturalHeight: canvas.height,
+                        displayWidth: canvas.offsetWidth,
+                        displayHeight: canvas.offsetHeight,
+                        containerWidth: container?.offsetWidth,
+                        containerHeight: container?.offsetHeight
+                    });
+                }
+            }
+
+            // Enhanced connection parameters
+            var ENCRYPT = window.location.protocol === "https:";
+            var path = '';
+
+            // Suppress SPICE debug messages
+            function suppressSpiceMessages() {
+                const originalConsoleLog = console.log;
+                const originalConsoleWarn = console.warn;
+                const originalConsoleError = console.error;
+                
+                console.log = function(...args) {
+                    const message = args.join(' ');
+                    // Only suppress SPICE-related messages
+                    if (!message.includes('usbredir') && 
+                        !message.includes('Unknown message type') && 
+                        !message.includes('Channel type') &&
+                        !message.includes('No message handlers')) {
+                        originalConsoleLog.apply(console, args);
+                    }
+                };
+                
+                console.warn = function(...args) {
+                    const message = args.join(' ');
+                    if (!message.includes('usbredir') && 
+                        !message.includes('Unknown message type') && 
+                        !message.includes('Channel type') &&
+                        !message.includes('No message handlers')) {
+                        originalConsoleWarn.apply(console, args);
+                    }
+                };
+                
+                console.error = function(...args) {
+                    const message = args.join(' ');
+                    if (!message.includes('usbredir') && 
+                        !message.includes('Unknown message type') && 
+                        !message.includes('Channel type') &&
+                        !message.includes('No message handlers')) {
+                        originalConsoleError.apply(console, args);
+                    }
+                };
+            }
+
+            // Handle file transfer from parent window
+            function handleFileTransfer(files) {
+                if (window.spice_connection && SpiceHtml5.handle_file_drop) {
+                    // Create a fake drop event with the files
+                    const fakeEvent = {
+                        preventDefault: () => {},
+                        dataTransfer: {
+                            files: files
+                        }
+                    };
+                    
+                    try {
+                        SpiceHtml5.handle_file_drop.call(window.spice_connection, fakeEvent);
+                        console.log('File transfer initiated for', files.length, 'files');
+                    } catch (error) {
+                        console.error('File transfer failed:', error);
+                    }
+                }
+            }
+
+            // Listen for file transfer messages from parent window
+            window.addEventListener('message', function(event) {
+                if (event.data && event.data.type === 'file-transfer') {
+                    const files = event.data.files.map(fileData => fileData.file);
+                    handleFileTransfer(files);
+                }
+            });
+
+            // Auto-connect when page loads
+            document.addEventListener('DOMContentLoaded', function() {
+                suppressSpiceMessages();
+                connect();
+                
+                // Set up periodic scaling check
+                setInterval(ensureProperScaling, 5000);
+            });
+
+            // Handle window beforeunload to clean disconnect
+            window.addEventListener('beforeunload', function() {
+                disconnect();
+            });
+        </script>
+    </head>
+
+    <body>
+        <div id="login" style="display: none;">
+            <span class="logo">SPICE</span>
+        </div>
+
+        <div id="spice-area">
+            <div id="spice-screen" class="spice-screen"></div>
+        </div>
+
+        <!-- Debug and message divs are hidden -->
+        <div id="message-div" style="display: none !important;"></div>
+        <div id="debug-div" style="display: none !important;"></div>
+    </body>
+</html>

@@ -1,5 +1,5 @@
 <template>
-  <div class="bg-black w-full h-screen flex flex-col text-white font-sans overflow-hidden">
+  <div class="bg-black w-full h-full flex flex-col text-white font-sans overflow-hidden">
     <header class="bg-gray-800 p-2 flex items-center justify-between shadow-md z-10 flex-shrink-0">
       <div class="flex items-center">
         <FButton
@@ -15,21 +15,38 @@
           <p class="text-xs text-gray-400">Host: {{ hostId }}</p>
         </div>
       </div>
-      <div class="text-right">
-        <p class="font-semibold text-sm" :class="statusColor">
-          {{ connectionStatus }}
-        </p>
+      <div class="flex items-center gap-3">
+        <FButton
+          variant="outline"
+          size="sm"
+          @click="showFileTransfer = true"
+          class="text-blue-400 hover:text-blue-300 border-blue-500/30 hover:border-blue-400/50"
+          :disabled="connectionStatus !== 'Connected'"
+        >
+          <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+          </svg>
+          Transfer Files
+        </FButton>
+        <div class="text-right">
+          <p class="font-semibold text-sm" :class="statusColor">
+            {{ connectionStatus }}
+          </p>
+        </div>
       </div>
     </header>
     
-    <main class="flex-grow w-full relative bg-black overflow-hidden" ref="mainContainer">
+    <main class="flex-grow relative bg-black overflow-hidden" style="width: 100%; height: calc(100vh - 4rem);">
       <iframe
         v-if="spiceIframeSrc"
+        ref="consoleIframe"
         :src="spiceIframeSrc"
         @load="onIframeLoad"
-        class="w-full h-full border-0"
+        class="console-iframe"
         title="SPICE Console"
-        ref="spiceIframe"
+        allow="clipboard-read; clipboard-write"
+        scrolling="no"
+        frameborder="0"
       />
       <div v-else class="flex items-center justify-center h-full">
         <div class="text-center">
@@ -38,13 +55,22 @@
         </div>
       </div>
     </main>
+
+    <!-- File Transfer Modal -->
+    <FileTransferModal
+      :show="showFileTransfer"
+      :vm-name="vmName"
+      @close="showFileTransfer = false"
+      @transfer="handleFileTransfer"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import FButton from '@/components/ui/FButton.vue';
+import FileTransferModal from '@/components/modals/FileTransferModal.vue';
 
 interface Props {
   hostId: string;
@@ -55,8 +81,8 @@ const props = defineProps<Props>();
 const router = useRouter();
 
 const connectionStatus = ref('Loading...');
-const mainContainer = ref<HTMLElement>();
-const spiceIframe = ref<HTMLIFrameElement>();
+const consoleIframe = ref<HTMLIFrameElement | null>(null);
+const showFileTransfer = ref(false);
 
 // Dynamically construct the source URL for the iframe
 const spiceIframeSrc = computed(() => {
@@ -81,7 +107,7 @@ const spiceIframeSrc = computed(() => {
     encrypt: window.location.protocol === 'https:' ? '1' : '0'
   });
 
-  return `/spice/spice_auto.html?${params.toString()}`;
+  return `/spice/spice_responsive.html?${params.toString()}`;
 });
 
 const statusColor = computed(() => {
@@ -103,35 +129,36 @@ const statusColor = computed(() => {
 const onIframeLoad = (): void => {
   connectionStatus.value = 'Client Loaded';
   
-  // Try to communicate with the iframe to set proper dimensions
-  if (spiceIframe.value && spiceIframe.value.contentWindow) {
-    // Send a message to the iframe with the available dimensions
-    const rect = mainContainer.value?.getBoundingClientRect();
-    if (rect) {
-      spiceIframe.value.contentWindow.postMessage({
-        type: 'spice-resize',
-        width: rect.width,
-        height: rect.height
-      }, window.location.origin);
-    }
-  }
-};
-
-const handleResize = () => {
-  if (spiceIframe.value && spiceIframe.value.contentWindow) {
-    const rect = mainContainer.value?.getBoundingClientRect();
-    if (rect) {
-      spiceIframe.value.contentWindow.postMessage({
-        type: 'spice-resize',
-        width: rect.width,
-        height: rect.height
-      }, window.location.origin);
-    }
+  // Ensure iframe is properly sized after load
+  if (consoleIframe.value) {
+    // Force a resize to ensure proper scaling
+    setTimeout(() => {
+      if (consoleIframe.value) {
+        consoleIframe.value.style.width = '100%';
+        consoleIframe.value.style.height = '100%';
+      }
+    }, 100);
   }
 };
 
 const goBack = (): void => {
   router.back();
+};
+
+// File transfer handling
+const handleFileTransfer = (files: File[]): void => {
+  // Send message to SPICE client to handle file transfer
+  if (consoleIframe.value && consoleIframe.value.contentWindow) {
+    consoleIframe.value.contentWindow.postMessage({
+      type: 'file-transfer',
+      files: Array.from(files).map(file => ({
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        file: file
+      }))
+    }, '*');
+  }
 };
 
 // Try to detect connection status (limited by CORS)
@@ -145,38 +172,60 @@ onMounted(() => {
     }
   };
 
-  // Listen for window resize events
-  const handleWindowResize = () => {
-    handleResize();
+  // Handle window resize to ensure console scales properly
+  const handleResize = () => {
+    if (consoleIframe.value) {
+      // Trigger resize in the iframe content
+      consoleIframe.value.style.width = '99%';
+      consoleIframe.value.offsetHeight; // Force reflow
+      consoleIframe.value.style.width = '100%';
+    }
   };
 
   window.addEventListener('message', handleMessage);
-  window.addEventListener('resize', handleWindowResize);
+  window.addEventListener('resize', handleResize);
+  
+  // Initial resize check after a short delay
+  setTimeout(handleResize, 500);
   
   // Cleanup listeners when component unmounts
   return () => {
     window.removeEventListener('message', handleMessage);
-    window.removeEventListener('resize', handleWindowResize);
+    window.removeEventListener('resize', handleResize);
   };
 });
 </script>
 
 <style scoped>
-iframe {
+.console-iframe {
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 100%;
   height: 100%;
   border: 0;
-  display: block;
-  background: black;
-  max-height: calc(100vh - 60px);
+  background-color: #1a1a1a;
+  overflow: hidden;
+  box-sizing: border-box;
+  max-width: 100%;
+  max-height: 100%;
 }
 
-/* Ensure the main container constrains the iframe */
+/* Ensure proper scaling on different screen sizes */
+@media (max-width: 768px) {
+  .console-iframe {
+    width: 100%;
+    height: 100%;
+  }
+}
+
+/* Fix for some browsers that might add scrollbars */
 main {
-  position: relative;
-  overflow: hidden;
-  min-height: 0; /* Allow flex shrinking */
-  background: black;
-  max-height: calc(100vh - 60px); /* Account for header height */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE 10+ */
+}
+
+main::-webkit-scrollbar {
+  display: none; /* Chrome/Safari */
 }
 </style>
