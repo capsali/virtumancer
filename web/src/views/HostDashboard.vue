@@ -1,213 +1,460 @@
 <template>
-  <div class="space-y-6">
+  <div class="space-y-8">
     <!-- Breadcrumbs -->
-    <div class="px-6 pt-6">
-      <FBreadcrumbs />
-    </div>
-    
-    <!-- Host Overview Cards -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-6">
-      <FCard
-        v-for="host in hostsWithStats"
-        :key="host.id"
-        :class="[
-          'cursor-pointer transition-all duration-300 card-glow',
-          selectedHostId === host.id ? 'ring-2 ring-primary-400' : ''
-        ]"
-        interactive
-        @click="selectHost(host.id)"
-      >
-        <div class="space-y-4">
-          <!-- Host Header -->
-          <div class="flex items-center justify-between">
-            <div class="flex items-center gap-3">
-              <div :class="[
-                'w-3 h-3 rounded-full',
-                getHostStatusColor(host)
-              ]"></div>
-              <div>
-                <h3 class="font-semibold text-white">{{ getHostDisplayName(host) }}</h3>
-                <p class="text-sm text-slate-400">{{ host.uri }}</p>
+    <FBreadcrumbs />
+
+    <!-- Host Overview (when no host selected) -->
+    <div v-if="!selectedHost" class="space-y-8">
+      <div class="text-center">
+        <h1 class="text-4xl font-bold text-white mb-2">Host Management</h1>
+        <p class="text-xl text-slate-400">Select a host to view and manage its virtual machines</p>
+      </div>
+
+      <!-- Host Overview Cards -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+        <FCard
+          v-for="host in hostsWithStats"
+          :key="host.id"
+          class="cursor-pointer transition-all duration-300 card-glow hover:scale-105"
+          interactive
+          @click="selectHost(host.id)"
+        >
+          <div class="p-6 space-y-4">
+            <!-- Host Header -->
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-3">
+                <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-accent-500 to-accent-600 flex items-center justify-center shadow-lg">
+                  <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"/>
+                  </svg>
+                </div>
+                <div>
+                  <h3 class="font-bold text-white">{{ getHostDisplayName(host) }}</h3>
+                  <p class="text-sm text-slate-400">{{ extractHostname(host.uri) }}</p>
+                </div>
               </div>
-            </div>
-            
-            <!-- Connection Status -->
-            <div class="flex items-center gap-2">
-              <div v-if="host.isConnecting" class="animate-spin w-4 h-4 border-2 border-primary-400 border-t-transparent rounded-full"></div>
-              <span :class="[
-                'px-2 py-1 rounded-full text-xs font-medium',
-                getHostStatusBadgeClass(host)
+              
+              <!-- Connection Status -->
+              <div :class="[
+                'px-3 py-1 rounded-full text-xs font-medium border',
+                host.state === 'CONNECTED' ? 'bg-green-500/20 border-green-500/30 text-green-400' :
+                host.isConnecting ? 'bg-yellow-500/20 border-yellow-500/30 text-yellow-400' :
+                'bg-red-500/20 border-red-500/30 text-red-400'
               ]">
                 {{ getHostStatusText(host) }}
-              </span>
-            </div>
-          </div>
-
-          <!-- Host Stats (if connected) -->
-          <div v-if="host.stats" class="grid grid-cols-2 gap-4">
-            <div>
-              <div class="text-sm text-slate-400">VMs</div>
-              <div class="text-xl font-bold text-white">{{ host.stats.vm_count || 0 }}</div>
-            </div>
-            <div>
-              <div class="text-sm text-slate-400">CPU</div>
-              <div class="text-xl font-bold text-white">{{ Math.round(host.stats.cpu_percent || 0) }}%</div>
-            </div>
-            <div>
-              <div class="text-sm text-slate-400">Memory</div>
-              <div class="text-xl font-bold text-white">
-                {{ formatBytes(host.stats.memory_total - host.stats.memory_available) }} / 
-                {{ formatBytes(host.stats.memory_total) }}
               </div>
             </div>
-            <div>
-              <div class="text-sm text-slate-400">Uptime</div>
-              <div class="text-xl font-bold text-white">{{ formatUptime(host.stats.uptime) }}</div>
+
+            <!-- Performance Insights -->
+            <div v-if="host.stats" class="grid grid-cols-2 gap-4 p-4 bg-white/5 rounded-lg border border-white/10">
+              <div class="text-center">
+                <div class="text-2xl font-bold text-green-400">{{ host.stats.vm_count || 0 }}</div>
+                <div class="text-xs text-slate-400">Virtual Machines</div>
+              </div>
+              <div class="text-center">
+                <div class="text-2xl font-bold text-blue-400">{{ Math.round(host.stats.cpu_percent || 0) }}%</div>
+                <div class="text-xs text-slate-400">CPU Usage</div>
+              </div>
+            </div>
+
+            <!-- Memory Usage Bar -->
+            <div v-if="host.stats" class="space-y-2">
+              <div class="flex justify-between text-sm">
+                <span class="text-slate-400">Memory</span>
+                <span class="text-slate-300">{{ formatBytes(host.stats.memory_total - host.stats.memory_available) }} / {{ formatBytes(host.stats.memory_total) }}</span>
+              </div>
+              <div class="w-full bg-slate-700 rounded-full h-2">
+                <div 
+                  class="h-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full transition-all duration-300"
+                  :style="{ width: `${((host.stats.memory_total - host.stats.memory_available) / host.stats.memory_total) * 100}%` }"
+                ></div>
+              </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="flex gap-2 pt-2 border-t border-white/10">
+              <FButton
+                v-if="host.state === 'DISCONNECTED'"
+                size="sm"
+                variant="primary"
+                :disabled="loading.connectHost[host.id]"
+                @click.stop="connectHost(host.id)"
+                class="flex-1"
+              >
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                </svg>
+                {{ loading.connectHost[host.id] ? 'Connecting...' : 'Connect' }}
+              </FButton>
+              
+              <FButton
+                v-if="host.state === 'CONNECTED'"
+                size="sm"
+                variant="ghost"
+                @click.stop="disconnectHost(host.id)"
+              >
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+                Disconnect
+              </FButton>
+              
+              <FButton
+                size="sm"
+                variant="accent"
+                @click.stop="selectHost(host.id)"
+                class="flex-1"
+              >
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                </svg>
+                Manage
+              </FButton>
             </div>
           </div>
+        </FCard>
+      </div>
 
-          <!-- Host Actions -->
-          <div class="flex gap-2 pt-2 border-t border-white/10">
-            <FButton
-              v-if="host.state === 'DISCONNECTED'"
-              size="sm"
-              variant="primary"
-              :disabled="loading.connectHost[host.id]"
-              @click.stop="connectHost(host.id)"
-            >
-              {{ loading.connectHost[host.id] ? 'Connecting...' : 'Connect' }}
-            </FButton>
-            
-            <FButton
-              v-if="host.state === 'CONNECTED'"
-              size="sm"
-              variant="ghost"
-              @click.stop="disconnectHost(host.id)"
-            >
-              Disconnect
-            </FButton>
-            
-            <FButton
-              v-if="host.state === 'CONNECTED'"
-              size="sm"
-              variant="accent"
-              @click.stop="refreshHostData(host.id)"
-            >
-              Refresh
-            </FButton>
-            
-            <FButton
-              size="sm"
-              variant="ghost"
-              @click.stop="openHostModal(host)"
-            >
-              ⚙️
-            </FButton>
+      <!-- Add Host Button -->
+      <div class="flex justify-center">
+        <FButton
+          variant="primary"
+          glow
+          @click="openAddHostModal"
+          :disabled="loading.addHost"
+        >
+          <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+          </svg>
+          {{ loading.addHost ? 'Adding...' : 'Add New Host' }}
+        </FButton>
+      </div>
+    </div>
+
+    <!-- Host Header -->
+    <div v-if="selectedHost" class="flex items-center justify-between">
+      <div class="flex items-center gap-4">
+        <FButton
+          variant="ghost"
+          size="sm"
+          @click="selectedHostId = null"
+          class="p-2"
+        >
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+          </svg>
+        </FButton>
+        <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-accent-500 to-accent-600 flex items-center justify-center shadow-lg shadow-accent-500/25">
+          <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"/>
+          </svg>
+        </div>
+        <div>
+          <h1 class="text-3xl font-bold text-white">{{ getHostDisplayName(selectedHost) }}</h1>
+          <p class="text-slate-400">{{ selectedHost.uri }}</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-3">
+        <div :class="[
+          'px-4 py-2 rounded-lg border text-center',
+          selectedHost.state === 'CONNECTED' ? 'bg-green-500/10 border-green-500/30 text-green-400' :
+          'bg-red-500/10 border-red-500/30 text-red-400'
+        ]">
+          <span class="font-medium">{{ getHostStatusText(selectedHost) }}</span>
+        </div>
+        <FButton
+          variant="ghost"
+          @click="openHostModal(selectedHost)"
+        >
+          <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+          </svg>
+          Settings
+        </FButton>
+      </div>
+    </div>
+
+    <!-- Host Information Cards -->
+    <div v-if="selectedHost" class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-6">
+      <!-- System Information -->
+      <FCard class="card-glow">
+        <div class="p-6 space-y-4">
+          <div class="flex items-center gap-3 mb-4">
+            <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
+              <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+            </div>
+            <h3 class="text-lg font-bold text-white">System Info</h3>
+          </div>
+          <div class="space-y-3">
+            <div class="flex justify-between items-center">
+              <span class="text-slate-400 text-sm">Host ID</span>
+              <span class="text-white text-sm font-mono">{{ selectedHost.id.substring(0, 8) }}...</span>
+            </div>
+            <div class="flex justify-between items-center">
+              <span class="text-slate-400 text-sm">Connection</span>
+              <span class="text-white text-sm">{{ selectedHost.uri }}</span>
+            </div>
+            <div v-if="selectedHost.stats" class="flex justify-between items-center">
+              <span class="text-slate-400 text-sm">Uptime</span>
+              <span class="text-green-400 text-sm">{{ formatUptime(selectedHost.stats.uptime) }}</span>
+            </div>
+          </div>
+        </div>
+      </FCard>
+
+      <!-- CPU Information -->
+      <FCard class="card-glow">
+        <div class="p-6 space-y-4">
+          <div class="flex items-center gap-3 mb-4">
+            <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center">
+              <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/>
+              </svg>
+            </div>
+            <h3 class="text-lg font-bold text-white">CPU Usage</h3>
+          </div>
+          <div class="space-y-3">
+            <div class="flex justify-between items-center">
+              <span class="text-slate-400 text-sm">Current Usage</span>
+              <span v-if="selectedHost.stats" class="text-2xl font-bold text-green-400">{{ Math.round(selectedHost.stats.cpu_percent || 0) }}%</span>
+              <span v-else class="text-slate-500 text-sm">Unavailable</span>
+            </div>
+            <div v-if="selectedHost.stats" class="w-full bg-slate-700 rounded-full h-2">
+              <div 
+                class="h-2 bg-gradient-to-r from-green-500 to-emerald-500 rounded-full transition-all duration-300"
+                :style="{ width: `${Math.round(selectedHost.stats.cpu_percent || 0)}%` }"
+              ></div>
+            </div>
+          </div>
+        </div>
+      </FCard>
+
+      <!-- Memory Information -->
+      <FCard class="card-glow">
+        <div class="p-6 space-y-4">
+          <div class="flex items-center gap-3 mb-4">
+            <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+              <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"/>
+              </svg>
+            </div>
+            <h3 class="text-lg font-bold text-white">Memory</h3>
+          </div>
+          <div class="space-y-3">
+            <div v-if="selectedHost.stats" class="flex justify-between items-center">
+              <span class="text-slate-400 text-sm">Used</span>
+              <span class="text-purple-400 font-medium">{{ formatBytes(selectedHost.stats.memory_total - selectedHost.stats.memory_available) }}</span>
+            </div>
+            <div v-if="selectedHost.stats" class="flex justify-between items-center">
+              <span class="text-slate-400 text-sm">Total</span>
+              <span class="text-white font-medium">{{ formatBytes(selectedHost.stats.memory_total) }}</span>
+            </div>
+            <div v-if="selectedHost.stats" class="w-full bg-slate-700 rounded-full h-2">
+              <div 
+                class="h-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full transition-all duration-300"
+                :style="{ width: `${((selectedHost.stats.memory_total - selectedHost.stats.memory_available) / selectedHost.stats.memory_total) * 100}%` }"
+              ></div>
+            </div>
+            <div v-else class="text-slate-500 text-sm text-center">Data unavailable</div>
+          </div>
+        </div>
+      </FCard>
+
+      <!-- VM Summary -->
+      <FCard class="card-glow">
+        <div class="p-6 space-y-4">
+          <div class="flex items-center gap-3 mb-4">
+            <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center">
+              <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+              </svg>
+            </div>
+            <h3 class="text-lg font-bold text-white">Virtual Machines</h3>
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div class="text-center">
+              <div class="text-2xl font-bold text-green-400">{{ managedVMs.length }}</div>
+              <div class="text-xs text-slate-400">Managed</div>
+            </div>
+            <div class="text-center">
+              <div class="text-2xl font-bold text-blue-400">{{ discoveredVMs.length }}</div>
+              <div class="text-xs text-slate-400">Discovered</div>
+            </div>
           </div>
         </div>
       </FCard>
     </div>
 
-    <!-- Add Host Button -->
-    <div class="flex justify-center">
-      <FButton
-        variant="primary"
-        glow
-        @click="openAddHostModal"
-        :disabled="loading.addHost"
-      >
-        <div class="flex items-center gap-2">
-          <span>{{ loading.addHost ? 'Adding...' : '+ Add Host' }}</span>
-        </div>
-      </FButton>
-    </div>
-
-    <!-- Selected Host Details -->
+    <!-- Virtual Machine Management -->
     <div v-if="selectedHost" class="space-y-6">
-      <div class="flex items-center justify-between">
-        <h2 class="text-2xl font-bold text-white">{{ getHostDisplayName(selectedHost) }}</h2>
-        <div class="flex gap-2">
+      <!-- Host Actions -->
+      <div class="flex justify-between items-center">
+        <h2 class="text-2xl font-bold text-white">Virtual Machines</h2>
+        <div class="flex gap-3">
           <FButton
             v-if="selectedHost.state === 'CONNECTED'"
             variant="accent"
-            size="sm"
             @click="importAllVMs(selectedHost.id)"
             :disabled="loading.hostImportAll === selectedHost.id"
           >
+            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"/>
+            </svg>
             {{ loading.hostImportAll === selectedHost.id ? 'Importing...' : 'Import All VMs' }}
           </FButton>
           <FButton
             variant="ghost"
-            size="sm"
             @click="refreshDiscoveredVMs(selectedHost.id)"
           >
-            🔄 Refresh
+            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+            </svg>
+            Refresh
           </FButton>
         </div>
       </div>
 
-      <!-- VM Management Tabs -->
-      <div class="space-y-4">
-        <div class="flex gap-4 border-b border-white/10">
-          <button
-            v-for="tab in vmTabs"
-            :key="tab.id"
-            :class="[
-              'px-4 py-2 font-medium transition-colors',
-              activeVMTab === tab.id
-                ? 'text-primary-400 border-b-2 border-primary-400'
-                : 'text-slate-400 hover:text-white'
-            ]"
-            @click="activeVMTab = tab.id"
-          >
-            {{ tab.label }}
-            <span v-if="tab.count !== undefined" class="ml-2 px-2 py-1 bg-white/10 rounded-full text-xs">
-              {{ tab.count }}
-            </span>
-          </button>
-        </div>
-
-        <!-- VM Lists -->
-        <div v-if="activeVMTab === 'managed'" class="space-y-4">
-          <div class="flex items-center justify-between">
-            <h3 class="text-lg font-semibold text-white">Managed VMs</h3>
-            <FButton
-              v-if="selectedHost && selectedHost.state === 'CONNECTED'"
-              variant="primary"
-              @click="openCreateVMModal"
-              class="flex items-center gap-2"
-            >
-              ➕ Create VM
-            </FButton>
+      <!-- Managed VMs Card -->
+      <FCard class="card-glow">
+        <div class="p-6">
+          <div class="flex items-center justify-between mb-6 cursor-pointer" @click="managedVMsCollapsed = !managedVMsCollapsed">
+            <div class="flex items-center gap-4">
+              <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center shadow-lg">
+                <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                </svg>
+              </div>
+              <div>
+                <h3 class="text-xl font-bold text-white">Managed Virtual Machines</h3>
+                <p class="text-slate-400">{{ managedVMs.length }} VMs under management</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-3">
+              <div class="px-4 py-2 bg-green-500/20 border border-green-500/30 rounded-lg">
+                <span class="text-green-400 font-semibold">{{ managedVMs.length }}</span>
+              </div>
+              <svg 
+                class="w-5 h-5 text-slate-400 transition-transform duration-200" 
+                :class="{ 'rotate-180': !managedVMsCollapsed }"
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+              >
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+              </svg>
+            </div>
           </div>
-          <div v-if="managedVMs.length === 0" class="text-center py-8 text-slate-400">
-            <p>No managed VMs found.</p>
-            <p v-if="selectedHost && selectedHost.state === 'CONNECTED'" class="mt-2">
-              <FButton variant="primary" @click="openCreateVMModal">Create your first VM</FButton>
-            </p>
-          </div>
-          <VMCard
-            v-for="vm in managedVMs"
-            :key="vm.uuid"
-            :vm="vm"
-            :host-id="selectedHost.id"
-            @action="handleVMAction"
-          />
-        </div>
 
-        <div v-if="activeVMTab === 'discovered'" class="space-y-4">
-          <h3 class="text-lg font-semibold text-white">Discovered VMs</h3>
-          <DiscoveredVMBulkManager
-            :vms="[...discoveredVMs]"
-            :host-id="selectedHost.id"
-            :importing="!!loading.hostImportAll"
-            :deleting="false"
-            @bulk-import="handleBulkImport"
-            @bulk-delete="handleBulkDelete"
-            @single-import="importVM"
-          />
+          <div v-show="!managedVMsCollapsed" class="space-y-4">
+            <div class="flex justify-between items-center">
+              <div class="text-sm text-slate-400">Active virtual machines managed by this host</div>
+              <FButton
+                v-if="selectedHost && selectedHost.state === 'CONNECTED'"
+                variant="primary"
+                size="sm"
+                @click="openCreateVMModal"
+              >
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+                </svg>
+                Create VM
+              </FButton>
+            </div>
+            
+            <div v-if="managedVMs.length === 0" class="text-center py-12 border-2 border-dashed border-slate-600 rounded-xl">
+              <div class="w-16 h-16 mx-auto mb-4 bg-slate-700 rounded-full flex items-center justify-center">
+                <svg class="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                </svg>
+              </div>
+              <h4 class="text-lg font-semibold text-white mb-2">No managed VMs</h4>
+              <p class="text-slate-400 mb-4">Create your first virtual machine to get started</p>
+              <FButton
+                v-if="selectedHost && selectedHost.state === 'CONNECTED'"
+                variant="primary"
+                @click="openCreateVMModal"
+              >
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+                </svg>
+                Create Virtual Machine
+              </FButton>
+            </div>
+            
+            <div v-else class="grid gap-4">
+              <VMCard
+                v-for="vm in managedVMs"
+                :key="vm.uuid"
+                :vm="vm"
+                :host-id="selectedHost.id"
+                @action="handleVMAction"
+              />
+            </div>
+          </div>
         </div>
-      </div>
+      </FCard>
+
+      <!-- Discovered VMs Card -->
+      <FCard class="card-glow">
+        <div class="p-6">
+          <div class="flex items-center justify-between mb-6 cursor-pointer" @click="discoveredVMsCollapsed = !discoveredVMsCollapsed">
+            <div class="flex items-center gap-4">
+              <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center shadow-lg">
+                <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                </svg>
+              </div>
+              <div>
+                <h3 class="text-xl font-bold text-white">Discovered Virtual Machines</h3>
+                <p class="text-slate-400">{{ discoveredVMs.length }} VMs found on host</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-3">
+              <div class="px-4 py-2 bg-blue-500/20 border border-blue-500/30 rounded-lg">
+                <span class="text-blue-400 font-semibold">{{ discoveredVMs.length }}</span>
+              </div>
+              <svg 
+                class="w-5 h-5 text-slate-400 transition-transform duration-200" 
+                :class="{ 'rotate-180': !discoveredVMsCollapsed }"
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+              >
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+              </svg>
+            </div>
+          </div>
+
+          <div v-show="!discoveredVMsCollapsed" class="space-y-4">
+            <div class="text-sm text-slate-400">Virtual machines detected on the host that can be imported</div>
+            
+            <div v-if="discoveredVMs.length === 0" class="text-center py-12 border-2 border-dashed border-slate-600 rounded-xl">
+              <div class="w-16 h-16 mx-auto mb-4 bg-slate-700 rounded-full flex items-center justify-center">
+                <svg class="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                </svg>
+              </div>
+              <h4 class="text-lg font-semibold text-white mb-2">No discovered VMs</h4>
+              <p class="text-slate-400">No unmanaged virtual machines found on this host</p>
+            </div>
+            
+            <div v-else>
+              <DiscoveredVMBulkManager
+                :vms="[...discoveredVMs]"
+                :host-id="selectedHost.id"
+                :importing="!!loading.hostImportAll"
+                :deleting="false"
+                @bulk-import="handleBulkImport"
+                @bulk-delete="handleBulkDelete"
+                @single-import="importVM"
+              />
+            </div>
+          </div>
+        </div>
+      </FCard>
     </div>
 
     <!-- Add Host Modal -->
@@ -258,8 +505,9 @@ const uiStore = useUIStore();
 
 // Local state
 const selectedHostId = ref<string | null>(null);
-const activeVMTab = ref('managed');
 const selectedHostForSettings = ref<Host | null>(null);
+const managedVMsCollapsed = ref(false);
+const discoveredVMsCollapsed = ref(false);
 
 const modals = ref({
   addHost: false,
@@ -267,26 +515,14 @@ const modals = ref({
   hostSettings: false
 });
 
-// VM tabs with dynamic counts
-const vmTabs = computed(() => [
-  {
-    id: 'managed',
-    label: 'Managed VMs',
-    count: managedVMs.value.length
-  },
-  {
-    id: 'discovered',
-    label: 'Discovered VMs',
-    count: discoveredVMs.value.length
-  }
-]);
-
 // Computed properties
 const hostsWithStats = computed(() => hostStore.hostsWithStats);
 const loading = computed(() => hostStore.loading);
-const selectedHost = computed(() => 
-  selectedHostId.value ? hostStore.getHostById(selectedHostId.value) : null
-);
+const selectedHost = computed(() => {
+  if (!selectedHostId.value) return null;
+  const hosts = hostStore.hostsWithStats;
+  return hosts.find(host => host.id === selectedHostId.value) || null;
+});
 
 const managedVMs = computed(() => 
   selectedHostId.value ? vmStore.vmsByHost(selectedHostId.value) : []
@@ -564,6 +800,24 @@ const formatUptime = (seconds: number): string => {
   if (days > 0) return `${days}d ${hours}h`;
   if (hours > 0) return `${hours}h ${minutes}m`;
   return `${minutes}m`;
+};
+
+const extractHostname = (uri: string): string => {
+  try {
+    // Handle different URI formats
+    if (uri.includes('://')) {
+      const url = new URL(uri);
+      return url.hostname || url.host || 'localhost';
+    }
+    // Handle simple host:port format
+    if (uri.includes(':')) {
+      return uri.split(':')[0] || 'localhost';
+    }
+    return uri;
+  } catch (error) {
+    // Fallback for malformed URIs
+    return uri.split('@').pop()?.split('/')[0] || 'unknown';
+  }
 };
 
 // Lifecycle
