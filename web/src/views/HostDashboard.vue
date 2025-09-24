@@ -6,11 +6,9 @@
         v-for="host in hostsWithStats"
         :key="host.id"
         :class="[
-          'cursor-pointer transition-all duration-300',
+          'cursor-pointer transition-all duration-300 card-glow',
           selectedHostId === host.id ? 'ring-2 ring-primary-400' : ''
         ]"
-        :border-glow="host.state === 'CONNECTED'"
-        :glow-color="getHostGlowColor(host)"
         interactive
         @click="selectHost(host.id)"
       >

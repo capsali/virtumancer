@@ -52,8 +52,10 @@
           }
         ]"
       >
-        <router-link
-          :to="item.path"
+        <component
+          :is="item.requiresHostId ? 'button' : 'router-link'"
+          :to="item.requiresHostId ? undefined : item.path"
+          @click="item.requiresHostId ? handleHostNavigation() : undefined"
           :class="[
             'w-full flex items-center gap-3 p-3 text-left transition-all duration-300 no-underline',
             {
@@ -97,7 +99,7 @@
             v-if="item.active"
             class="absolute right-0 top-1/2 transform -translate-y-1/2 w-1 h-8 bg-gradient-to-b from-primary-400 to-accent-400 rounded-l-full pointer-events-none"
           ></div>
-        </router-link>
+        </component>
 
         <!-- Hover Glow Effect -->
         <div
@@ -160,6 +162,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
+import { useHostStore } from '@/stores/hostStore';
 
 interface NavigationItem {
   id: string;
@@ -170,6 +173,7 @@ interface NavigationItem {
   badge?: number;
   description?: string;
   badgeColor?: string;
+  requiresHostId?: boolean;
 }
 
 interface Props {
@@ -188,6 +192,7 @@ const emit = defineEmits<Emits>();
 
 const router = useRouter();
 const route = useRoute();
+const hostStore = useHostStore();
 
 const collapsed = ref(props.collapsed);
 
@@ -198,6 +203,15 @@ const navigationItems = ref<NavigationItem[]>([
     icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6',
     active: false,
     path: '/'
+  },
+  {
+    id: 'hosts',
+    label: 'Host Dashboard',
+    description: 'Manage virtual machines and host resources',
+    icon: 'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10',
+    active: false,
+    path: '/hosts',
+    requiresHostId: true
   },
   {
     id: 'network',
@@ -213,21 +227,19 @@ const navigationItems = ref<NavigationItem[]>([
     icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
     active: false,
     path: '/logs'
-  },
-  {
-    id: 'error-demo',
-    label: 'Error Demo',
-    icon: 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.268 16.5c-.77.833.192 2.5 1.732 2.5z',
-    active: false,
-    path: '/error-demo'
   }
 ]);
 
 // Update active state based on current route
 const updateActiveState = () => {
   navigationItems.value.forEach(item => {
-    item.active = route.path === item.path || 
-                  (item.path !== '/' && route.path.startsWith(item.path));
+    if (item.requiresHostId && item.path === '/hosts') {
+      // Special handling for host dashboard - match any /hosts/* path
+      item.active = route.path.startsWith('/hosts');
+    } else {
+      item.active = route.path === item.path || 
+                    (item.path !== '/' && route.path.startsWith(item.path));
+    }
   });
 };
 
@@ -251,5 +263,16 @@ const toggleCollapse = () => {
   emit('update:collapsed', collapsed.value);
 };
 
-// Navigation is now handled automatically by router-link
+// Handle navigation to host dashboard with dynamic host selection
+const handleHostNavigation = () => {
+  const hosts = hostStore.hosts;
+  if (hosts.length > 0 && hosts[0]?.id) {
+    // Navigate to the first available host
+    router.push(`/hosts/${hosts[0].id}`);
+  } else {
+    // If no hosts available, stay on current page or redirect to home
+    console.warn('No hosts available for navigation');
+    // Could also show a toast notification here
+  }
+};
 </script>

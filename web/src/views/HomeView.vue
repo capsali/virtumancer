@@ -11,9 +11,7 @@
       <FCard
         v-for="(stat, index) in stats"
         :key="stat.id"
-        :class="`animate-fade-in delay-${(index + 1) * 100}`"
-        :border-glow="true"
-        :glow-color="stat.glowColor"
+        :class="`animate-fade-in delay-${(index + 1) * 100} card-glow`"
         interactive
       >
         <div v-if="isLoading" class="flex items-center justify-center h-20">
@@ -51,9 +49,7 @@
       <FCard
         v-for="(action, index) in quickActions"
         :key="action.id"
-        :class="`animate-fade-in delay-${(index + 1) * 150}`"
-        :border-glow="true"
-        :glow-color="action.glowColor"
+        :class="`animate-fade-in delay-${(index + 1) * 150} card-glow`"
         interactive
       >
         <button 
@@ -87,7 +83,7 @@
         <FCard
           v-for="(activity, index) in recentActivities"
           :key="index"
-          class="animate-fade-in"
+          class="animate-fade-in card-glow"
           :style="{ animationDelay: `${index * 100}ms` }"
         >
           <div class="flex items-center gap-4">

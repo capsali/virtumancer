@@ -31,7 +31,7 @@
     </div>
 
     <!-- VM Control Panel -->
-    <FCard v-if="vm" class="p-6" border-glow glow-color="primary">
+    <FCard v-if="vm" class="p-6 card-glow">
       <div class="flex items-center justify-between mb-4">
         <h2 class="text-lg font-semibold text-white">VM Controls</h2>
         <div v-if="vm.taskState" class="animate-pulse">
@@ -98,7 +98,7 @@
     <!-- VM Information Grid -->
     <div v-if="vm" class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
       <!-- Hardware Specs -->
-      <FCard class="p-6" border-glow glow-color="accent">
+      <FCard class="p-6 card-glow">
         <h3 class="text-lg font-semibold text-white mb-4">Hardware</h3>
         <div class="space-y-3">
           <div class="flex justify-between">
@@ -121,7 +121,7 @@
       </FCard>
 
       <!-- System Information -->
-      <FCard class="p-6" border-glow glow-color="accent">
+      <FCard class="p-6 card-glow">
         <h3 class="text-lg font-semibold text-white mb-4">System</h3>
         <div class="space-y-3">
           <div class="flex justify-between">
@@ -144,7 +144,7 @@
       </FCard>
 
       <!-- Status Information -->
-      <FCard class="p-6" border-glow glow-color="primary">
+      <FCard class="p-6 card-glow">
         <h3 class="text-lg font-semibold text-white mb-4">Status</h3>
         <div class="space-y-3">
           <div class="flex justify-between">
@@ -180,7 +180,7 @@
     </div>
 
     <!-- Performance Stats -->
-    <FCard v-if="vm && vm.state === 'ACTIVE'" class="p-6" border-glow glow-color="accent">
+    <FCard v-if="vm && vm.state === 'ACTIVE'" class="p-6 card-glow">
       <div class="flex items-center justify-between mb-4">
         <h3 class="text-lg font-semibold text-white">Performance Stats</h3>
         <div class="flex items-center gap-3">
@@ -226,7 +226,6 @@
           <div class="text-sm text-slate-400 mt-2">TX • <span class="font-medium">{{ (vmStats.network_tx_mbps || vmStats.network_tx_mb || 0).toFixed(2) }} {{ settings.units.network === 'kb' ? 'KB/s' : 'MB/s' }}</span></div>
         </div>
 
-      <MetricSettingsModal v-if="showMetricSettings" :show="showMetricSettings" @close="showMetricSettings=false" @applied="refreshStats" />
         <div class="text-center p-3 bg-white/5 rounded-lg">
           <div class="text-2xl font-bold text-primary-400">{{ formatUptime(vmStats.uptime || 0) }}</div>
           <div class="text-sm text-slate-400">Uptime</div>
@@ -239,7 +238,7 @@
     </FCard>
 
     <!-- Advanced Actions -->
-    <FCard v-if="vm" class="p-6" border-glow>
+    <FCard v-if="vm" class="p-6 card-glow">
       <h3 class="text-lg font-semibold text-white mb-4">Advanced Actions</h3>
       <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
         <FButton
@@ -298,6 +297,14 @@
       :vm-name="vm.name"
       @close="showExtendedHardwareModal = false"
       @hardware-updated="loadVM"
+    />
+
+    <!-- Metrics Settings Modal (overlay) -->
+    <MetricSettingsModal
+      v-if="showMetricSettings"
+      :show="showMetricSettings"
+      @close="showMetricSettings = false"
+      @applied="refreshStats"
     />
   </div>
 </template>

@@ -36,22 +36,22 @@
 
     <!-- Stats Overview -->
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-      <FCard class="p-4 text-center" border-glow glow-color="primary">
+      <FCard class="p-4 text-center card-glow">
         <div class="text-2xl font-bold text-primary-400">{{ totalHosts }}</div>
         <div class="text-sm text-slate-400">Total Hosts</div>
       </FCard>
       
-      <FCard class="p-4 text-center" border-glow glow-color="accent">
+      <FCard class="p-4 text-center card-glow">
         <div class="text-2xl font-bold text-accent-400">{{ totalVMs }}</div>
         <div class="text-sm text-slate-400">Total VMs</div>
       </FCard>
       
-      <FCard class="p-4 text-center" border-glow glow-color="neon-blue">
+      <FCard class="p-4 text-center card-glow">
         <div class="text-2xl font-bold text-blue-400">{{ connectedHosts }}</div>
         <div class="text-sm text-slate-400">Connected Hosts</div>
       </FCard>
       
-      <FCard class="p-4 text-center" border-glow glow-color="neon-cyan">
+      <FCard class="p-4 text-center card-glow">
         <div class="text-2xl font-bold text-cyan-400">{{ activeVMs }}</div>
         <div class="text-sm text-slate-400">Active VMs</div>
       </FCard>
@@ -66,9 +66,7 @@
       >
         <!-- Host Header -->
         <FCard
-          class="p-4 cursor-pointer transition-all duration-300 hover:scale-[1.02]"
-          :border-glow="host.state === 'CONNECTED'"
-          :glow-color="getHostGlowColor(host)"
+          class="p-4 cursor-pointer transition-all duration-300 hover:scale-[1.02] card-glow"
           interactive
           @click="$router.push(`/hosts/${host.id}`)"
         >
@@ -104,9 +102,7 @@
           <FCard
             v-for="vm in getHostVMs(host.id)"
             :key="vm.uuid"
-            class="p-4 cursor-pointer transition-all duration-300 hover:scale-[1.02]"
-            :border-glow="vm.state === 'ACTIVE'"
-            :glow-color="getVMGlowColor(vm)"
+            class="p-4 cursor-pointer transition-all duration-300 hover:scale-[1.02] card-glow"
             interactive
             @click="$router.push(`/hosts/${host.id}/vms/${vm.name}`)"
           >
@@ -135,7 +131,7 @@
 
     <!-- Network Diagram View -->
     <div v-if="viewMode === 'network'" class="relative">
-      <FCard class="p-8 min-h-[600px] overflow-hidden" border-glow glow-color="primary">
+      <FCard class="p-8 min-h-[600px] overflow-hidden card-glow">
         <div class="relative w-full h-full">
           <!-- Network topology visualization -->
           <svg

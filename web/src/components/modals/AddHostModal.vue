@@ -10,9 +10,7 @@
       
       <!-- Modal -->
       <FCard
-        class="relative w-full max-w-md glass-medium border border-white/20"
-        border-glow
-        glow-color="primary"
+        class="relative w-full max-w-md glass-medium border border-white/10 modal-glow"
       >
         <div class="space-y-6">
           <!-- Header -->

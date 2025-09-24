@@ -1,8 +1,6 @@
 <template>
   <FCard
-    class="border-blue-400/30 transition-all duration-300"
-    border-glow
-    glow-color="primary"
+    class="border-blue-400/30 transition-all duration-300 card-glow"
     interactive
   >
     <div class="space-y-4">

@@ -75,6 +75,26 @@ export const useAppStore = defineStore('app', () => {
       
       // Initialize WebSocket connections
       await initializeWebSocket();
+
+      // Load persisted metrics settings once at startup so cpu display default
+      // and smoothing alphas persist across full page reloads.
+      try {
+        const settingsApi = (await import('@/services/api')).settingsApi;
+        const settingsStore = (await import('@/stores/settingsStore')).useSettingsStore();
+        const remote = await settingsApi.getMetrics();
+        if (remote) {
+          if (typeof remote.diskSmoothAlpha === 'number') settingsStore.setDiskAlpha(remote.diskSmoothAlpha);
+          if (typeof remote.netSmoothAlpha === 'number') settingsStore.setNetAlpha(remote.netSmoothAlpha);
+          if (typeof remote.cpuSmoothAlpha === 'number') settingsStore.setCpuAlpha(remote.cpuSmoothAlpha);
+          if (typeof remote.cpuDisplayDefault === 'string') settingsStore.setCpuDefault(remote.cpuDisplayDefault);
+          if (remote.units) {
+            if (remote.units.disk) settingsStore.setUnits('disk', remote.units.disk);
+            if (remote.units.network) settingsStore.setUnits('network', remote.units.network);
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to load persisted metrics settings on init', e);
+      }
       
       // Load initial data
       await Promise.allSettled([

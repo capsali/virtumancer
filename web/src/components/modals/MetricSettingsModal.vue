@@ -1,8 +1,26 @@
 <template>
-  <FCard class="p-6 max-w-lg mx-auto">
-    <h3 class="text-lg font-semibold mb-4">Metrics & Smoothing Settings</h3>
-    <div class="space-y-4">
-      <div>
+  <teleport to="body">
+    <transition name="modal-fade" appear>
+      <div v-if="props.show" class="fixed inset-0 z-50 flex items-center justify-center p-4" @click.self="$emit('close')">
+      <!-- Backdrop -->
+      <div class="fixed inset-0 bg-black/60 backdrop-blur-sm" @click="$emit('close')"></div>        <!-- Modal -->
+        <FCard class="relative w-full max-w-md glass-medium border border-white/10 modal-glow" @click.stop>
+          <div class="space-y-6">
+            <!-- Header -->
+            <div class="flex items-center justify-between">
+              <h2 class="text-xl font-semibold text-white">Metrics & Smoothing Settings</h2>
+              <FButton
+                size="sm"
+                variant="ghost"
+                @click="$emit('close')"
+              >
+                ✕
+              </FButton>
+            </div>
+            
+            <!-- Form -->
+            <div class="space-y-4">
+              <div>
         <label class="block text-sm text-slate-400">Disk smoothing alpha (0..1)</label>
         <input type="range" min="0" max="1" step="0.05" v-model.number="localDiskAlpha" />
         <div class="text-xs text-slate-500">{{ localDiskAlpha.toFixed(2) }}</div>
@@ -43,21 +61,58 @@
           <option value="kb">KB/s</option>
           <option value="mb">MB/s</option>
         </select>
-      </div>
+              </div>
 
-      <div class="flex justify-end gap-2">
-        <FButton variant="ghost" @click="$emit('close')">Cancel</FButton>
-        <FButton variant="primary" @click="apply">Apply</FButton>
+              <!-- Actions -->
+              <div class="flex gap-3 pt-4">
+                <FButton
+                  variant="ghost"
+                  @click="$emit('close')"
+                  class="flex-1 button-glow cancel"
+                >
+                  Cancel
+                </FButton>
+                <FButton
+                  variant="primary"
+                  @click="apply"
+                  class="flex-1 button-glow apply"
+                >
+                  Apply
+                </FButton>
+              </div>
+            </div>
+          </div>
+        </FCard>
       </div>
-    </div>
-  </FCard>
+    </transition>
+  </teleport>
 </template>
+
+<style scoped>
+.modal-fade-enter-active, .modal-fade-leave-active {
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+.modal-fade-enter-from, .modal-fade-leave-to {
+  opacity: 0;
+  transform: scale(0.9) translateY(-20px);
+}
+.modal-fade-enter-to, .modal-fade-leave-from {
+  opacity: 1;
+  transform: scale(1) translateY(0);
+}
+
+
+
+/* Local styles removed - now using shared glow classes from style.css */
+</style>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useUIStore } from '@/stores/uiStore'
 import { settingsApi } from '@/services/api'
+import FCard from '@/components/ui/FCard.vue'
+import FButton from '@/components/ui/FButton.vue'
 
 const props = defineProps<{ show: boolean }>()
 const emit = defineEmits(['close','applied'])

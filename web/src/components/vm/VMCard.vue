@@ -1,12 +1,10 @@
 <template>
   <FCard
     :class="[
-      'transition-all duration-300 cursor-pointer',
+      'transition-all duration-300 cursor-pointer card-glow',
       vm.state === 'ACTIVE' ? 'border-green-400/30' : 
       vm.state === 'ERROR' ? 'border-red-400/30' : 'border-white/10'
     ]"
-    :border-glow="vm.state === 'ACTIVE'"
-    :glow-color="vm.state === 'ACTIVE' ? 'accent' : 'primary'"
     interactive
     @click="viewDetails"
   >
