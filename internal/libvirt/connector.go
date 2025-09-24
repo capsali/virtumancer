@@ -1540,7 +1540,14 @@ func (c *Connector) StartDomain(hostID, vmName string) error {
 	if err != nil {
 		return err
 	}
-	return l.DomainCreate(domain)
+	log.Debugf("Attempting to start domain %s on host %s", vmName, hostID)
+	err = l.DomainCreate(domain)
+	if err != nil {
+		log.Errorf("Failed to start domain %s: %v", vmName, err)
+		return fmt.Errorf("libvirt start failed for %s: %w", vmName, err)
+	}
+	log.Debugf("Successfully initiated start for domain %s", vmName)
+	return nil
 }
 
 func (c *Connector) ShutdownDomain(hostID, vmName string) error {
@@ -1548,7 +1555,14 @@ func (c *Connector) ShutdownDomain(hostID, vmName string) error {
 	if err != nil {
 		return err
 	}
-	return l.DomainShutdown(domain)
+	log.Debugf("Attempting to shutdown domain %s on host %s", vmName, hostID)
+	err = l.DomainShutdown(domain)
+	if err != nil {
+		log.Errorf("Failed to shutdown domain %s: %v", vmName, err)
+		return fmt.Errorf("libvirt shutdown failed for %s: %w", vmName, err)
+	}
+	log.Debugf("Successfully initiated shutdown for domain %s", vmName)
+	return nil
 }
 
 func (c *Connector) RebootDomain(hostID, vmName string) error {
@@ -1556,7 +1570,14 @@ func (c *Connector) RebootDomain(hostID, vmName string) error {
 	if err != nil {
 		return err
 	}
-	return l.DomainReboot(domain, 0)
+	log.Debugf("Attempting to reboot domain %s on host %s", vmName, hostID)
+	err = l.DomainReboot(domain, 0)
+	if err != nil {
+		log.Errorf("Failed to reboot domain %s: %v", vmName, err)
+		return fmt.Errorf("libvirt reboot failed for %s: %w", vmName, err)
+	}
+	log.Debugf("Successfully initiated reboot for domain %s", vmName)
+	return nil
 }
 
 func (c *Connector) DestroyDomain(hostID, vmName string) error {

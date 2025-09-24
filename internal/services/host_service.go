@@ -1394,10 +1394,18 @@ func (s *HostService) detectDriftOrIngestVM(hostID, vmName string, isInitialSync
 		updates := make(map[string]interface{})
 		driftDetails := make(map[string]map[string]interface{})
 
-		// Always update observed state from libvirt (but not intended state)
+		// Always update observed state from libvirt
 		newLibvirtState := mapLibvirtStateToVMState(vmInfo.State)
 		if existingVM.LibvirtState != newLibvirtState {
 			updates["libvirt_state"] = newLibvirtState
+			changed = true
+		}
+
+		// Sync intended state with libvirt state if they differ and VM is not in a task state
+		// This handles cases where async operations (shutdown/reboot) have completed
+		if existingVM.TaskState == "" && existingVM.State != newLibvirtState {
+			log.Debugf("Syncing intended state for %s: %s -> %s (no task running)", vmInfo.Name, existingVM.State, newLibvirtState)
+			updates["state"] = newLibvirtState
 			changed = true
 		}
 
@@ -2800,18 +2808,22 @@ func (s *HostService) StartVM(hostID, vmName string) error {
 }
 
 func (s *HostService) ShutdownVM(hostID, vmName string) error {
+	// Don't set intended state immediately for shutdown - it's async
+	// Let polling detect the actual state change
 	return s.performVMAction(hostID, vmName, storage.TaskStateStopping, func() error {
 		return s.connector.ShutdownDomain(hostID, vmName)
-	}, storage.StateStopped)
+	})
 }
 
 func (s *HostService) RebootVM(hostID, vmName string) error {
+	// Don't set intended state immediately for reboot - it's async
+	// Let polling detect the actual state change
 	return s.performVMAction(hostID, vmName, storage.TaskStateRebooting, func() error {
 		// If a rebuild is needed, this power cycle will apply the changes.
 		// So, we can clear the flag.
 		s.db.Model(&storage.VirtualMachine{}).Where("host_id = ? AND name = ?", hostID, vmName).Update("needs_rebuild", false)
 		return s.connector.RebootDomain(hostID, vmName)
-	}, storage.StateActive)
+	})
 }
 
 func (s *HostService) ForceOffVM(hostID, vmName string) error {
