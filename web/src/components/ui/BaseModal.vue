@@ -63,7 +63,7 @@
                 <template v-if="showDefaultActions">
                   <FButton
                     variant="ghost"
-                    @click="$emit('cancel')"
+                    @click="handleCancel"
                     class="button-glow cancel"
                     tabindex="98"
                   >
@@ -132,6 +132,12 @@ const emit = defineEmits<Emits>()
 // Focus trap and keyboard navigation
 const { trapRef, startTrap, stopTrap } = useFocusTrap()
 const { createKeyboardHandler, getStandardModalHandlers } = useModalKeyboard()
+
+const handleCancel = () => {
+  // Emit both cancel and close to ensure parent components that only listen for close still close the modal
+  emit('cancel')
+  emit('close')
+}
 
 // Modal reference
 const modalRef = ref<HTMLElement>()

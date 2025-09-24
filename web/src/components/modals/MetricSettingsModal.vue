@@ -2,6 +2,7 @@
   <BaseModal 
     :show="props.show"
     @close="$emit('close')"
+    @cancel="$emit('close')"
     title="Metrics & Smoothing Settings"
     size="md"
     cancel-text="Cancel"

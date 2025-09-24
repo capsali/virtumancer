@@ -198,13 +198,20 @@ const handleVMAction = async (vm: any, action: string) => {
     }
     // Refresh data
     await hostStore.fetchHosts()
+    await fetchVMsForAllHosts()
   } catch (error) {
     console.error(`Failed to ${action} VM:`, error)
   }
 }
 
+const fetchVMsForAllHosts = async () => {
+  const hostPromises = hosts.value.map(host => vmStore.fetchVMs(host.id))
+  await Promise.allSettled(hostPromises)
+}
+
 // Lifecycle
 onMounted(async () => {
   await hostStore.fetchHosts()
+  await fetchVMsForAllHosts()
 })
 </script>

@@ -1,2 +1,14 @@
-2025/09/23 23:29:50 [INFO] Auto-connecting to previously connected host 7ca4453d-6c65-4919-b039-ca07d94d5a58 (qemu+ssh://capsali@10.87.0.10/system)
-2025/09/23 23:29:52 [INFO] Starting HTTPS server on :8888
+2025/09/24 20:06:10 [INFO] Auto-connecting to previously connected host 1b4e12df-c596-4612-97a8-26ea0b2070ba (qemu+ssh://capsali@10.87.0.10/system)
+2025/09/24 20:06:10 [DEBUG] EnsureHostConnected: checking connection for host 1b4e12df-c596-4612-97a8-26ea0b2070ba
+2025/09/24 20:06:10 [VERBOSE] EnsureHostConnected: connecting to host 1b4e12df-c596-4612-97a8-26ea0b2070ba (uri=qemu+ssh://capsali@10.87.0.10/system)
+2025/09/24 20:06:10 [DEBUG] dialLibvirt: attempting SSH connection to 10.87.0.10:22 for user capsali
+2025/09/24 20:06:10 [VERBOSE] SSH connected to 10.87.0.10:22. Dialing remote libvirt socket at /var/run/libvirt/libvirt-sock
+2025/09/24 20:06:11 [VERBOSE] Successfully connected to host: 1b4e12df-c596-4612-97a8-26ea0b2070ba
+2025/09/24 20:06:11 [VERBOSE] EnsureHostConnected: connection established for host 1b4e12df-c596-4612-97a8-26ea0b2070ba
+2025/09/24 20:06:11 [DEBUG] Broadcasting message to 0 clients: type=host-connection-changed
+2025/09/24 20:06:11 [DEBUG] Broadcasting message to 0 clients: type=hosts-changed
+2025/09/24 20:06:11 [DEBUG] Started VM state polling for host 1b4e12df-c596-4612-97a8-26ea0b2070ba
+2025/09/24 20:06:11 [INFO] Starting HTTPS server on :8888
+2025/09/24 20:06:11 [DEBUG] Could not start HTTPS server: listen tcp :8888: bind: address already in use
+2025/09/24 20:06:11 [INFO] Please ensure 'localhost.crt' and 'localhost.key' are present in the root directory.
+2025/09/24 20:06:11 [INFO] You can generate them by running the 'generate-certs.sh' script.
