@@ -195,7 +195,7 @@ export const hostApi = {
   },
 
   async update(id: string, updates: Partial<Host>): Promise<Host> {
-    return apiClient.put<Host>(`/hosts/${id}`, updates, `update_host_${id}`);
+    return apiClient.patch<Host>(`/hosts/${id}`, updates, `update_host_${id}`);
   },
 
   async delete(id: string): Promise<void> {
