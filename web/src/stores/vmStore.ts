@@ -81,18 +81,32 @@ export const useVMStore = defineStore('virtualMachines', () => {
     clearError('fetchVMs');
     
     try {
-      if (!hostId) {
-        // If no hostId provided, clear VMs and return
-        vms.value = [];
+      if (!hostId || hostId.trim() === '') {
+        console.warn('fetchVMs called with empty hostId, skipping to prevent clearing VMs');
         return;
       }
       
+      console.log(`fetchVMs: Starting fetch for host ${hostId}, current VM count: ${vms.value.length}`);
       const data = await vmApi.getAll(hostId);
-      // Update only VMs for this host
-      vms.value = vms.value.filter(vm => vm && vm.hostId !== hostId).concat(data);
+      
+      // Defensive check: only update if we got valid data
+      if (data && Array.isArray(data)) {
+        const existingForHost = vms.value.filter(vm => vm && vm.hostId === hostId).length;
+        console.log(`fetchVMs: Got ${data.length} VMs for host ${hostId} (was ${existingForHost})`);
+        
+        // Update only VMs for this host
+        const otherHostVMs = vms.value.filter(vm => vm && vm.hostId !== hostId);
+        vms.value = otherHostVMs.concat(data);
+        
+        console.log(`fetchVMs: Updated VM list, total VMs now: ${vms.value.length}`);
+      } else {
+        console.warn(`fetchVMs: Got invalid data for host ${hostId}, preserving existing VMs:`, data);
+      }
     } catch (error) {
+      console.error(`fetchVMs: Error fetching VMs for host ${hostId}, preserving existing VMs:`, error);
       handleError('fetchVMs', error);
-      throw error;
+      // Don't throw error to prevent clearing the UI
+      // throw error;
     } finally {
       loading.value.vms = false;
     }

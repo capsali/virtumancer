@@ -294,6 +294,7 @@ import FCard from '@/components/ui/FCard.vue';
 import FButton from '@/components/ui/FButton.vue';
 import VMHardwareConfigModalExtended from '@/components/modals/VMHardwareConfigModalExtended.vue';
 import type { VirtualMachine, VMStats } from '@/types';
+import { wsManager } from '@/services/api';
 
 interface Props {
   hostId: string;
@@ -318,6 +319,10 @@ const showExtendedHardwareModal = ref(false);
 const loadVM = async (): Promise<void> => {
   try {
     error.value = null;
+    
+    // Stop current monitoring if active
+    stopStatsMonitoring();
+    
     await vmStore.fetchVMs(props.hostId);
     
     // Find the VM by name
@@ -325,9 +330,9 @@ const loadVM = async (): Promise<void> => {
     if (foundVM) {
       vm.value = foundVM;
       
-      // Load stats if VM is active
+      // Start monitoring if VM is active
       if (foundVM.state === 'ACTIVE') {
-        await refreshStats();
+        startStatsMonitoring();
       }
     } else {
       error.value = `VM "${props.vmName}" not found`;
@@ -443,30 +448,60 @@ const formatUptime = (seconds: number): string => {
   }
 };
 
-// Auto-refresh stats every 30 seconds for active VMs
-let statsInterval: ReturnType<typeof setInterval> | null = null;
+// WebSocket-based stats monitoring
+let isSubscribed = false;
 
-const startStatsRefresh = (): void => {
-  if (vm.value?.state === 'ACTIVE') {
-    statsInterval = setInterval(refreshStats, 30000);
+const startStatsMonitoring = (): void => {
+  if (vm.value?.state === 'ACTIVE' && !isSubscribed) {
+    console.log(`Subscribing to VM stats: ${props.hostId}/${vm.value.name}`);
+    
+    // Connect WebSocket if not connected
+    wsManager.connect().then(() => {
+      // Subscribe to stats updates
+      wsManager.subscribeToVMStats(props.hostId, vm.value!.name);
+      isSubscribed = true;
+      
+      // Listen for stats updates
+      wsManager.on('vm-stats-updated', handleStatsUpdate);
+      
+      // Also do an initial fetch
+      refreshStats();
+    }).catch(error => {
+      console.error('Failed to connect WebSocket:', error);
+      // Fallback to initial fetch only
+      refreshStats();
+    });
   }
 };
 
-const stopStatsRefresh = (): void => {
-  if (statsInterval) {
-    clearInterval(statsInterval);
-    statsInterval = null;
+const stopStatsMonitoring = (): void => {
+  if (isSubscribed && vm.value) {
+    console.log(`Unsubscribing from VM stats: ${props.hostId}/${vm.value.name}`);
+    wsManager.unsubscribeFromVMStats(props.hostId, vm.value.name);
+    wsManager.off('vm-stats-updated', handleStatsUpdate);
+    isSubscribed = false;
+  }
+};
+
+// Handle incoming WebSocket stats updates
+const handleStatsUpdate = (data: any): void => {
+  if (data.hostId === props.hostId && data.vmName === vm.value?.name) {
+    // Update vmStats with the received data
+    if (data.stats) {
+      vmStats.value = data.stats;
+      console.log('Received VM stats update via WebSocket:', data.stats);
+    }
   }
 };
 
 // Lifecycle
 onMounted(() => {
   loadVM().then(() => {
-    startStatsRefresh();
+    startStatsMonitoring();
   });
 });
 
 onUnmounted(() => {
-  stopStatsRefresh();
+  stopStatsMonitoring();
 });
 </script>

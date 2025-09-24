@@ -3001,7 +3001,23 @@ func (m *MonitoringManager) Subscribe(client *ws.Client, hostID, vmName string) 
 	cached := sub.lastKnownStats
 	sub.mu.RUnlock()
 	if cached != nil {
-		if err := client.SendMessage(ws.Message{Type: "vm-stats-updated", Payload: ws.MessagePayload{"hostId": hostID, "vmName": vmName, "stats": cached}}); err != nil {
+		// Transform cached raw stats to ProcessedVMStats for frontend consistency
+		var processedStats *ProcessedVMStats
+		if cached.State == -1 {
+			// Error case - send basic error stats
+			processedStats = &ProcessedVMStats{
+				CPUPercent:  0,
+				MemoryMB:    0,
+				DiskReadMB:  0,
+				DiskWriteMB: 0,
+				NetworkRxMB: 0,
+				NetworkTxMB: 0,
+				Uptime:      0,
+			}
+		} else {
+			processedStats, _ = m.service.transformVMStats(hostID, vmName, cached)
+		}
+		if err := client.SendMessage(ws.Message{Type: "vm-stats-updated", Payload: ws.MessagePayload{"hostId": hostID, "vmName": vmName, "stats": processedStats}}); err != nil {
 			// Non-fatal: client might be slow or disconnected.
 		}
 	} else {
@@ -3085,9 +3101,27 @@ func (m *MonitoringManager) pollVmStats(hostID, vmName string, sub *VmSubscripti
 	sub.mu.Lock()
 	sub.lastKnownStats = stats
 	sub.mu.Unlock()
+
+	// Transform raw stats to ProcessedVMStats for frontend consistency
+	var processedStats *ProcessedVMStats
+	if stats.State == -1 {
+		// Error case - send basic error stats
+		processedStats = &ProcessedVMStats{
+			CPUPercent:  0,
+			MemoryMB:    0,
+			DiskReadMB:  0,
+			DiskWriteMB: 0,
+			NetworkRxMB: 0,
+			NetworkTxMB: 0,
+			Uptime:      0,
+		}
+	} else {
+		processedStats, _ = m.service.transformVMStats(hostID, vmName, stats)
+	}
+
 	m.service.hub.BroadcastMessage(ws.Message{
 		Type:    "vm-stats-updated",
-		Payload: ws.MessagePayload{"hostId": hostID, "vmName": vmName, "stats": stats},
+		Payload: ws.MessagePayload{"hostId": hostID, "vmName": vmName, "stats": processedStats},
 	})
 
 	ticker := time.NewTicker(2 * time.Second)
@@ -3105,9 +3139,26 @@ func (m *MonitoringManager) pollVmStats(hostID, vmName string, sub *VmSubscripti
 			sub.lastKnownStats = stats
 			sub.mu.Unlock()
 
+			// Transform raw stats to ProcessedVMStats for frontend consistency
+			var processedStats *ProcessedVMStats
+			if stats.State == -1 {
+				// Error case - send basic error stats
+				processedStats = &ProcessedVMStats{
+					CPUPercent:  0,
+					MemoryMB:    0,
+					DiskReadMB:  0,
+					DiskWriteMB: 0,
+					NetworkRxMB: 0,
+					NetworkTxMB: 0,
+					Uptime:      0,
+				}
+			} else {
+				processedStats, _ = m.service.transformVMStats(hostID, vmName, stats)
+			}
+
 			m.service.hub.BroadcastMessage(ws.Message{
 				Type:    "vm-stats-updated",
-				Payload: ws.MessagePayload{"hostId": hostID, "vmName": vmName, "stats": stats},
+				Payload: ws.MessagePayload{"hostId": hostID, "vmName": vmName, "stats": processedStats},
 			})
 
 			statsState := mapLibvirtStateToVMState(stats.State)

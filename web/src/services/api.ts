@@ -467,6 +467,24 @@ export class WebSocketManager {
     });
   }
 
+  send(type: string, payload: any): void {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      const message = { type, payload };
+      this.ws.send(JSON.stringify(message));
+    } else {
+      console.warn('WebSocket is not connected. Message not sent:', { type, payload });
+    }
+  }
+
+  // VM Stats subscription methods
+  subscribeToVMStats(hostId: string, vmName: string): void {
+    this.send('subscribe-vm-stats', { hostId, vmName });
+  }
+
+  unsubscribeFromVMStats(hostId: string, vmName: string): void {
+    this.send('unsubscribe-vm-stats', { hostId, vmName });
+  }
+
   disconnect(): void {
     this.ws?.close();
     this.ws = null;

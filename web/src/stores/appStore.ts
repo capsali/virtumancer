@@ -78,8 +78,8 @@ export const useAppStore = defineStore('app', () => {
       
       // Load initial data
       await Promise.allSettled([
-        hostStore.fetchHosts(),
-        vmStore.fetchVMs()
+        hostStore.fetchHosts()
+        // Note: Don't fetch all VMs globally - fetch per host in components
       ]);
       
       // Set up auto-refresh timers
@@ -122,8 +122,8 @@ export const useAppStore = defineStore('app', () => {
       
       // Fetch latest data from all stores
       await Promise.allSettled([
-        hostStore.fetchHosts(),
-        vmStore.fetchVMs()
+        hostStore.fetchHosts()
+        // Note: VM data is fetched per-host in individual components
       ]);
       
       // Update stats for connected hosts
