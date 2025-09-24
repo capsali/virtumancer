@@ -1,5 +1,10 @@
 <template>
   <div class="space-y-6">
+    <!-- Breadcrumbs -->
+    <div class="px-6 pt-6">
+      <FBreadcrumbs />
+    </div>
+    
     <!-- Host Overview Cards -->
     <div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-6">
       <FCard
@@ -237,6 +242,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useHostStore, useVMStore, useUIStore } from '@/stores';
 import FCard from '@/components/ui/FCard.vue';
 import FButton from '@/components/ui/FButton.vue';
+import FBreadcrumbs from '@/components/ui/FBreadcrumbs.vue';
 import VMCard from '@/components/vm/VMCard.vue';
 import DiscoveredVMCard from '@/components/vm/DiscoveredVMCard.vue';
 import DiscoveredVMBulkManager from '@/components/vm/DiscoveredVMBulkManager.vue';

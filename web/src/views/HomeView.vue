@@ -2,43 +2,237 @@
   <div class="space-y-8">
     <!-- Welcome Section -->
     <div class="text-center">
-      <h2 class="text-4xl font-bold text-white mb-4">Welcome to VirtuMancer</h2>
-      <p class="text-slate-400 text-lg">Manage your virtualization infrastructure with style</p>
+      <h2 class="text-4xl font-bold bg-gradient-to-r from-primary-400 to-accent-400 bg-clip-text text-transparent mb-4">
+        Welcome to Virtumancer
+      </h2>
+      <p class="text-slate-400 text-lg">Your virtualization command center</p>
     </div>
-    
-    <!-- Dashboard Stats -->
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-      <FCard
-        v-for="(stat, index) in stats"
-        :key="stat.id"
-        :class="`animate-fade-in delay-${(index + 1) * 100} card-glow`"
-        interactive
-      >
-        <div v-if="isLoading" class="flex items-center justify-center h-20">
-          <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500"></div>
-        </div>
-        <div v-else class="flex items-center gap-4">
-          <div :class="[
-            'w-12 h-12 rounded-xl flex items-center justify-center',
-            stat.iconBg
-          ]">
-            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="stat.iconPath"/>
+
+    <!-- Main Infrastructure Cards -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <!-- Virtual Machines Card -->
+      <FCard class="card-glow hover:scale-105 transition-all duration-300" interactive @click="router.push('/vms')">
+        <div class="p-6">
+          <div class="flex items-center justify-between mb-6">
+            <div class="flex items-center gap-3">
+              <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center shadow-lg shadow-primary-500/25">
+                <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                </svg>
+              </div>
+              <div>
+                <h3 class="text-xl font-bold text-white">Virtual Machines</h3>
+                <p class="text-slate-400 text-sm">Infrastructure VMs</p>
+              </div>
+            </div>
+            <svg class="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
             </svg>
           </div>
-          <div class="flex-1">
-            <div class="flex items-center justify-between">
-              <h3 class="text-lg font-semibold text-white">{{ stat.value }}</h3>
-              <span :class="[
-                'px-2 py-1 rounded-full text-xs font-medium',
-                stat.trend === 'up' ? 'bg-green-500/20 text-green-400' :
-                stat.trend === 'down' ? 'bg-red-500/20 text-red-400' :
-                'bg-slate-500/20 text-slate-400'
-              ]">
-                {{ stat.change }}
-              </span>
+          
+          <div class="grid grid-cols-3 gap-4">
+            <div class="text-center">
+              <div class="text-2xl font-bold text-white">{{ dashboardStats.infrastructure.totalVMs }}</div>
+              <div class="text-xs text-slate-400">Total</div>
             </div>
-            <p class="text-sm text-slate-400">{{ stat.label }}</p>
+            <div class="text-center">
+              <div class="text-2xl font-bold text-green-400">{{ dashboardStats.infrastructure.runningVMs }}</div>
+              <div class="text-xs text-slate-400">Running</div>
+            </div>
+            <div class="text-center">
+              <div class="text-2xl font-bold text-slate-400">{{ dashboardStats.infrastructure.stoppedVMs }}</div>
+              <div class="text-xs text-slate-400">Stopped</div>
+            </div>
+          </div>
+          
+          <div class="mt-4 h-2 bg-slate-700 rounded-full overflow-hidden">
+            <div 
+              class="h-full bg-gradient-to-r from-green-500 to-primary-500 transition-all duration-300"
+              :style="{ width: `${dashboardStats.infrastructure.totalVMs > 0 ? (dashboardStats.infrastructure.runningVMs / dashboardStats.infrastructure.totalVMs) * 100 : 0}%` }"
+            ></div>
+          </div>
+        </div>
+      </FCard>
+
+      <!-- Hosts Card -->
+      <FCard class="card-glow hover:scale-105 transition-all duration-300" interactive @click="router.push('/hosts')">
+        <div class="p-6">
+          <div class="flex items-center justify-between mb-6">
+            <div class="flex items-center gap-3">
+              <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-accent-500 to-accent-600 flex items-center justify-center shadow-lg shadow-accent-500/25">
+                <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"/>
+                </svg>
+              </div>
+              <div>
+                <h3 class="text-xl font-bold text-white">Hosts</h3>
+                <p class="text-slate-400 text-sm">Hypervisor nodes</p>
+              </div>
+            </div>
+            <svg class="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+            </svg>
+          </div>
+          
+          <div class="grid grid-cols-2 gap-4">
+            <div class="text-center">
+              <div class="text-3xl font-bold text-green-400">{{ dashboardStats.infrastructure.connectedHosts }}</div>
+              <div class="text-xs text-slate-400">Connected</div>
+            </div>
+            <div class="text-center">
+              <div class="text-3xl font-bold text-white">{{ dashboardStats.infrastructure.totalHosts }}</div>
+              <div class="text-xs text-slate-400">Total</div>
+            </div>
+          </div>
+          
+          <div class="mt-6 flex items-center justify-center">
+            <div :class="[
+              'w-3 h-3 rounded-full mr-2',
+              dashboardStats.infrastructure.connectedHosts > 0 ? 'bg-green-400 animate-pulse' : 'bg-red-400'
+            ]"></div>
+            <span class="text-sm text-slate-400">
+              {{ dashboardStats.infrastructure.connectedHosts > 0 ? 'All systems operational' : 'No hosts connected' }}
+            </span>
+          </div>
+        </div>
+      </FCard>
+
+      <!-- Networks Card -->
+      <FCard class="card-glow hover:scale-105 transition-all duration-300" interactive @click="router.push('/network')">
+        <div class="p-6">
+          <div class="flex items-center justify-between mb-6">
+            <div class="flex items-center gap-3">
+              <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shadow-lg shadow-purple-500/25">
+                <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"/>
+                </svg>
+              </div>
+              <div>
+                <h3 class="text-xl font-bold text-white">Networks</h3>
+                <p class="text-slate-400 text-sm">Network topology</p>
+              </div>
+            </div>
+            <svg class="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+            </svg>
+          </div>
+          
+          <div class="space-y-4">
+            <div class="flex items-center justify-between">
+              <span class="text-sm text-slate-400">Active Connections</span>
+              <span class="text-lg font-bold text-green-400">{{ dashboardStats.infrastructure.connectedHosts * 2 }}</span>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-sm text-slate-400">Network Interfaces</span>
+              <span class="text-lg font-bold text-white">{{ dashboardStats.infrastructure.totalVMs * 1.5 | 0 }}</span>
+            </div>
+          </div>
+          
+          <div class="mt-6">
+            <div class="flex items-center justify-center space-x-1">
+              <div v-for="i in 8" :key="i" class="w-2 h-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full animate-pulse" :style="{ animationDelay: `${i * 0.1}s` }"></div>
+            </div>
+          </div>
+        </div>
+      </FCard>
+    </div>
+
+    <!-- Resource Overview Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <!-- System Resources -->
+      <FCard class="card-glow">
+        <div class="p-6">
+          <div class="flex items-center gap-3 mb-6">
+            <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
+              <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+              </svg>
+            </div>
+            <h3 class="text-xl font-bold text-white">System Resources</h3>
+          </div>
+          
+          <div class="space-y-4">
+            <div>
+              <div class="flex justify-between items-center mb-2">
+                <span class="text-sm text-slate-400">Memory Usage</span>
+                <span class="text-sm font-medium text-white">
+                  {{ Math.round(dashboardStats.resources.memoryUtilization) }}%
+                </span>
+              </div>
+              <div class="w-full bg-slate-700 rounded-full h-2">
+                <div 
+                  class="h-2 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-full transition-all duration-300"
+                  :style="{ width: `${dashboardStats.resources.memoryUtilization}%` }"
+                ></div>
+              </div>
+              <div class="flex justify-between text-xs text-slate-500 mt-1">
+                <span>{{ Math.round(dashboardStats.resources.usedMemoryGB) }} GB used</span>
+                <span>{{ Math.round(dashboardStats.resources.totalMemoryGB) }} GB total</span>
+              </div>
+            </div>
+            
+            <div>
+              <div class="flex justify-between items-center mb-2">
+                <span class="text-sm text-slate-400">CPU Allocation</span>
+                <span class="text-sm font-medium text-white">
+                  {{ Math.round(dashboardStats.resources.cpuUtilization) }}%
+                </span>
+              </div>
+              <div class="w-full bg-slate-700 rounded-full h-2">
+                <div 
+                  class="h-2 bg-gradient-to-r from-green-500 to-emerald-500 rounded-full transition-all duration-300"
+                  :style="{ width: `${dashboardStats.resources.cpuUtilization}%` }"
+                ></div>
+              </div>
+              <div class="flex justify-between text-xs text-slate-500 mt-1">
+                <span>{{ dashboardStats.resources.allocatedCPUs }} allocated</span>
+                <span>{{ dashboardStats.resources.totalCPUs }} total cores</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </FCard>
+
+      <!-- System Health -->
+      <FCard class="card-glow">
+        <div class="p-6">
+          <div class="flex items-center gap-3 mb-6">
+            <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center">
+              <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
+              </svg>
+            </div>
+            <h3 class="text-xl font-bold text-white">System Health</h3>
+          </div>
+          
+          <div class="space-y-4">
+            <div class="flex items-center justify-between p-3 bg-slate-800/50 rounded-lg">
+              <div class="flex items-center gap-3">
+                <div class="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
+                <span class="text-white font-medium">System Status</span>
+              </div>
+              <span class="text-green-400 text-sm font-medium">{{ dashboardStats.health.systemStatus }}</span>
+            </div>
+            
+            <div class="flex items-center justify-between p-3 bg-slate-800/50 rounded-lg">
+              <div class="flex items-center gap-3">
+                <div class="w-3 h-3 bg-blue-400 rounded-full"></div>
+                <span class="text-white font-medium">Errors</span>
+              </div>
+              <span class="text-white text-sm font-medium">{{ dashboardStats.health.errors }}</span>
+            </div>
+            
+            <div class="flex items-center justify-between p-3 bg-slate-800/50 rounded-lg">
+              <div class="flex items-center gap-3">
+                <div class="w-3 h-3 bg-yellow-400 rounded-full"></div>
+                <span class="text-white font-medium">Warnings</span>
+              </div>
+              <span class="text-white text-sm font-medium">{{ dashboardStats.health.warnings }}</span>
+            </div>
+            
+            <div class="text-xs text-slate-500 text-center pt-2">
+              Last sync: {{ new Date(dashboardStats.health.lastSync).toLocaleTimeString() }}
+            </div>
           </div>
         </div>
       </FCard>

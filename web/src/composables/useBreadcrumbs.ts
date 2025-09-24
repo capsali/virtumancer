@@ -56,12 +56,14 @@ export function useBreadcrumbs() {
         if (pathSegments.length > 1) {
           const hostId = pathSegments[1]
           
-          // If it's a VM under a host
+          // If it's a VM under a host - show VM breadcrumb instead
           if (pathSegments.length > 3 && pathSegments[2] === 'vms') {
-            items.push({
-              label: 'Host Dashboard',
-              path: `/hosts/${hostId}`,
-            })
+            // Replace with Virtual Machines breadcrumb for better UX
+            items[items.length - 1] = {
+              label: 'Virtual Machines',
+              path: '/vms',
+              icon: 'M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z'
+            }
             
             const vmName = pathSegments[3] || 'VM Details'
             items.push({
@@ -70,8 +72,9 @@ export function useBreadcrumbs() {
             })
           } else {
             // Just host dashboard
+            const hostName = route.params.hostId as string || 'Host Dashboard'
             items.push({
-              label: 'Host Dashboard',
+              label: hostName,
               isActive: true
             })
           }
@@ -80,7 +83,7 @@ export function useBreadcrumbs() {
       
       if (firstSegment === 'network') {
         items.push({
-          label: 'Network Topology',
+          label: 'Networks',
           path: '/network',
           icon: 'M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0',
           isActive: true

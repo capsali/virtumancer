@@ -185,25 +185,27 @@
     </div>
 
     <!-- Collapse Toggle -->
-    <div class="absolute -right-3 top-6 z-20">
+    <div class="absolute -right-4 top-8 z-20">
       <button
         :class="[
-          'w-6 h-6 bg-gradient-to-br from-primary-600 to-accent-600 rounded-full',
+          'w-8 h-8 bg-gradient-to-br from-primary-500 to-accent-500 rounded-full',
           'flex items-center justify-center text-white shadow-lg hover:shadow-xl',
-          'transition-all duration-300 hover:scale-110 group'
+          'transition-all duration-300 hover:scale-110 group border-2 border-white/20',
+          'hover:border-white/40 backdrop-blur-sm'
         ]"
         @click="toggleCollapse"
+        :title="collapsed ? 'Expand sidebar' : 'Collapse sidebar'"
       >
         <svg
           :class="[
-            'w-3 h-3 transition-transform duration-300',
+            'w-4 h-4 transition-transform duration-300',
             { 'rotate-180': collapsed }
           ]"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
         >
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7"/>
         </svg>
       </button>
     </div>
@@ -274,8 +276,8 @@ const navigationItems = ref<NavigationItem[]>([
   },
   {
     id: 'network',
-    label: 'Network Topology',
-    description: 'View network connections',
+    label: 'Networks',
+    description: 'Network infrastructure',
     icon: 'M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0',
     active: false,
     path: '/network'

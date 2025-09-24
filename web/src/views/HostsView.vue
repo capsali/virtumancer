@@ -1,5 +1,8 @@
 <template>
   <div class="space-y-6">
+    <!-- Breadcrumbs -->
+    <FBreadcrumbs />
+    
     <!-- Header -->
     <div class="flex items-center justify-between">
       <div>
@@ -120,6 +123,7 @@ import { useHostStore } from '@/stores/hostStore'
 import { useVMStore } from '@/stores/vmStore'
 import FCard from '@/components/ui/FCard.vue'
 import FButton from '@/components/ui/FButton.vue'
+import FBreadcrumbs from '@/components/ui/FBreadcrumbs.vue'
 import AddHostModal from '@/components/modals/AddHostModal.vue'
 
 const router = useRouter()

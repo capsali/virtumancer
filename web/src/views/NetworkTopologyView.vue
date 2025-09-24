@@ -1,10 +1,13 @@
 <template>
   <div class="space-y-6">
+    <!-- Breadcrumbs -->
+    <FBreadcrumbs />
+    
     <!-- Header -->
     <div class="flex items-center justify-between">
       <div>
-        <h1 class="text-2xl font-bold text-white">Network Topology</h1>
-        <p class="text-slate-400">Infrastructure overview and VM relationships</p>
+        <h1 class="text-2xl font-bold text-white">Networks</h1>
+        <p class="text-slate-400">Network infrastructure and topology overview</p>
       </div>
       
       <div class="flex items-center gap-3">
@@ -32,6 +35,12 @@
           </select>
         </div>
       </div>
+    </div>
+
+    <!-- Network Topology Section -->
+    <div class="border-l-4 border-primary-500 pl-4 mb-6">
+      <h2 class="text-xl font-semibold text-white mb-2">Network Topology</h2>
+      <p class="text-slate-400 text-sm">Visualize infrastructure relationships and connections</p>
     </div>
 
     <!-- Stats Overview -->
@@ -265,6 +274,7 @@ import { useHostStore } from '@/stores/hostStore';
 import { useVMStore } from '@/stores/vmStore';
 import FCard from '@/components/ui/FCard.vue';
 import FButton from '@/components/ui/FButton.vue';
+import FBreadcrumbs from '@/components/ui/FBreadcrumbs.vue';
 import type { Host, VirtualMachine } from '@/types';
 
 const hostStore = useHostStore();

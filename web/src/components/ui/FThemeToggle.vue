@@ -76,7 +76,7 @@
       <div
         v-if="showDropdown"
         :class="[
-          'absolute top-full right-0 mt-2 w-80 z-50',
+          'absolute top-full right-0 mt-2 w-80 z-[9999]',
           'glass-strong backdrop-blur-xl rounded-2xl border border-white/10',
           'shadow-floating-lg transform origin-top-right'
         ]"

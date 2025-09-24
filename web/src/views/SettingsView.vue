@@ -1,5 +1,8 @@
 <template>
   <div class="space-y-6">
+    <!-- Breadcrumbs -->
+    <FBreadcrumbs />
+    
     <!-- Header -->
     <div class="flex items-center justify-between">
       <div>
@@ -199,6 +202,7 @@ import { useTheme } from '@/composables/useTheme'
 import { useUserPreferences } from '@/composables/useUserPreferences'
 import FCard from '@/components/ui/FCard.vue'
 import FButton from '@/components/ui/FButton.vue'
+import FBreadcrumbs from '@/components/ui/FBreadcrumbs.vue'
 import MetricSettingsModal from '@/components/modals/MetricSettingsModal.vue'
 
 const hostStore = useHostStore()
