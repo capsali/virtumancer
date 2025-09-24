@@ -1,5 +1,5 @@
 <template>
-  <div class="bg-black w-screen h-screen flex flex-col text-white font-sans">
+  <div class="bg-black w-full h-screen flex flex-col text-white font-sans overflow-hidden">
     <header class="bg-gray-800 p-2 flex items-center justify-between shadow-md z-10 flex-shrink-0">
       <div class="flex items-center">
         <FButton
@@ -22,13 +22,14 @@
       </div>
     </header>
     
-    <main class="flex-grow w-full h-full relative bg-black">
+    <main class="flex-grow w-full relative bg-black overflow-hidden" ref="mainContainer">
       <iframe
         v-if="spiceIframeSrc"
         :src="spiceIframeSrc"
         @load="onIframeLoad"
         class="w-full h-full border-0"
         title="SPICE Console"
+        ref="spiceIframe"
       />
       <div v-else class="flex items-center justify-center h-full">
         <div class="text-center">
@@ -41,7 +42,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import FButton from '@/components/ui/FButton.vue';
 
@@ -54,6 +55,8 @@ const props = defineProps<Props>();
 const router = useRouter();
 
 const connectionStatus = ref('Loading...');
+const mainContainer = ref<HTMLElement>();
+const spiceIframe = ref<HTMLIFrameElement>();
 
 // Dynamically construct the source URL for the iframe
 const spiceIframeSrc = computed(() => {
@@ -99,6 +102,32 @@ const statusColor = computed(() => {
 // Update status when the iframe has loaded the page
 const onIframeLoad = (): void => {
   connectionStatus.value = 'Client Loaded';
+  
+  // Try to communicate with the iframe to set proper dimensions
+  if (spiceIframe.value && spiceIframe.value.contentWindow) {
+    // Send a message to the iframe with the available dimensions
+    const rect = mainContainer.value?.getBoundingClientRect();
+    if (rect) {
+      spiceIframe.value.contentWindow.postMessage({
+        type: 'spice-resize',
+        width: rect.width,
+        height: rect.height
+      }, window.location.origin);
+    }
+  }
+};
+
+const handleResize = () => {
+  if (spiceIframe.value && spiceIframe.value.contentWindow) {
+    const rect = mainContainer.value?.getBoundingClientRect();
+    if (rect) {
+      spiceIframe.value.contentWindow.postMessage({
+        type: 'spice-resize',
+        width: rect.width,
+        height: rect.height
+      }, window.location.origin);
+    }
+  }
 };
 
 const goBack = (): void => {
@@ -116,21 +145,38 @@ onMounted(() => {
     }
   };
 
+  // Listen for window resize events
+  const handleWindowResize = () => {
+    handleResize();
+  };
+
   window.addEventListener('message', handleMessage);
+  window.addEventListener('resize', handleWindowResize);
   
-  // Cleanup listener when component unmounts
+  // Cleanup listeners when component unmounts
   return () => {
     window.removeEventListener('message', handleMessage);
+    window.removeEventListener('resize', handleWindowResize);
   };
 });
 </script>
 
 <style scoped>
 iframe {
-  position: absolute;
-  top: 0;
-  left: 0;
   width: 100%;
   height: 100%;
+  border: 0;
+  display: block;
+  background: black;
+  max-height: calc(100vh - 60px);
+}
+
+/* Ensure the main container constrains the iframe */
+main {
+  position: relative;
+  overflow: hidden;
+  min-height: 0; /* Allow flex shrinking */
+  background: black;
+  max-height: calc(100vh - 60px); /* Account for header height */
 }
 </style>
