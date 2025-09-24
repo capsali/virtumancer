@@ -86,6 +86,7 @@ type VMStats struct {
 	MaxMem    uint64               `json:"max_mem"`
 	Vcpu      uint                 `json:"vcpu"`
 	CpuTime   uint64               `json:"cpu_time"`
+	Uptime    int64                `json:"uptime"`
 	DiskStats []DomainDiskStats    `json:"disk_stats"`
 	NetStats  []DomainNetworkStats `json:"net_stats"`
 }
@@ -1329,12 +1330,21 @@ func (c *Connector) GetDomainStats(hostID, vmName string) (*VMStats, error) {
 		})
 	}
 
+	var uptime int64 = -1
+	if state == libvirt.DomainRunning {
+		seconds, nanoseconds, err := l.DomainGetTime(domain, 0)
+		if err == nil {
+			uptime = int64(seconds) + int64(nanoseconds)/1_000_000_000
+		}
+	}
+
 	stats := &VMStats{
 		State:     state,
 		Memory:    uint64(memory),
 		MaxMem:    uint64(maxMem),
 		Vcpu:      uint(nrVirtCPU),
 		CpuTime:   cpuTime,
+		Uptime:    uptime,
 		DiskStats: diskStats,
 		NetStats:  netStats,
 	}

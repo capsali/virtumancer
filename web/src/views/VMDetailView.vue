@@ -183,24 +183,49 @@
     <FCard v-if="vm && vm.state === 'ACTIVE'" class="p-6" border-glow glow-color="accent">
       <div class="flex items-center justify-between mb-4">
         <h3 class="text-lg font-semibold text-white">Performance Stats</h3>
-        <FButton
-          variant="ghost"
-          size="sm"
-          @click="refreshStats"
-          :disabled="loadingStats"
-        >
-          <span v-if="!loadingStats">🔄 Refresh</span>
-          <span v-else class="flex items-center gap-2">
-            <div class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-            Loading...
-          </span>
-        </FButton>
+        <div class="flex items-center gap-3">
+          <div class="flex items-center gap-2 text-sm text-slate-400">
+            <label class="flex items-center gap-2" title="Guest CPU: pcentbase / guest vCPUs (virt-manager 'CPU usage')">
+              <input type="radio" v-model="cpuDisplayMode" value="guest" />
+              <span>Guest CPU</span>
+            </label>
+            <label class="flex items-center gap-2" title="Host CPU: pcentbase / host CPUs (virt-manager 'Host CPU usage')">
+              <input type="radio" v-model="cpuDisplayMode" value="host" />
+              <span>Host CPU</span>
+            </label>
+            <label class="flex items-center gap-2" title="Per-core raw percentage (pcentbase)">
+              <input type="radio" v-model="cpuDisplayMode" value="raw" />
+              <span>Raw %</span>
+            </label>
+          </div>
+          <FButton
+            variant="ghost"
+            size="sm"
+            @click="refreshStats"
+            :disabled="loadingStats"
+          >
+            <span v-if="!loadingStats">🔄 Refresh</span>
+            <span v-else class="flex items-center gap-2">
+              <div class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+              Loading...
+            </span>
+          </FButton>
+        </div>
       </div>
       
       <div v-if="vmStats" class="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div class="text-center p-3 bg-white/5 rounded-lg">
-          <div class="text-2xl font-bold text-primary-400">{{ (vmStats.cpu_percent || 0).toFixed(1) }}%</div>
-          <div class="text-sm text-slate-400">CPU Usage</div>
+          <div class="text-2xl font-bold text-primary-400">
+            {{ (
+              cpuDisplayMode === 'guest' ? (vmStats.cpu_percent_guest ?? vmStats.cpu_percent ?? 0) :
+              cpuDisplayMode === 'host' ? (vmStats.cpu_percent_host ?? vmStats.cpu_percent ?? 0) :
+              cpuDisplayMode === 'raw' ? (vmStats.cpu_percent_raw ?? vmStats.cpu_percent_core ?? vmStats.cpu_percent ?? 0) :
+              (vmStats.cpu_percent ?? 0)
+            ).toFixed(1) }}%
+          </div>
+          <div class="text-sm text-slate-400">
+            {{ cpuDisplayMode === 'guest' ? 'Guest CPU' : cpuDisplayMode === 'host' ? 'Host CPU' : 'Raw %' }}
+          </div>
         </div>
         <div class="text-center p-3 bg-white/5 rounded-lg">
           <div class="text-2xl font-bold text-accent-400">{{ formatBytes((vmStats.memory_mb || 0) * 1024 * 1024) }}</div>
@@ -314,6 +339,7 @@ const vmStats = ref<VMStats | null>(null);
 const error = ref<string | null>(null);
 const loadingStats = ref(false);
 const showExtendedHardwareModal = ref(false);
+const cpuDisplayMode = ref<'host'|'core'|'guest'|'raw'>('host');
 
 // Get VM data
 const loadVM = async (): Promise<void> => {

@@ -53,13 +53,22 @@ type VMView struct {
 
 // ProcessedVMStats holds frontend-friendly VM statistics with calculated metrics
 type ProcessedVMStats struct {
-	CPUPercent  float64 `json:"cpu_percent"`
-	MemoryMB    float64 `json:"memory_mb"`
-	DiskReadMB  float64 `json:"disk_read_mb"`
-	DiskWriteMB float64 `json:"disk_write_mb"`
-	NetworkRxMB float64 `json:"network_rx_mb"`
-	NetworkTxMB float64 `json:"network_tx_mb"`
-	Uptime      int64   `json:"uptime"`
+	// cpu_percent: percentage of host total (smoothed)
+	CPUPercent float64 `json:"cpu_percent"`
+	// cpu_percent_core: percentage relative to a single core (can exceed 100)
+	CPUPercentCore float64 `json:"cpu_percent_core,omitempty"`
+	// pcentbase (raw): sum vcpu cpu-time delta normalized to one CPU (un-normalized)
+	CPUPercentRaw float64 `json:"cpu_percent_raw,omitempty"`
+	// guest-normalized percent (virt-manager's cpuGuestPercent)
+	CPUPercentGuest float64 `json:"cpu_percent_guest,omitempty"`
+	// host-normalized percent (virt-manager's cpuHostPercent)
+	CPUPercentHost float64 `json:"cpu_percent_host,omitempty"`
+	MemoryMB       float64 `json:"memory_mb"`
+	DiskReadMB     float64 `json:"disk_read_mb"`
+	DiskWriteMB    float64 `json:"disk_write_mb"`
+	NetworkRxMB    float64 `json:"network_rx_mb"`
+	NetworkTxMB    float64 `json:"network_tx_mb"`
+	Uptime         int64   `json:"uptime"`
 }
 
 // DashboardStats holds aggregated system-wide statistics for the dashboard.
@@ -197,14 +206,20 @@ type HostServiceProvider interface {
 }
 
 type HostService struct {
-	db          *gorm.DB
-	connector   *libvirt.Connector
-	hub         *ws.Hub
-	monitor     *MonitoringManager
-	hostMonitor *HostMonitoringManager
-	syncMutex   sync.Map // map[string]*sync.Mutex for per-host sync locking
-	lastSync    sync.Map // map[string]time.Time for last sync time
-	vmPollers   sync.Map // map[string]chan struct{} for stopping VM state polling
+	db             *gorm.DB
+	connector      *libvirt.Connector
+	hub            *ws.Hub
+	monitor        *MonitoringManager
+	hostMonitor    *HostMonitoringManager
+	syncMutex      sync.Map // map[string]*sync.Mutex for per-host sync locking
+	lastSync       sync.Map // map[string]time.Time for last sync time
+	vmPollers      sync.Map // map[string]chan struct{} for stopping VM state polling
+	prevCpuSamples sync.Map // key: "hostID:vmName" -> struct{cpuTime uint64; at time.Time}
+	hostCores      sync.Map // key: hostID -> uint (number of cores)
+	// smoothing state: store last smoothed host-normalized percent per vm
+	cpuSmoothStore sync.Map // key: "hostID:vmName" -> float64
+	// smoothing alpha (0..1) - higher = more responsive, lower = smoother
+	cpuSmoothAlpha float64
 }
 
 func NewHostService(db *gorm.DB, connector *libvirt.Connector, hub *ws.Hub) *HostService {
@@ -215,6 +230,8 @@ func NewHostService(db *gorm.DB, connector *libvirt.Connector, hub *ws.Hub) *Hos
 	}
 	s.monitor = NewMonitoringManager(s)
 	s.hostMonitor = NewHostMonitoringManager(s)
+	// default smoothing alpha
+	s.cpuSmoothAlpha = 0.3
 	return s
 }
 
@@ -2716,39 +2733,139 @@ func (s *HostService) transformVMStats(hostID, vmName string, rawStats *libvirt.
 		totalNetworkTxBytes += net.WriteBytes
 	}
 
-	// Calculate CPU percentage (requires previous sample for accurate calculation)
-	cpuPercent := s.calculateCPUPercent(hostID, vmName, rawStats.CpuTime)
+	// Calculate CPU percentages (raw pcentbase, core-relative, guest-normalized, host-normalized)
+	corePercent, hostPercent, guestPercent, rawPercent := s.calculateCPUPercent(hostID, vmName, rawStats.CpuTime, rawStats.Vcpu)
 
-	// Calculate uptime (requires VM start time)
-	uptime := s.calculateVMUptime(hostID, vmName)
+	// Calculate uptime (prefer raw stats uptime when available)
+	var uptime int64
+	if rawStats.Uptime >= 0 {
+		uptime = rawStats.Uptime
+	} else {
+		uptime = s.calculateVMUptime(hostID, vmName)
+	}
 
 	// Convert memory from KB to MB
 	memoryMB := float64(rawStats.Memory) / 1024.0
 
+	// Expose raw/guest/host percents and apply EWMA smoothing to host-normalized percent for legacy `cpu_percent` field
+	smoothedKey := fmt.Sprintf("%s:%s", hostID, vmName)
+	var smoothed float64
+	if v, ok := s.cpuSmoothStore.Load(smoothedKey); ok {
+		prev := v.(float64)
+		smoothed = s.cpuSmoothAlpha*hostPercent + (1.0-s.cpuSmoothAlpha)*prev
+	} else {
+		smoothed = hostPercent
+	}
+	s.cpuSmoothStore.Store(smoothedKey, smoothed)
+
 	return &ProcessedVMStats{
-		CPUPercent:  cpuPercent,
-		MemoryMB:    memoryMB,
-		DiskReadMB:  float64(totalDiskReadBytes) / (1024 * 1024),  // Convert bytes to MB
-		DiskWriteMB: float64(totalDiskWriteBytes) / (1024 * 1024), // Convert bytes to MB
-		NetworkRxMB: float64(totalNetworkRxBytes) / (1024 * 1024), // Convert bytes to MB
-		NetworkTxMB: float64(totalNetworkTxBytes) / (1024 * 1024), // Convert bytes to MB
-		Uptime:      uptime,
+		CPUPercent:      smoothed,
+		CPUPercentCore:  corePercent,
+		CPUPercentRaw:   rawPercent,
+		CPUPercentGuest: guestPercent,
+		CPUPercentHost:  hostPercent,
+		MemoryMB:        memoryMB,
+		DiskReadMB:      float64(totalDiskReadBytes) / (1024 * 1024),  // Convert bytes to MB
+		DiskWriteMB:     float64(totalDiskWriteBytes) / (1024 * 1024), // Convert bytes to MB
+		NetworkRxMB:     float64(totalNetworkRxBytes) / (1024 * 1024), // Convert bytes to MB
+		NetworkTxMB:     float64(totalNetworkTxBytes) / (1024 * 1024), // Convert bytes to MB
+		Uptime:          uptime,
 	}, nil
 }
 
 // calculateCPUPercent calculates CPU percentage based on previous CPU time sample
-func (s *HostService) calculateCPUPercent(hostID, vmName string, currentCpuTime uint64) float64 {
-	// For now, return 0.0 - proper implementation would require storing previous samples
-	// and calculating: (currentCpuTime - prevCpuTime) / (currentTime - prevTime) * 100
-	// This would need a separate service to track CPU time samples over time
-	return 0.0
+func (s *HostService) calculateCPUPercent(hostID, vmName string, currentCpuTime uint64, guestVcpus uint) (float64, float64, float64, float64) {
+	key := fmt.Sprintf("%s:%s", hostID, vmName)
+	now := time.Now()
+
+	// Load previous sample
+	if v, ok := s.prevCpuSamples.Load(key); ok {
+		prev := v.(struct {
+			cpuTime uint64
+			at      time.Time
+		})
+		// Protect against clock skew / zero interval
+		deltaNs := int64(currentCpuTime) - int64(prev.cpuTime)
+		deltaT := now.Sub(prev.at).Seconds()
+		// Update previous sample
+		s.prevCpuSamples.Store(key, struct {
+			cpuTime uint64
+			at      time.Time
+		}{cpuTime: currentCpuTime, at: now})
+
+		if deltaNs <= 0 || deltaT <= 0 {
+			return 0.0, 0.0, 0.0, 0.0
+		}
+
+		// cpu time is in nanoseconds (domain cumulative CPU ns across vcpus)
+		// pcentbase (raw) = (deltaCpuNs * 100) / (deltaT * 1e9)
+		rawPercent := (float64(deltaNs) * 100.0) / (deltaT * 1e9)
+
+		// corePercent: interpret as rawPercent divided by guest vcpus? Keep original meaning (per-core equivalent)
+		corePercent := rawPercent
+
+		// Fetch host cores (cache)
+		var hostCores uint = 1
+		if v, ok := s.hostCores.Load(hostID); ok {
+			hostCores = v.(uint)
+		} else {
+			// Attempt to fetch host cores and cache
+			if info, err := s.connector.GetHostInfo(hostID); err == nil {
+				hostCores = info.Cores
+				s.hostCores.Store(hostID, hostCores)
+			}
+		}
+
+		// Compute host-normalized and guest-normalized percentages per virt-manager
+		hostPercent := 0.0
+		if hostCores > 0 {
+			hostPercent = rawPercent / float64(hostCores)
+		}
+		guestPercent := 0.0
+		if guestVcpus > 0 {
+			guestPercent = rawPercent / float64(guestVcpus)
+		}
+
+		// Clamp to [0,100]
+		if hostPercent < 0 {
+			hostPercent = 0
+		}
+		if hostPercent > 100 {
+			hostPercent = 100
+		}
+		if guestPercent < 0 {
+			guestPercent = 0
+		}
+		if guestPercent > 100 {
+			guestPercent = 100
+		}
+
+		return corePercent, hostPercent, guestPercent, rawPercent
+	}
+
+	// No previous sample; store current and return zeros
+	s.prevCpuSamples.Store(key, struct {
+		cpuTime uint64
+		at      time.Time
+	}{cpuTime: currentCpuTime, at: now})
+	return 0.0, 0.0, 0.0, 0.0
 }
 
 // calculateVMUptime calculates VM uptime in seconds
 func (s *HostService) calculateVMUptime(hostID, vmName string) int64 {
-	// For now, return 0 - proper implementation would need to track VM start times
-	// This could be done by storing start timestamps when VMs are started
-	// or by getting this info from libvirt domain info
+	// Try to use monitoring cached uptime if available
+	if stats := s.monitor.GetLastKnownStats(hostID, vmName); stats != nil {
+		if stats.Uptime >= 0 {
+			return stats.Uptime
+		}
+	}
+
+	// As a fallback, try to fetch fresh domain info which includes uptime
+	if vmInfo, err := s.connector.GetDomainInfo(hostID, vmName); err == nil {
+		if vmInfo.Uptime >= 0 {
+			return vmInfo.Uptime
+		}
+	}
 	return 0
 }
 

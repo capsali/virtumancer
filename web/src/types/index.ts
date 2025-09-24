@@ -60,6 +60,10 @@ export interface HostStats {
 
 export interface VMStats {
   cpu_percent: number;
+  cpu_percent_core?: number;
+  cpu_percent_raw?: number;
+  cpu_percent_guest?: number;
+  cpu_percent_host?: number;
   memory_mb: number;
   disk_read_mb: number;
   disk_write_mb: number;
