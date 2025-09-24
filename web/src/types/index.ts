@@ -1,6 +1,7 @@
 // Core data types used across the application
 export interface Host {
   id: string;
+  name?: string;
   uri: string;
   state: HostState;
   task_state?: HostTaskState;

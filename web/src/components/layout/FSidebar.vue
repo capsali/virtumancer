@@ -40,27 +40,89 @@
     </div>
 
     <!-- Navigation Items -->
-    <div class="flex-1 p-4 space-y-2">
-      <div
-        v-for="item in navigationItems"
-        :key="item.id"
-        :class="[
-          'group relative overflow-hidden rounded-xl transition-all duration-300',
-          {
-            'bg-gradient-to-r from-primary-600/20 to-accent-600/20 shadow-glow-sm': item.active,
-            'hover:bg-white/5': !item.active
-          }
-        ]"
-      >
-        <component
-          :is="item.requiresHostId ? 'button' : 'router-link'"
-          :to="item.requiresHostId ? undefined : item.path"
-          @click="item.requiresHostId ? handleHostNavigation() : undefined"
+    <div class="flex-1 p-4 space-y-4 overflow-y-auto">
+      <!-- Main Navigation -->
+      <div class="space-y-2">
+        <div
+          v-for="item in navigationItems"
+          :key="item.id"
+          :class="[
+            'group relative overflow-hidden rounded-xl transition-all duration-300',
+            {
+              'bg-gradient-to-r from-primary-600/20 to-accent-600/20 shadow-glow-sm': item.active,
+              'hover:bg-white/5': !item.active
+            }
+          ]"
+        >
+          <component
+            :is="item.requiresHostId ? 'button' : 'router-link'"
+            :to="item.requiresHostId ? undefined : item.path"
+            @click="item.requiresHostId ? handleHostNavigation() : undefined"
+            :class="[
+              'w-full flex items-center gap-3 p-3 text-left transition-all duration-300 no-underline',
+              {
+                'text-white': item.active,
+                'text-slate-300 hover:text-white': !item.active
+              }
+            ]"
+          >
+            <!-- Icon -->
+            <div :class="[
+              'w-8 h-8 flex items-center justify-center rounded-lg transition-all duration-300',
+              {
+                'bg-gradient-to-br from-primary-500 to-accent-500 shadow-neon-blue': item.active,
+                'bg-slate-600/50 group-hover:bg-slate-500/50': !item.active
+              }
+            ]">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="item.icon"/>
+              </svg>
+            </div>
+
+            <!-- Label -->
+            <div v-if="!collapsed" class="flex-1">
+              <div class="font-medium">{{ item.label }}</div>
+              <div v-if="item.description" class="text-xs text-slate-400">{{ item.description }}</div>
+            </div>
+
+            <!-- Badge -->
+            <div
+              v-if="item.badge && !collapsed"
+              :class="[
+                'px-2 py-1 rounded-full text-xs font-medium',
+                item.badgeColor || 'bg-accent-500/20 text-accent-400'
+              ]"
+            >
+              {{ item.badge }}
+            </div>
+
+            <!-- Active Indicator -->
+            <div
+              v-if="item.active"
+              class="absolute right-0 top-1/2 transform -translate-y-1/2 w-1 h-8 bg-gradient-to-b from-primary-400 to-accent-400 rounded-l-full pointer-events-none"
+            ></div>
+          </component>
+
+          <!-- Hover Glow Effect -->
+          <div
+            v-if="!item.active"
+            class="absolute inset-0 bg-gradient-to-r from-primary-600/0 via-primary-600/5 to-accent-600/0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl pointer-events-none"
+          ></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom System Section -->
+    <div class="p-4 space-y-2 border-t border-white/10">
+      <!-- Settings -->
+      <div class="group relative overflow-hidden rounded-xl hover:bg-white/5 transition-all duration-300">
+        <router-link
+          to="/settings"
           :class="[
             'w-full flex items-center gap-3 p-3 text-left transition-all duration-300 no-underline',
             {
-              'text-white': item.active,
-              'text-slate-300 hover:text-white': !item.active
+              'text-white bg-gradient-to-r from-primary-600/20 to-accent-600/20 shadow-glow-sm': route.path === '/settings',
+              'text-slate-300 hover:text-white': route.path !== '/settings'
             }
           ]"
         >
@@ -68,42 +130,31 @@
           <div :class="[
             'w-8 h-8 flex items-center justify-center rounded-lg transition-all duration-300',
             {
-              'bg-gradient-to-br from-primary-500 to-accent-500 shadow-neon-blue': item.active,
-              'bg-slate-600/50 group-hover:bg-slate-500/50': !item.active
+              'bg-gradient-to-br from-primary-500 to-accent-500 shadow-neon-blue': route.path === '/settings',
+              'bg-slate-600/50 group-hover:bg-slate-500/50': route.path !== '/settings'
             }
           ]">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="item.icon"/>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
             </svg>
           </div>
 
           <!-- Label -->
           <div v-if="!collapsed" class="flex-1">
-            <div class="font-medium">{{ item.label }}</div>
-            <div v-if="item.description" class="text-xs text-slate-400">{{ item.description }}</div>
-          </div>
-
-          <!-- Badge -->
-          <div
-            v-if="item.badge && !collapsed"
-            :class="[
-              'px-2 py-1 rounded-full text-xs font-medium',
-              item.badgeColor || 'bg-accent-500/20 text-accent-400'
-            ]"
-          >
-            {{ item.badge }}
+            <div class="font-medium">Settings</div>
+            <div class="text-xs text-slate-400">Application preferences</div>
           </div>
 
           <!-- Active Indicator -->
           <div
-            v-if="item.active"
+            v-if="route.path === '/settings'"
             class="absolute right-0 top-1/2 transform -translate-y-1/2 w-1 h-8 bg-gradient-to-b from-primary-400 to-accent-400 rounded-l-full pointer-events-none"
           ></div>
-        </component>
+        </router-link>
 
         <!-- Hover Glow Effect -->
         <div
-          v-if="!item.active"
+          v-if="route.path !== '/settings'"
           class="absolute inset-0 bg-gradient-to-r from-primary-600/0 via-primary-600/5 to-accent-600/0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl pointer-events-none"
         ></div>
       </div>
@@ -197,6 +248,7 @@ const hostStore = useHostStore();
 const collapsed = ref(props.collapsed);
 
 const navigationItems = ref<NavigationItem[]>([
+  // Main Navigation
   {
     id: 'home',
     label: 'Home',
@@ -207,13 +259,13 @@ const navigationItems = ref<NavigationItem[]>([
   {
     id: 'vms',
     label: 'Virtual Machines',
-    description: 'Manage all virtual machines',
+    description: 'Browse all virtual machines',
     icon: 'M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z',
     active: false,
     path: '/vms'
   },
   {
-    id: 'hosts-list',
+    id: 'hosts',
     label: 'Hosts',
     description: 'Manage virtualization hosts',
     icon: 'M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01',
@@ -221,36 +273,12 @@ const navigationItems = ref<NavigationItem[]>([
     path: '/hosts'
   },
   {
-    id: 'settings',
-    label: 'Settings',
-    description: 'Application preferences',
-    icon: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z',
-    active: false,
-    path: '/settings'
-  },
-  {
-    id: 'hosts',
-    label: 'Host Dashboard',
-    description: 'Manage virtual machines and host resources',
-    icon: 'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10',
-    active: false,
-    path: '/hosts',
-    requiresHostId: true
-  },
-  {
     id: 'network',
     label: 'Network Topology',
+    description: 'View network connections',
     icon: 'M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0',
     active: false,
     path: '/network'
-  },
-  {
-    id: 'logs',
-    label: 'System Logs',
-    description: 'View application logs',
-    icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
-    active: false,
-    path: '/logs'
   }
 ]);
 
@@ -258,11 +286,11 @@ const navigationItems = ref<NavigationItem[]>([
 const updateActiveState = () => {
   navigationItems.value.forEach(item => {
     if (item.id === 'hosts') {
-      // Special handling for host dashboard - match any /hosts/* path except /hosts
-      item.active = route.path.startsWith('/hosts/') && route.path !== '/hosts';
-    } else if (item.id === 'hosts-list') {
-      // Hosts list page
-      item.active = route.path === '/hosts';
+      // Hosts page and host-specific dashboards
+      item.active = route.path === '/hosts' || route.path.startsWith('/hosts/');
+    } else if (item.id === 'vms') {
+      // VM list and VM detail pages
+      item.active = route.path === '/vms' || route.path.includes('/vms/');
     } else {
       item.active = route.path === item.path || 
                     (item.path !== '/' && route.path.startsWith(item.path));

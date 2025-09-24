@@ -160,6 +160,52 @@ func (h *APIHandler) DisconnectHost(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (h *APIHandler) UpdateHost(w http.ResponseWriter, r *http.Request) {
+	hostID := chi.URLParam(r, "hostID")
+	if !h.ValidateRequest(w, r, "hostID") {
+		return
+	}
+
+	var updateData struct {
+		Name                  *string `json:"name,omitempty"`
+		AutoReconnectDisabled *bool   `json:"auto_reconnect_disabled,omitempty"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&updateData); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Get the current host
+	var host storage.Host
+	if err := h.DB.Where("id = ?", hostID).First(&host).Error; err != nil {
+		http.Error(w, "Host not found", http.StatusNotFound)
+		return
+	}
+
+	// Update fields if provided
+	updates := make(map[string]interface{})
+	if updateData.Name != nil {
+		updates["name"] = *updateData.Name
+	}
+	if updateData.AutoReconnectDisabled != nil {
+		updates["auto_reconnect_disabled"] = *updateData.AutoReconnectDisabled
+	}
+
+	// Apply updates
+	if len(updates) > 0 {
+		if err := h.DB.Model(&host).Updates(updates).Error; err != nil {
+			log.Errorf("Failed to update host %s: %v", hostID, err)
+			h.HandleError(w, err, "update_host")
+			return
+		}
+	}
+
+	// Return updated host
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(host)
+}
+
 func (h *APIHandler) DeleteHost(w http.ResponseWriter, r *http.Request) {
 	hostID := chi.URLParam(r, "hostID")
 	if !h.ValidateRequest(w, r, "hostID") {

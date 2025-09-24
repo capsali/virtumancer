@@ -13,6 +13,23 @@
   >
     <form @submit.prevent="handleSubmit" class="space-y-4">
       <div>
+        <label for="host-name" class="block text-sm font-medium text-white mb-2">
+          Host Name
+        </label>
+        <input
+          id="host-name"
+          v-model="formData.name"
+          type="text"
+          placeholder="e.g., Production Server, Development VM Host"
+          class="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-transparent transition-all"
+          tabindex="1"
+        />
+        <p class="text-xs text-slate-400 mt-1">
+          Optional friendly name to identify this host
+        </p>
+      </div>
+
+      <div>
         <label for="host-uri" class="block text-sm font-medium text-white mb-2">
           Host URI *
         </label>
@@ -22,7 +39,7 @@
           type="text"
           placeholder="qemu+ssh://user@hostname/system"
           class="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-transparent transition-all"
-          tabindex="1"
+          tabindex="2"
           required
         />
         <p class="text-xs text-slate-400 mt-1">
@@ -35,7 +52,7 @@
           v-model="formData.auto_reconnect_disabled"
           type="checkbox"
           id="auto-reconnect"
-          tabindex="2"
+          tabindex="3"
           class="w-4 h-4 text-primary-600 bg-white/10 border-white/20 rounded focus:ring-slate-400"
         />
         <label for="auto-reconnect" class="text-sm text-white">
@@ -82,6 +99,7 @@ const hostStore = useHostStore();
 
 // Form state
 const formData = reactive({
+  name: '',
   uri: '',
   auto_reconnect_disabled: false
 });
@@ -97,6 +115,7 @@ watch(() => props.open, (newValue) => {
 });
 
 const resetForm = (): void => {
+  formData.name = '';
   formData.uri = '';
   formData.auto_reconnect_disabled = false;
   error.value = null;
@@ -123,6 +142,7 @@ const handleSubmit = async (): Promise<void> => {
     }
     
     const hostData = {
+      name: formData.name.trim() || undefined,
       uri: formData.uri.trim(),
       auto_reconnect_disabled: formData.auto_reconnect_disabled,
       state: 'DISCONNECTED' as const,

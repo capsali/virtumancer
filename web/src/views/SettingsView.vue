@@ -64,6 +64,66 @@
         </div>
       </FCard>
 
+      <!-- View Preferences -->
+      <FCard class="p-6 card-glow">
+        <div class="space-y-4">
+          <div>
+            <h3 class="text-lg font-semibold text-white">View Preferences</h3>
+            <p class="text-sm text-slate-400">Default view and sorting settings for virtual machines</p>
+          </div>
+
+          <div class="space-y-4">
+            <div class="flex items-center justify-between">
+              <span class="text-sm text-slate-300">Default View Mode</span>
+              <select
+                v-model="userPrefs.vmListPreferences.viewMode"
+                class="px-3 py-1 bg-slate-800/50 border border-slate-600/50 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/50"
+              >
+                <option value="grid">Grid (Cards)</option>
+                <option value="list">List (Table)</option>
+                <option value="compact">Compact</option>
+              </select>
+            </div>
+            
+            <div class="flex items-center justify-between">
+              <span class="text-sm text-slate-300">Default Sort Column</span>
+              <select
+                v-model="userPrefs.vmListPreferences.sortBy"
+                class="px-3 py-1 bg-slate-800/50 border border-slate-600/50 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/50"
+              >
+                <option value="name">Name</option>
+                <option value="host">Host</option>
+                <option value="status">Status</option>
+                <option value="vcpus">vCPUs</option>
+                <option value="memory">Memory</option>
+              </select>
+            </div>
+            
+            <div class="flex items-center justify-between">
+              <span class="text-sm text-slate-300">Default Sort Direction</span>
+              <select
+                v-model="userPrefs.vmListPreferences.sortDirection"
+                class="px-3 py-1 bg-slate-800/50 border border-slate-600/50 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/50"
+              >
+                <option value="asc">Ascending</option>
+                <option value="desc">Descending</option>
+              </select>
+            </div>
+            
+            <div class="flex justify-end">
+              <FButton
+                variant="ghost"
+                size="sm"
+                @click="resetViewPreferences"
+                class="text-slate-400 hover:text-white"
+              >
+                Reset to Defaults
+              </FButton>
+            </div>
+          </div>
+        </div>
+      </FCard>
+
       <!-- System Information -->
       <FCard class="p-6 card-glow">
         <div class="space-y-4">
@@ -136,6 +196,7 @@ import { useHostStore } from '@/stores/hostStore'
 import { useVMStore } from '@/stores/vmStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useTheme } from '@/composables/useTheme'
+import { useUserPreferences } from '@/composables/useUserPreferences'
 import FCard from '@/components/ui/FCard.vue'
 import FButton from '@/components/ui/FButton.vue'
 import MetricSettingsModal from '@/components/modals/MetricSettingsModal.vue'
@@ -144,6 +205,7 @@ const hostStore = useHostStore()
 const vmStore = useVMStore()
 const settingsStore = useSettingsStore()
 const { themeConfig, setTheme } = useTheme()
+const userPrefs = useUserPreferences()
 
 // Reactive data
 const showMetricsModal = ref(false)
@@ -170,6 +232,12 @@ const handleClearCache = () => {
     // Clear cache logic would go here
     localStorage.clear()
     console.log('Cache cleared')
+  }
+}
+
+const resetViewPreferences = () => {
+  if (confirm('Reset view preferences to defaults?')) {
+    userPrefs.resetPreferences()
   }
 }
 

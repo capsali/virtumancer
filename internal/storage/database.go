@@ -52,8 +52,9 @@ const (
 
 // Host represents a libvirt host connection configuration.
 type Host struct {
-	ID  string `gorm:"primaryKey" json:"id"`
-	URI string `json:"uri"`
+	ID   string `gorm:"primaryKey" json:"id"`
+	Name string `json:"name,omitempty"` // Optional friendly name for the host
+	URI  string `json:"uri"`
 	// State reflects the stable connection state of the host.
 	State string `gorm:"size:32;default:'DISCONNECTED'" json:"state"`
 	// TaskState reflects transient work being performed on the host (e.g., connecting)

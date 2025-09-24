@@ -78,6 +78,7 @@ func main() {
 		r.Post("/hosts/{hostID}/disconnect", apiHandler.DisconnectHost)
 		r.Get("/hosts/{hostID}/info", apiHandler.GetHostInfo)
 		r.Get("/hosts/{hostID}/stats", apiHandler.GetHostStats)
+		r.Patch("/hosts/{hostID}", apiHandler.UpdateHost)
 		r.Delete("/hosts/{hostID}", apiHandler.DeleteHost)
 
 		// VM routes

@@ -33,14 +33,32 @@
                 host.state === 'CONNECTED' ? 'bg-green-400' : 'bg-red-400'
               ]"></div>
               <div>
-                <h3 class="font-medium text-white">{{ host.uri }}</h3>
-                <p class="text-sm text-slate-400">{{ host.state }}</p>
+                <h3 class="font-medium text-white">{{ host.name || host.uri }}</h3>
+                <p class="text-sm text-slate-400">{{ host.uri }}</p>
+                <p class="text-xs text-slate-500">{{ host.state }}</p>
               </div>
             </div>
           </div>
 
           <!-- Settings Form -->
           <form @submit.prevent="handleSubmit" class="space-y-4">
+            <div>
+              <label for="host-name-edit" class="block text-sm font-medium text-white mb-2">
+                Host Name
+              </label>
+              <input
+                id="host-name-edit"
+                v-model="formData.name"
+                type="text"
+                placeholder="e.g., Production Server, Development VM Host"
+                class="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-transparent transition-all"
+                tabindex="1"
+              />
+              <p class="text-xs text-slate-400 mt-1">
+                Friendly name to identify this host
+              </p>
+            </div>
+
             <div>
               <label class="block text-sm font-medium text-white mb-2">
                 Auto Reconnect
@@ -205,6 +223,7 @@ const hostStore = useHostStore();
 
 // Form state
 const formData = reactive({
+  name: '',
   auto_reconnect_enabled: true
 });
 
@@ -227,6 +246,7 @@ watch(() => props.open, (newValue) => {
 
 const resetForm = (): void => {
   if (host.value) {
+    formData.name = host.value.name || '';
     formData.auto_reconnect_enabled = !host.value.auto_reconnect_disabled;
   }
   error.value = null;
@@ -248,6 +268,7 @@ const handleSubmit = async (): Promise<void> => {
   
   try {
     const updates = {
+      name: formData.name.trim() || undefined,
       auto_reconnect_disabled: !formData.auto_reconnect_enabled
     };
     

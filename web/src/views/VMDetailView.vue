@@ -1,15 +1,14 @@
 <template>
   <div class="space-y-6">
+    <!-- Navigation -->
+    <div class="flex items-center justify-between mb-4">
+      <FBreadcrumbs />
+    </div>
+
     <!-- VM Header -->
     <div class="flex items-center justify-between">
       <div class="flex items-center gap-4">
-        <FButton
-          variant="ghost"
-          size="sm"
-          @click="$router.back()"
-        >
-          ← Back
-        </FButton>
+        <FBackButton :context-actions="vmContextActions" />
         <div>
           <h1 class="text-2xl font-bold text-white">{{ vm?.name || 'Loading...' }}</h1>
           <p class="text-slate-400">{{ vm?.description || 'VM Details' }}</p>
@@ -317,6 +316,8 @@ import { useUIStore } from '@/stores/uiStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import FCard from '@/components/ui/FCard.vue';
 import FButton from '@/components/ui/FButton.vue';
+import FBreadcrumbs from '@/components/ui/FBreadcrumbs.vue';
+import FBackButton from '@/components/ui/FBackButton.vue';
 import VMHardwareConfigModalExtended from '@/components/modals/VMHardwareConfigModalExtended.vue';
 import MetricSettingsModal from '@/components/modals/MetricSettingsModal.vue';
 import type { VirtualMachine, VMStats } from '@/types';
@@ -342,6 +343,26 @@ const loadingStats = ref(false);
 const showExtendedHardwareModal = ref(false);
 // simplified CPU display: show smoothed host-normalized `cpu_percent`
 const showMetricSettings = ref(false);
+
+// Context actions for the back button
+const vmContextActions = computed(() => [
+  {
+    label: 'Clone',
+    action: () => {
+      // TODO: Implement VM cloning
+      console.log('Clone VM:', vm.value?.name);
+    },
+    icon: 'copy'
+  },
+  {
+    label: 'Export',
+    action: () => {
+      // TODO: Implement VM export
+      console.log('Export VM:', vm.value?.name);
+    },
+    icon: 'download'
+  }
+]);
 
 const settings = useSettingsStore();
 

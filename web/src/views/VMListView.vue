@@ -58,34 +58,51 @@
           </div>
           <div class="flex items-center gap-2">
             <span class="text-sm text-slate-400 mr-2">View:</span>
-            <div class="flex bg-slate-800/50 rounded-lg p-1 border border-slate-600/50">
+            <div class="flex bg-slate-800/50 rounded-lg p-1 border border-slate-600/50 overflow-x-auto">
               <button
                 @click="viewMode = 'grid'"
                 :class="[
-                  'px-3 py-1.5 rounded-md text-sm transition-all duration-200 flex items-center gap-2',
+                  'px-2 xl:px-3 py-1.5 rounded-md text-xs xl:text-sm transition-all duration-200 flex items-center gap-1 xl:gap-2 whitespace-nowrap',
                   viewMode === 'grid'
                     ? 'bg-primary-500/20 text-primary-400 ring-1 ring-primary-500/50'
                     : 'text-slate-400 hover:text-white hover:bg-slate-700/50'
                 ]"
+                title="Card View"
               >
-                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <svg class="w-3 h-3 xl:w-4 xl:h-4" fill="currentColor" viewBox="0 0 20 20">
                   <path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM11 13a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
                 </svg>
-                Cards
+                <span class="hidden sm:inline">Cards</span>
               </button>
               <button
                 @click="viewMode = 'list'"
                 :class="[
-                  'px-3 py-1.5 rounded-md text-sm transition-all duration-200 flex items-center gap-2',
+                  'px-2 xl:px-3 py-1.5 rounded-md text-xs xl:text-sm transition-all duration-200 flex items-center gap-1 xl:gap-2 whitespace-nowrap',
                   viewMode === 'list'
                     ? 'bg-primary-500/20 text-primary-400 ring-1 ring-primary-500/50'
                     : 'text-slate-400 hover:text-white hover:bg-slate-700/50'
                 ]"
+                title="List View"
               >
-                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                  <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd" />
+                <svg class="w-3 h-3 xl:w-4 xl:h-4" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M3 3a1 1 0 000 2v8a2 2 0 002 2h2.586l-1.293 1.293a1 1 0 101.414 1.414L10 15.414l2.293 2.293a1 1 0 001.414-1.414L12.414 15H15a2 2 0 002-2V5a1 1 0 100-2H3zm11.707 4.707a1 1 0 00-1.414-1.414L10 9.586 6.707 6.293a1 1 0 00-1.414 1.414l4 4a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
                 </svg>
-                List
+                <span class="hidden sm:inline">List</span>
+              </button>
+              <button
+                @click="viewMode = 'compact'"
+                :class="[
+                  'px-2 xl:px-3 py-1.5 rounded-md text-xs xl:text-sm transition-all duration-200 flex items-center gap-1 xl:gap-2 whitespace-nowrap',
+                  viewMode === 'compact'
+                    ? 'bg-primary-500/20 text-primary-400 ring-1 ring-primary-500/50'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-700/50'
+                ]"
+                title="Compact View"
+              >
+                <svg class="w-3 h-3 xl:w-4 xl:h-4" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M2 4a1 1 0 011-1h14a1 1 0 110 2H3a1 1 0 01-1-1zM2 8a1 1 0 011-1h14a1 1 0 110 2H3a1 1 0 01-1-1zM2 12a1 1 0 011-1h14a1 1 0 110 2H3a1 1 0 01-1-1zM2 16a1 1 0 011-1h14a1 1 0 110 2H3a1 1 0 01-1-1z" />
+                </svg>
+                <span class="hidden sm:inline">Compact</span>
               </button>
             </div>
           </div>
@@ -163,74 +180,233 @@
     </div>
 
     <!-- VM List View -->
-    <div v-if="filteredVMs.length > 0 && viewMode === 'list'" class="space-y-2">
-      <FCard class="card-glow">
-        <!-- Table Header -->
-        <div class="grid grid-cols-12 gap-4 px-6 py-3 border-b border-slate-700/50 text-sm font-medium text-slate-300">
-          <div class="col-span-3">Name</div>
-          <div class="col-span-2">Host</div>
-          <div class="col-span-1">Status</div>
-          <div class="col-span-1">vCPUs</div>
-          <div class="col-span-2">Memory</div>
-          <div class="col-span-3">Actions</div>
-        </div>
-        
-        <!-- Table Rows -->
-        <div class="divide-y divide-slate-700/30">
-          <div
-            v-for="vm in filteredVMs"
-            :key="vm.uuid"
-            class="grid grid-cols-12 gap-4 px-6 py-4 hover:bg-slate-800/30 cursor-pointer transition-colors duration-200"
-            @click="$router.push(`/hosts/${vm.hostId}/vms/${vm.name}`)"
-          >
-            <!-- Name Column -->
-            <div class="col-span-3 flex items-center gap-3">
+    <div v-if="filteredVMs.length > 0 && viewMode === 'list'" class="overflow-x-auto">
+      <FCard class="card-glow overflow-hidden">
+        <table class="w-full">
+          <thead class="border-b border-slate-700/50">
+            <tr class="text-left">
+              <th 
+                class="px-6 py-3 text-sm font-medium text-slate-300 cursor-pointer hover:text-white transition-colors select-none"
+                @click="handleSort('name')"
+              >
+                <div class="flex items-center gap-2">
+                  Name
+                  <span class="text-xs opacity-70">{{ getSortIcon('name') }}</span>
+                </div>
+              </th>
+              <th 
+                class="px-6 py-3 text-sm font-medium text-slate-300 cursor-pointer hover:text-white transition-colors select-none"
+                @click="handleSort('host')"
+              >
+                <div class="flex items-center gap-2">
+                  Host
+                  <span class="text-xs opacity-70">{{ getSortIcon('host') }}</span>
+                </div>
+              </th>
+              <th 
+                class="px-6 py-3 text-sm font-medium text-slate-300 cursor-pointer hover:text-white transition-colors select-none"
+                @click="handleSort('status')"
+              >
+                <div class="flex items-center gap-2">
+                  Status
+                  <span class="text-xs opacity-70">{{ getSortIcon('status') }}</span>
+                </div>
+              </th>
+              <th 
+                class="px-6 py-3 text-sm font-medium text-slate-300 text-center cursor-pointer hover:text-white transition-colors select-none"
+                @click="handleSort('vcpus')"
+              >
+                <div class="flex items-center justify-center gap-2">
+                  vCPUs
+                  <span class="text-xs opacity-70">{{ getSortIcon('vcpus') }}</span>
+                </div>
+              </th>
+              <th 
+                class="px-6 py-3 text-sm font-medium text-slate-300 cursor-pointer hover:text-white transition-colors select-none"
+                @click="handleSort('memory')"
+              >
+                <div class="flex items-center gap-2">
+                  Memory
+                  <span class="text-xs opacity-70">{{ getSortIcon('memory') }}</span>
+                </div>
+              </th>
+              <th class="px-6 py-3 text-sm font-medium text-slate-300">Actions</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-700/30">
+            <tr
+              v-for="vm in filteredVMs"
+              :key="vm.uuid"
+              class="group hover:bg-slate-800/30 transition-colors duration-200 cursor-pointer"
+              @click="$router.push(`/hosts/${vm.hostId}/vms/${vm.name}`)"
+            >
+              <!-- Name Column -->
+              <td class="px-6 py-3">
+                <div class="flex items-center gap-3">
+                  <div :class="[
+                    'w-3 h-3 rounded-full flex-shrink-0',
+                    getVMStatusColor(vm.state)
+                  ]"></div>
+                  <div class="min-w-0">
+                    <div class="text-white font-medium truncate">{{ vm.name }}</div>
+                    <div class="text-xs text-slate-400 truncate">{{ vm.osType || 'Unknown OS' }}</div>
+                  </div>
+                </div>
+              </td>
+              
+              <!-- Host Column -->
+              <td class="px-6 py-3 text-slate-300">{{ vm.hostName || 'Unknown Host' }}</td>
+              
+              <!-- Status Column -->
+              <td class="px-6 py-3">
+                <span :class="[
+                  'px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap',
+                  vm.state === 'ACTIVE' ? 'bg-green-500/20 text-green-400' :
+                  vm.state === 'STOPPED' ? 'bg-red-500/20 text-red-400' :
+                  vm.state === 'ERROR' ? 'bg-red-600/20 text-red-300' :
+                  'bg-yellow-500/20 text-yellow-400'
+                ]">
+                  {{ vm.state }}
+                </span>
+              </td>
+              
+              <!-- vCPUs Column -->
+              <td class="px-6 py-3 text-slate-300 text-center">{{ vm.vcpuCount || 'N/A' }}</td>
+              
+              <!-- Memory Column -->
+              <td class="px-6 py-3 text-slate-300">{{ vm.memoryMB ? `${Math.round(vm.memoryMB / 1024)}GB` : 'N/A' }}</td>
+              
+              <!-- Actions Column -->
+              <td class="px-6 py-3">
+                <div class="flex items-center gap-1">
+                <FButton
+                  variant="ghost"
+                  size="sm"
+                  @click.stop="handleVMAction(vm, 'start')"
+                  :disabled="vm.state === 'ACTIVE' || !!vm.taskState"
+                  class="text-xs p-1 xl:px-2"
+                  title="Start VM"
+                >
+                  ▶️
+                </FButton>
+                <FButton
+                  variant="ghost"
+                  size="sm"
+                  @click.stop="handleVMAction(vm, 'stop')"
+                  :disabled="vm.state === 'STOPPED' || !!vm.taskState"
+                  class="text-xs p-1 xl:px-2"
+                  title="Stop VM"
+                >
+                  ⏹️
+                </FButton>
+                <FButton
+                  variant="outline"
+                  size="sm"
+                  @click.stop="$router.push(`/spice/${vm.hostId}/${vm.name}`)"
+                  :disabled="vm.state !== 'ACTIVE'"
+                  class="text-xs p-1 xl:px-2"
+                  title="Open Console"
+                >
+                  🖥️
+                </FButton>
+                <!-- Dropdown Menu -->
+                <div class="relative">
+                  <FButton
+                    variant="ghost"
+                    size="sm"
+                    @click.stop="toggleDropdown(vm.uuid)"
+                    class="text-xs p-1 xl:px-2"
+                    title="More Actions"
+                  >
+                    ⋯
+                  </FButton>
+                  <div 
+                    v-if="activeDropdown === vm.uuid"
+                    class="absolute right-0 top-full mt-1 w-48 bg-slate-800 border border-slate-600/50 rounded-lg shadow-lg z-50 card-glow"
+                  >
+                    <div class="py-1">
+                      <button
+                        @click.stop="viewVMDetails(vm)"
+                        class="w-full px-4 py-2 text-left text-sm text-slate-300 hover:bg-slate-700/50 hover:text-white transition-colors"
+                      >
+                        📊 View Details
+                      </button>
+                      <button
+                        @click.stop="editVM(vm)"
+                        class="w-full px-4 py-2 text-left text-sm text-slate-300 hover:bg-slate-700/50 hover:text-white transition-colors"
+                      >
+                        ✏️ Edit Settings
+                      </button>
+                      <button
+                        @click.stop="cloneVM(vm)"
+                        class="w-full px-4 py-2 text-left text-sm text-slate-300 hover:bg-slate-700/50 hover:text-white transition-colors"
+                      >
+                        📋 Clone VM
+                      </button>
+                      <button
+                        @click.stop="exportVM(vm)"
+                        class="w-full px-4 py-2 text-left text-sm text-slate-300 hover:bg-slate-700/50 hover:text-white transition-colors"
+                      >
+                        📦 Export
+                      </button>
+                      <hr class="border-slate-600/50 my-1">
+                      <button
+                        @click.stop="deleteVM(vm)"
+                        class="w-full px-4 py-2 text-left text-sm text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-colors"
+                      >
+                        🗑️ Delete VM
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </FCard>
+    </div>
+
+    <!-- VM Compact View -->
+    <div v-if="filteredVMs.length > 0 && viewMode === 'compact'" class="space-y-1">
+      <div
+        v-for="vm in filteredVMs"
+        :key="vm.uuid"
+        class="group hover:bg-slate-800/30 rounded-lg transition-colors duration-200"
+      >
+        <FCard class="p-3 card-glow cursor-pointer" @click="$router.push(`/hosts/${vm.hostId}/vms/${vm.name}`)">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-3 min-w-0 flex-1">
               <div :class="[
-                'w-3 h-3 rounded-full',
+                'w-2 h-2 rounded-full flex-shrink-0',
                 getVMStatusColor(vm.state)
               ]"></div>
-              <div>
-                <div class="text-white font-medium">{{ vm.name }}</div>
-                <div class="text-xs text-slate-400">{{ vm.osType || 'Unknown OS' }}</div>
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-2">
+                  <span class="text-white font-medium truncate">{{ vm.name }}</span>
+                  <span :class="[
+                    'px-1.5 py-0.5 rounded text-xs font-medium flex-shrink-0',
+                    vm.state === 'ACTIVE' ? 'bg-green-500/20 text-green-400' :
+                    vm.state === 'STOPPED' ? 'bg-red-500/20 text-red-400' :
+                    vm.state === 'ERROR' ? 'bg-red-600/20 text-red-300' :
+                    'bg-yellow-500/20 text-yellow-400'
+                  ]">
+                    {{ vm.state }}
+                  </span>
+                </div>
+                <div class="text-xs text-slate-400 truncate">
+                  {{ vm.hostName }} • {{ vm.vcpuCount || 'N/A' }} vCPUs • {{ vm.memoryMB ? `${Math.round(vm.memoryMB / 1024)}GB` : 'N/A' }}
+                </div>
               </div>
             </div>
-            
-            <!-- Host Column -->
-            <div class="col-span-2 flex items-center">
-              <div class="text-slate-300">{{ vm.hostName || 'Unknown Host' }}</div>
-            </div>
-            
-            <!-- Status Column -->
-            <div class="col-span-1 flex items-center">
-              <span :class="[
-                'px-2 py-1 rounded-full text-xs font-medium',
-                vm.state === 'ACTIVE' ? 'bg-green-500/20 text-green-400' :
-                vm.state === 'STOPPED' ? 'bg-red-500/20 text-red-400' :
-                vm.state === 'ERROR' ? 'bg-red-600/20 text-red-300' :
-                'bg-yellow-500/20 text-yellow-400'
-              ]">
-                {{ vm.state }}
-              </span>
-            </div>
-            
-            <!-- vCPUs Column -->
-            <div class="col-span-1 flex items-center">
-              <div class="text-slate-300">{{ vm.vcpuCount || 'N/A' }}</div>
-            </div>
-            
-            <!-- Memory Column -->
-            <div class="col-span-2 flex items-center">
-              <div class="text-slate-300">{{ vm.memoryMB ? `${Math.round(vm.memoryMB / 1024)}GB` : 'N/A' }}</div>
-            </div>
-            
-            <!-- Actions Column -->
-            <div class="col-span-3 flex items-center gap-2">
+            <div class="flex items-center gap-1 ml-2">
               <FButton
                 variant="ghost"
                 size="sm"
                 @click.stop="handleVMAction(vm, 'start')"
                 :disabled="vm.state === 'ACTIVE' || !!vm.taskState"
-                class="text-xs"
+                class="text-xs p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                title="Start VM"
               >
                 ▶️
               </FButton>
@@ -239,7 +415,8 @@
                 size="sm"
                 @click.stop="handleVMAction(vm, 'stop')"
                 :disabled="vm.state === 'STOPPED' || !!vm.taskState"
-                class="text-xs"
+                class="text-xs p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                title="Stop VM"
               >
                 ⏹️
               </FButton>
@@ -248,18 +425,21 @@
                 size="sm"
                 @click.stop="$router.push(`/spice/${vm.hostId}/${vm.name}`)"
                 :disabled="vm.state !== 'ACTIVE'"
-                class="text-xs"
+                class="text-xs p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                title="Console"
               >
                 🖥️
               </FButton>
             </div>
           </div>
-        </div>
-      </FCard>
+        </FCard>
+      </div>
     </div>
 
+
+
     <!-- Empty State -->
-    <div v-else class="text-center py-12">
+    <div v-else-if="filteredVMs.length === 0" class="text-center py-12">
       <div class="text-6xl mb-4">🖥️</div>
       <h3 class="text-xl font-semibold text-white mb-2">No Virtual Machines Found</h3>
       <p class="text-slate-400">No virtual machines match your current filters.</p>
@@ -268,22 +448,40 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useHostStore } from '@/stores/hostStore'
 import { useVMStore } from '@/stores/vmStore'
+import { useUserPreferences } from '@/composables/useUserPreferences'
 import FCard from '@/components/ui/FCard.vue'
 import FButton from '@/components/ui/FButton.vue'
 
 const router = useRouter()
 const hostStore = useHostStore()
 const vmStore = useVMStore()
+const { vmListPreferences } = useUserPreferences()
 
 // Reactive data
 const searchQuery = ref('')
 const statusFilter = ref('all')
 const hostFilter = ref('all')
-const viewMode = ref('grid')
+const activeDropdown = ref<string | null>(null)
+
+// Use preferences for persistent state
+const viewMode = computed({
+  get: () => vmListPreferences.viewMode,
+  set: (value: 'grid' | 'list' | 'compact') => { vmListPreferences.viewMode = value }
+})
+
+const sortBy = computed({
+  get: () => vmListPreferences.sortBy,
+  set: (value: string) => { vmListPreferences.sortBy = value }
+})
+
+const sortDirection = computed({
+  get: () => vmListPreferences.sortDirection,
+  set: (value: 'asc' | 'desc') => { vmListPreferences.sortDirection = value }
+})
 
 // Computed properties
 const hosts = computed(() => hostStore.hosts)
@@ -296,7 +494,7 @@ const allVMs = computed(() => {
       vms.push({
         ...vm,
         hostId: host.id,
-        hostName: host.uri
+        hostName: host.name || host.uri
       })
     })
   })
@@ -304,7 +502,7 @@ const allVMs = computed(() => {
 })
 
 const filteredVMs = computed(() => {
-  return allVMs.value.filter(vm => {
+  let filtered = allVMs.value.filter(vm => {
     const matchesSearch = !searchQuery.value ||
       vm.name.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
       (vm.osType && vm.osType.toLowerCase().includes(searchQuery.value.toLowerCase()))
@@ -314,6 +512,43 @@ const filteredVMs = computed(() => {
 
     return matchesSearch && matchesStatus && matchesHost
   })
+
+  // Apply sorting
+  filtered.sort((a, b) => {
+    let aValue, bValue
+
+    switch (sortBy.value) {
+      case 'name':
+        aValue = a.name?.toLowerCase() || ''
+        bValue = b.name?.toLowerCase() || ''
+        break
+      case 'host':
+        aValue = a.hostName?.toLowerCase() || ''
+        bValue = b.hostName?.toLowerCase() || ''
+        break
+      case 'status':
+        aValue = a.state || ''
+        bValue = b.state || ''
+        break
+      case 'vcpus':
+        aValue = a.vcpuCount || 0
+        bValue = b.vcpuCount || 0
+        return sortDirection.value === 'asc' ? aValue - bValue : bValue - aValue
+      case 'memory':
+        aValue = a.memoryMB || 0
+        bValue = b.memoryMB || 0
+        return sortDirection.value === 'asc' ? aValue - bValue : bValue - aValue
+      default:
+        aValue = a.name?.toLowerCase() || ''
+        bValue = b.name?.toLowerCase() || ''
+    }
+
+    if (aValue < bValue) return sortDirection.value === 'asc' ? -1 : 1
+    if (aValue > bValue) return sortDirection.value === 'asc' ? 1 : -1
+    return 0
+  })
+
+  return filtered
 })
 
 const totalVMs = computed(() => allVMs.value.length)
@@ -349,9 +584,78 @@ const fetchVMsForAllHosts = async () => {
   await Promise.allSettled(hostPromises)
 }
 
+// Sorting methods
+const handleSort = (column: string) => {
+  if (sortBy.value === column) {
+    sortDirection.value = sortDirection.value === 'asc' ? 'desc' : 'asc'
+  } else {
+    sortBy.value = column
+    sortDirection.value = 'asc'
+  }
+}
+
+const getSortIcon = (column: string) => {
+  if (sortBy.value !== column) return '↕️'
+  return sortDirection.value === 'asc' ? '↑' : '↓'
+}
+
+// Dropdown methods
+const toggleDropdown = (vmUuid: string) => {
+  activeDropdown.value = activeDropdown.value === vmUuid ? null : vmUuid
+}
+
+const viewVMDetails = (vm: any) => {
+  activeDropdown.value = null
+  router.push(`/hosts/${vm.hostId}/vms/${vm.name}`)
+}
+
+const editVM = (vm: any) => {
+  activeDropdown.value = null
+  // TODO: Implement edit VM functionality
+  console.log('Edit VM:', vm.name)
+}
+
+const cloneVM = (vm: any) => {
+  activeDropdown.value = null
+  // TODO: Implement clone VM functionality
+  console.log('Clone VM:', vm.name)
+}
+
+const exportVM = (vm: any) => {
+  activeDropdown.value = null
+  // TODO: Implement export VM functionality
+  console.log('Export VM:', vm.name)
+}
+
+const deleteVM = async (vm: any) => {
+  activeDropdown.value = null
+  // TODO: Add confirmation dialog
+  if (confirm(`Are you sure you want to delete VM "${vm.name}"?`)) {
+    try {
+      // TODO: Implement delete VM functionality
+      console.log('Delete VM:', vm.name)
+    } catch (error) {
+      console.error('Failed to delete VM:', error)
+    }
+  }
+}
+
+// Close dropdown when clicking outside
+const handleClickOutside = () => {
+  activeDropdown.value = null
+}
+
 // Lifecycle
 onMounted(async () => {
   await hostStore.fetchHosts()
   await fetchVMsForAllHosts()
+  
+  // Add click outside listener
+  document.addEventListener('click', handleClickOutside)
+})
+
+// Cleanup
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside)
 })
 </script>
