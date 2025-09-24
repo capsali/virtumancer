@@ -322,6 +322,7 @@ import VMHardwareConfigModalExtended from '@/components/modals/VMHardwareConfigM
 import MetricSettingsModal from '@/components/modals/MetricSettingsModal.vue';
 import type { VirtualMachine, VMStats } from '@/types';
 import { wsManager } from '@/services/api';
+import { getConsoleRoute } from '@/utils/console';
 
 interface Props {
   hostId: string;
@@ -478,8 +479,12 @@ const handleVMAction = async (action: string): Promise<void> => {
 const openConsole = (): void => {
   if (!vm.value) return;
   
-  // Navigate to SPICE console route
-  router.push(`/spice/${props.hostId}/${vm.value.name}`);
+  const consoleRoute = getConsoleRoute(props.hostId, vm.value.name, vm.value);
+  if (consoleRoute) {
+    router.push(consoleRoute);
+  } else {
+    uiStore.addToast('No console available for this VM', 'warning');
+  }
 };
 
 // Utility functions

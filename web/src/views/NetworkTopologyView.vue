@@ -66,6 +66,97 @@
       </FCard>
     </div>
 
+    <!-- Ports & Services Section -->
+    <div class="space-y-4">
+      <div class="border-l-4 border-cyan-500 pl-4">
+        <h2 class="text-xl font-semibold text-white mb-2">Ports & Services</h2>
+        <p class="text-slate-400 text-sm">Network ports and service mappings across hosts</p>
+      </div>
+
+      <div v-if="portsLoading" class="flex items-center justify-center py-8">
+        <div class="w-8 h-8 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+        <span class="ml-3 text-white">Loading ports...</span>
+      </div>
+
+      <div v-else-if="portsError" class="p-4 bg-red-500/10 border border-red-400/20 rounded-lg">
+        <p class="text-red-400">{{ portsError }}</p>
+        <FButton variant="ghost" size="sm" @click="loadPorts" class="mt-2">
+          🔄 Retry
+        </FButton>
+      </div>
+
+      <div v-else class="space-y-4">
+        <div
+          v-for="host in connectedHostsWithPorts"
+          :key="host.id"
+          class="space-y-3"
+        >
+          <!-- Host Ports Header -->
+          <FCard class="p-4 card-glow">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-3">
+                <div class="w-3 h-3 rounded-full bg-cyan-400"></div>
+                <div>
+                  <h3 class="font-semibold text-white">{{ getHostDisplayName(host) }}</h3>
+                  <p class="text-sm text-slate-400">{{ host.ports?.length || 0 }} ports configured</p>
+                </div>
+              </div>
+              <FButton
+                variant="ghost"
+                size="sm"
+                @click="refreshHostPorts(host.id)"
+                :disabled="portsLoading"
+                title="Refresh ports"
+              >
+                🔄
+              </FButton>
+            </div>
+          </FCard>
+
+          <!-- Port List -->
+          <div v-if="host.ports && host.ports.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 ml-6">
+            <FCard
+              v-for="port in host.ports"
+              :key="port.id"
+              class="p-3 card-glow hover:scale-[1.02] transition-all duration-300"
+            >
+              <div class="space-y-2">
+                <div class="flex items-center justify-between">
+                  <span class="text-sm font-medium text-white">{{ port.name || `Port ${port.port}` }}</span>
+                  <span :class="[
+                    'px-2 py-1 rounded text-xs font-medium',
+                    port.protocol === 'TCP' ? 'bg-blue-500/20 text-blue-400' :
+                    port.protocol === 'UDP' ? 'bg-purple-500/20 text-purple-400' :
+                    'bg-gray-500/20 text-gray-400'
+                  ]">
+                    {{ port.protocol || 'Unknown' }}
+                  </span>
+                </div>
+                <div class="text-xs text-slate-400 space-y-1">
+                  <div>Port: <span class="text-white">{{ port.port }}</span></div>
+                  <div v-if="port.target_port && port.target_port !== port.port">
+                    Target: <span class="text-white">{{ port.target_port }}</span>
+                  </div>
+                  <div v-if="port.service_name">
+                    Service: <span class="text-cyan-400">{{ port.service_name }}</span>
+                  </div>
+                </div>
+              </div>
+            </FCard>
+          </div>
+
+          <div v-else class="ml-6 p-4 text-center text-slate-400 bg-white/5 rounded-lg border border-white/10">
+            No ports configured for this host
+          </div>
+        </div>
+
+        <div v-if="connectedHostsWithPorts.length === 0" class="p-8 text-center text-slate-400">
+          <div class="text-4xl mb-4">🔌</div>
+          <p>No connected hosts with port information available</p>
+        </div>
+      </div>
+    </div>
+
     <!-- Grid View -->
     <div v-if="viewMode === 'grid'" class="space-y-6">
       <div
@@ -275,6 +366,7 @@ import { useVMStore } from '@/stores/vmStore';
 import FCard from '@/components/ui/FCard.vue';
 import FButton from '@/components/ui/FButton.vue';
 import FBreadcrumbs from '@/components/ui/FBreadcrumbs.vue';
+import { hostApi } from '@/services/api';
 import type { Host, VirtualMachine } from '@/types';
 
 const hostStore = useHostStore();
@@ -285,6 +377,11 @@ const viewMode = ref<'grid' | 'network'>('grid');
 const isLoading = ref(false);
 const error = ref<string | null>(null);
 
+// Ports state
+const portsLoading = ref(false);
+const portsError = ref<string | null>(null);
+const hostPorts = ref<Record<string, any[]>>({});
+
 // Data
 const hosts = computed(() => hostStore.hosts);
 const vms = computed(() => vmStore.vms);
@@ -294,6 +391,16 @@ const totalHosts = computed(() => hosts.value.length);
 const totalVMs = computed(() => vms.value.length);
 const connectedHosts = computed(() => hosts.value.filter(h => h.state === 'CONNECTED').length);
 const activeVMs = computed(() => vms.value.filter(vm => vm.state === 'ACTIVE').length);
+
+// Connected hosts with ports data
+const connectedHostsWithPorts = computed(() => {
+  return hosts.value
+    .filter(h => h.state === 'CONNECTED')
+    .map(host => ({
+      ...host,
+      ports: hostPorts.value[host.id] || []
+    }));
+});
 
 // Get VMs for a specific host
 const getHostVMs = (hostId: string): VirtualMachine[] => {
@@ -316,10 +423,61 @@ const refreshTopology = async (): Promise<void> => {
     await Promise.all(
       connectedHostIds.map(hostId => vmStore.fetchVMs(hostId))
     );
+
+    // Also load ports data
+    await loadPorts();
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Failed to load topology';
   } finally {
     isLoading.value = false;
+  }
+};
+
+// Load ports for all connected hosts
+const loadPorts = async (): Promise<void> => {
+  portsLoading.value = true;
+  portsError.value = null;
+  
+  try {
+    const connectedHostIds = hosts.value
+      .filter(h => h.state === 'CONNECTED')
+      .map(h => h.id);
+    
+    const portsResults = await Promise.allSettled(
+      connectedHostIds.map(async hostId => {
+        try {
+          const ports = await hostApi.getPorts(hostId);
+          return { hostId, ports };
+        } catch (err) {
+          console.warn(`Failed to load ports for host ${hostId}:`, err);
+          return { hostId, ports: [] };
+        }
+      })
+    );
+
+    // Update hostPorts with results
+    const newHostPorts: Record<string, any[]> = {};
+    portsResults.forEach(result => {
+      if (result.status === 'fulfilled') {
+        const { hostId, ports } = result.value;
+        newHostPorts[hostId] = ports;
+      }
+    });
+    hostPorts.value = newHostPorts;
+  } catch (err) {
+    portsError.value = err instanceof Error ? err.message : 'Failed to load ports';
+  } finally {
+    portsLoading.value = false;
+  }
+};
+
+// Refresh ports for a specific host
+const refreshHostPorts = async (hostId: string): Promise<void> => {
+  try {
+    const ports = await hostApi.getPorts(hostId);
+    hostPorts.value[hostId] = ports;
+  } catch (err) {
+    console.error(`Failed to refresh ports for host ${hostId}:`, err);
   }
 };
 

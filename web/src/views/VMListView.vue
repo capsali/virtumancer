@@ -172,7 +172,7 @@
             <FButton
               variant="outline"
               size="sm"
-              @click.stop="$router.push(`/spice/${vm.hostId}/${vm.name}`)"
+              @click.stop="openVMConsole(vm)"
               :disabled="vm.state !== 'ACTIVE'"
             >
               🖥️ Console
@@ -305,7 +305,7 @@
                 <FButton
                   variant="outline"
                   size="sm"
-                  @click.stop="$router.push(`/spice/${vm.hostId}/${vm.name}`)"
+                  @click.stop="openVMConsole(vm)"
                   :disabled="vm.state !== 'ACTIVE'"
                   class="text-xs p-1 xl:px-2"
                   title="Open Console"
@@ -426,7 +426,7 @@
               <FButton
                 variant="outline"
                 size="sm"
-                @click.stop="$router.push(`/spice/${vm.hostId}/${vm.name}`)"
+                @click.stop="openVMConsole(vm)"
                 :disabled="vm.state !== 'ACTIVE'"
                 class="text-xs p-1 opacity-0 group-hover:opacity-100 transition-opacity"
                 title="Console"
@@ -459,6 +459,7 @@ import { useUserPreferences } from '@/composables/useUserPreferences'
 import FCard from '@/components/ui/FCard.vue'
 import FButton from '@/components/ui/FButton.vue'
 import FBreadcrumbs from '@/components/ui/FBreadcrumbs.vue'
+import { getConsoleRoute } from '@/utils/console'
 
 const router = useRouter()
 const hostStore = useHostStore()
@@ -606,6 +607,13 @@ const getSortIcon = (column: string) => {
 // Dropdown methods
 const toggleDropdown = (vmUuid: string) => {
   activeDropdown.value = activeDropdown.value === vmUuid ? null : vmUuid
+}
+
+const openVMConsole = (vm: any) => {
+  const consoleRoute = getConsoleRoute(vm.hostId, vm.name, vm)
+  if (consoleRoute) {
+    router.push(consoleRoute)
+  }
 }
 
 const viewVMDetails = (vm: any) => {

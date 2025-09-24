@@ -72,19 +72,19 @@
             </div>
 
             <!-- Action Buttons -->
-            <div class="flex gap-2 pt-2 border-t border-white/10">
+            <div class="flex gap-2 pt-2 border-t border-white/10 justify-center">
               <FButton
                 v-if="host.state === 'DISCONNECTED'"
                 size="sm"
                 variant="primary"
                 :disabled="loading.connectHost[host.id]"
                 @click.stop="connectHost(host.id)"
-                class="flex-1"
+                class="px-3"
+                :title="loading.connectHost[host.id] ? 'Connecting...' : 'Connect to host'"
               >
-                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
                 </svg>
-                {{ loading.connectHost[host.id] ? 'Connecting...' : 'Connect' }}
               </FButton>
               
               <FButton
@@ -92,11 +92,12 @@
                 size="sm"
                 variant="ghost"
                 @click.stop="disconnectHost(host.id)"
+                class="px-3"
+                title="Disconnect from host"
               >
-                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
                 </svg>
-                Disconnect
               </FButton>
               
               <FButton
@@ -176,7 +177,7 @@
     </div>
 
     <!-- Host Information Cards -->
-    <div v-if="selectedHost" class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-6">
+    <div v-if="selectedHost" class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5 gap-6">
       <!-- System Information -->
       <FCard class="card-glow">
         <div class="p-6 space-y-4">
@@ -188,18 +189,34 @@
             </div>
             <h3 class="text-lg font-bold text-white">System Info</h3>
           </div>
-          <div class="space-y-3">
-            <div class="flex justify-between items-center">
-              <span class="text-slate-400 text-sm">Host ID</span>
-              <span class="text-white text-sm font-mono">{{ selectedHost.id.substring(0, 8) }}...</span>
+          <div class="space-y-3 text-sm">
+            <div class="flex justify-between items-center gap-4">
+              <span class="text-slate-400 flex-shrink-0">Host ID</span>
+              <span class="text-white font-mono text-right break-all">{{ selectedHost.id.substring(0, 8) }}...</span>
             </div>
-            <div class="flex justify-between items-center">
-              <span class="text-slate-400 text-sm">Connection</span>
-              <span class="text-white text-sm">{{ selectedHost.uri }}</span>
+            <div class="flex justify-between items-center gap-4">
+              <span class="text-slate-400 flex-shrink-0">Hostname</span>
+              <span class="text-white text-right break-all">{{ selectedHost.stats?.host_info?.hostname || extractHostname(selectedHost.uri) }}</span>
             </div>
-            <div v-if="selectedHost.stats" class="flex justify-between items-center">
-              <span class="text-slate-400 text-sm">Uptime</span>
-              <span class="text-green-400 text-sm">{{ formatUptime(selectedHost.stats.uptime) }}</span>
+            <div class="flex justify-between items-center gap-4">
+              <span class="text-slate-400 flex-shrink-0">Connection</span>
+              <span class="text-white text-right break-all">{{ selectedHost.uri }}</span>
+            </div>
+            <div v-if="selectedHost.stats?.host_info" class="flex justify-between items-center gap-4">
+              <span class="text-slate-400 flex-shrink-0">CPU Cores</span>
+              <span class="text-blue-400 text-right">{{ selectedHost.stats.host_info.cpu || selectedHost.stats.resources?.cpu_count || 'N/A' }}</span>
+            </div>
+            <div v-if="selectedHost.stats?.host_info" class="flex justify-between items-center gap-4">
+              <span class="text-slate-400 flex-shrink-0">Total Memory</span>
+              <span class="text-purple-400 text-right">{{ formatBytes(selectedHost.stats.host_info.memory || selectedHost.stats.resources?.memory_bytes || 0) }}</span>
+            </div>
+            <div v-if="selectedHost.stats && selectedHost.stats.uptime !== undefined" class="flex justify-between items-center gap-4">
+              <span class="text-slate-400 flex-shrink-0">Uptime</span>
+              <span class="text-green-400 text-right">{{ formatUptime(selectedHost.stats.uptime) }}</span>
+            </div>
+            <div v-if="selectedHost.stats?.host_info?.version" class="flex justify-between items-center gap-4">
+              <span class="text-slate-400 flex-shrink-0">Hypervisor</span>
+              <span class="text-cyan-400 text-right">{{ selectedHost.stats.host_info.version }}</span>
             </div>
           </div>
         </div>
@@ -211,20 +228,25 @@
           <div class="flex items-center gap-3 mb-4">
             <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center">
               <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 002 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/>
               </svg>
             </div>
             <h3 class="text-lg font-bold text-white">CPU Usage</h3>
           </div>
           <div class="space-y-3">
             <div class="flex justify-between items-center">
+              <span class="text-slate-400 text-sm">Cores Available</span>
+              <span class="text-white text-sm font-medium">{{ selectedHost.stats?.host_info?.cpu || selectedHost.stats?.resources?.cpu_count || 'N/A' }}</span>
+            </div>
+            <div class="flex justify-between items-center">
               <span class="text-slate-400 text-sm">Current Usage</span>
-              <span v-if="selectedHost.stats" class="text-2xl font-bold text-green-400">{{ Math.round(selectedHost.stats.cpu_percent || 0) }}%</span>
+              <span v-if="selectedHost.stats" class="text-2xl font-bold" :class="getCPUUsageColor(selectedHost.stats.cpu_percent || 0)">{{ Math.round(selectedHost.stats.cpu_percent || 0) }}%</span>
               <span v-else class="text-slate-500 text-sm">Unavailable</span>
             </div>
-            <div v-if="selectedHost.stats" class="w-full bg-slate-700 rounded-full h-2">
+            <div v-if="selectedHost.stats" class="w-full bg-slate-700 rounded-full h-3">
               <div 
-                class="h-2 bg-gradient-to-r from-green-500 to-emerald-500 rounded-full transition-all duration-300"
+                class="h-3 rounded-full transition-all duration-300"
+                :class="getCPUUsageGradient(selectedHost.stats.cpu_percent || 0)"
                 :style="{ width: `${Math.round(selectedHost.stats.cpu_percent || 0)}%` }"
               ></div>
             </div>
@@ -241,25 +263,82 @@
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"/>
               </svg>
             </div>
-            <h3 class="text-lg font-bold text-white">Memory</h3>
+            <h3 class="text-lg font-bold text-white">Memory Usage</h3>
           </div>
-          <div class="space-y-3">
-            <div v-if="selectedHost.stats" class="flex justify-between items-center">
+          <div class="space-y-3" v-if="selectedHost.stats">
+            <div class="flex justify-between items-center">
               <span class="text-slate-400 text-sm">Used</span>
-              <span class="text-purple-400 font-medium">{{ formatBytes(selectedHost.stats.memory_total - selectedHost.stats.memory_available) }}</span>
+              <span class="font-medium" :class="getMemoryUsageColor(((selectedHost.stats.memory_total - selectedHost.stats.memory_available) / selectedHost.stats.memory_total) * 100)">
+                {{ formatBytes(selectedHost.stats.memory_total - selectedHost.stats.memory_available) }}
+              </span>
             </div>
-            <div v-if="selectedHost.stats" class="flex justify-between items-center">
+            <div class="flex justify-between items-center">
+              <span class="text-slate-400 text-sm">Available</span>
+              <span class="text-slate-300 font-medium">{{ formatBytes(selectedHost.stats.memory_available) }}</span>
+            </div>
+            <div class="flex justify-between items-center">
               <span class="text-slate-400 text-sm">Total</span>
               <span class="text-white font-medium">{{ formatBytes(selectedHost.stats.memory_total) }}</span>
             </div>
-            <div v-if="selectedHost.stats" class="w-full bg-slate-700 rounded-full h-2">
+            <div class="flex justify-between items-center">
+              <span class="text-slate-400 text-sm">Usage</span>
+              <span class="text-2xl font-bold" :class="getMemoryUsageColor(((selectedHost.stats.memory_total - selectedHost.stats.memory_available) / selectedHost.stats.memory_total) * 100)">
+                {{ Math.round(((selectedHost.stats.memory_total - selectedHost.stats.memory_available) / selectedHost.stats.memory_total) * 100) }}%
+              </span>
+            </div>
+            <div class="w-full bg-slate-700 rounded-full h-3">
               <div 
-                class="h-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full transition-all duration-300"
+                class="h-3 rounded-full transition-all duration-300"
+                :class="getMemoryUsageGradient(((selectedHost.stats.memory_total - selectedHost.stats.memory_available) / selectedHost.stats.memory_total) * 100)"
                 :style="{ width: `${((selectedHost.stats.memory_total - selectedHost.stats.memory_available) / selectedHost.stats.memory_total) * 100}%` }"
               ></div>
             </div>
-            <div v-else class="text-slate-500 text-sm text-center">Data unavailable</div>
           </div>
+          <div v-else class="text-slate-500 text-sm text-center">Memory data unavailable</div>
+        </div>
+      </FCard>
+
+      <!-- Storage Information -->
+      <FCard class="card-glow">
+        <div class="p-6 space-y-4">
+          <div class="flex items-center gap-3 mb-4">
+            <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-cyan-500 to-blue-500 flex items-center justify-center">
+              <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+              </svg>
+            </div>
+            <h3 class="text-lg font-bold text-white">Storage Usage</h3>
+          </div>
+          <div class="space-y-3" v-if="selectedHost.stats && selectedHost.stats.disk_total > 0">
+            <div class="flex justify-between items-center">
+              <span class="text-slate-400 text-sm">Used</span>
+              <span class="font-medium" :class="getStorageUsageColor(((selectedHost.stats.disk_total - selectedHost.stats.disk_free) / selectedHost.stats.disk_total) * 100)">
+                {{ formatBytes(selectedHost.stats.disk_total - selectedHost.stats.disk_free) }}
+              </span>
+            </div>
+            <div class="flex justify-between items-center">
+              <span class="text-slate-400 text-sm">Available</span>
+              <span class="text-slate-300 font-medium">{{ formatBytes(selectedHost.stats.disk_free) }}</span>
+            </div>
+            <div class="flex justify-between items-center">
+              <span class="text-slate-400 text-sm">Total</span>
+              <span class="text-white font-medium">{{ formatBytes(selectedHost.stats.disk_total) }}</span>
+            </div>
+            <div class="flex justify-between items-center">
+              <span class="text-slate-400 text-sm">Usage</span>
+              <span class="text-2xl font-bold" :class="getStorageUsageColor(((selectedHost.stats.disk_total - selectedHost.stats.disk_free) / selectedHost.stats.disk_total) * 100)">
+                {{ Math.round(((selectedHost.stats.disk_total - selectedHost.stats.disk_free) / selectedHost.stats.disk_total) * 100) }}%
+              </span>
+            </div>
+            <div class="w-full bg-slate-700 rounded-full h-3">
+              <div 
+                class="h-3 rounded-full transition-all duration-300"
+                :class="getStorageUsageGradient(((selectedHost.stats.disk_total - selectedHost.stats.disk_free) / selectedHost.stats.disk_total) * 100)"
+                :style="{ width: `${((selectedHost.stats.disk_total - selectedHost.stats.disk_free) / selectedHost.stats.disk_total) * 100}%` }"
+              ></div>
+            </div>
+          </div>
+          <div v-else class="text-slate-500 text-sm text-center">Storage data unavailable</div>
         </div>
       </FCard>
 
@@ -793,13 +872,19 @@ const formatBytes = (bytes: number): string => {
 };
 
 const formatUptime = (seconds: number): string => {
+  // Handle invalid input
+  if (typeof seconds !== 'number' || isNaN(seconds) || seconds < 0) {
+    return 'N/A';
+  }
+  
   const days = Math.floor(seconds / 86400);
   const hours = Math.floor((seconds % 86400) / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
   
   if (days > 0) return `${days}d ${hours}h`;
   if (hours > 0) return `${hours}h ${minutes}m`;
-  return `${minutes}m`;
+  if (minutes > 0) return `${minutes}m`;
+  return `${Math.floor(seconds)}s`;
 };
 
 const extractHostname = (uri: string): string => {
@@ -818,6 +903,48 @@ const extractHostname = (uri: string): string => {
     // Fallback for malformed URIs
     return uri.split('@').pop()?.split('/')[0] || 'unknown';
   }
+};
+
+const getCPUUsageColor = (percentage: number): string => {
+  if (percentage < 50) return 'text-green-400';
+  if (percentage < 75) return 'text-yellow-400';
+  if (percentage < 90) return 'text-orange-400';
+  return 'text-red-400';
+};
+
+const getCPUUsageGradient = (percentage: number): string => {
+  if (percentage < 50) return 'bg-gradient-to-r from-green-500 to-emerald-500';
+  if (percentage < 75) return 'bg-gradient-to-r from-yellow-500 to-orange-500';
+  if (percentage < 90) return 'bg-gradient-to-r from-orange-500 to-red-500';
+  return 'bg-gradient-to-r from-red-500 to-red-600';
+};
+
+const getMemoryUsageColor = (percentage: number): string => {
+  if (percentage < 60) return 'text-purple-400';
+  if (percentage < 80) return 'text-yellow-400';
+  if (percentage < 95) return 'text-orange-400';
+  return 'text-red-400';
+};
+
+const getMemoryUsageGradient = (percentage: number): string => {
+  if (percentage < 60) return 'bg-gradient-to-r from-purple-500 to-pink-500';
+  if (percentage < 80) return 'bg-gradient-to-r from-yellow-500 to-orange-500';
+  if (percentage < 95) return 'bg-gradient-to-r from-orange-500 to-red-500';
+  return 'bg-gradient-to-r from-red-500 to-red-600';
+};
+
+const getStorageUsageColor = (percentage: number): string => {
+  if (percentage < 70) return 'text-blue-400';
+  if (percentage < 85) return 'text-yellow-400';
+  if (percentage < 95) return 'text-orange-400';
+  return 'text-red-400';
+};
+
+const getStorageUsageGradient = (percentage: number): string => {
+  if (percentage < 70) return 'bg-gradient-to-r from-blue-500 to-cyan-500';
+  if (percentage < 85) return 'bg-gradient-to-r from-yellow-500 to-orange-500';
+  if (percentage < 95) return 'bg-gradient-to-r from-orange-500 to-red-500';
+  return 'bg-gradient-to-r from-red-500 to-red-600';
 };
 
 // Lifecycle

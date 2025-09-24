@@ -29,6 +29,10 @@ export interface VirtualMachine {
   diskSizeGB: number;
   networkInterface: string;
   syncStatus: SyncStatus;
+  graphics?: {
+    vnc: boolean;
+    spice: boolean;
+  };
   createdAt: string;
   updatedAt: string;
 }
@@ -57,6 +61,22 @@ export interface HostStats {
   disk_free: number;
   uptime: number;
   vm_count: number;
+  // Extended fields from backend host stats API
+  host_info?: {
+    hostname: string;
+    cpu: number;
+    memory: number;
+    version: string;
+  };
+  resources?: {
+    memory_bytes: number;
+    cpu_count: number;
+    hostname: string;
+  };
+  vm_counts?: {
+    [key: string]: number;
+  };
+  total_vms?: number;
 }
 
 export interface VMStats {

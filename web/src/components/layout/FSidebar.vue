@@ -6,37 +6,36 @@
       sidebarClasses
     ]"
   >
-    <!  {
-    id: 'network',
-    label: 'Network Topology',
-    icon: 'M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0',
-    active: false,
-    path: '/network'
-  },
-  {
-    id: 'logs',
-    label: 'System Logs',
-    description: 'View application logs',
-    icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
-    active: false,
-    path: '/logs'
-  },
-  {
-    id: 'error-demo',ection -->
+    <!-- Logo Section -->
     <div class="p-6 border-b border-white/10">
       <div class="flex items-center gap-3">
-        <div class="w-10 h-10 bg-gradient-to-br from-primary-500 to-accent-500 rounded-xl flex items-center justify-center shadow-neon-blue">
-          <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+        <!-- Enhanced Logo Icon with VM Symbol -->
+        <div class="relative w-12 h-12 bg-gradient-to-br from-primary-500 via-accent-500 to-secondary-500 rounded-xl flex items-center justify-center shadow-neon-blue group hover:scale-105 transition-transform duration-300">
+          <!-- Main VM/Server Icon -->
+          <svg class="w-7 h-7 text-white relative z-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"/>
           </svg>
+          <!-- Virtualization Layer Indicator -->
+          <div class="absolute inset-1 rounded-lg border border-white/20 opacity-60"></div>
+          <!-- Power/Activity Indicator -->
+          <div class="absolute top-1 right-1 w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
         </div>
-        <div v-if="!collapsed">
-          <h1 class="text-xl font-bold bg-gradient-to-r from-primary-400 to-accent-400 bg-clip-text text-transparent">
-            VirtuMancer
-          </h1>
-          <p class="text-xs text-slate-400">Virtualization Platform</p>
+        <div v-if="!collapsed" class="flex-1">
+          <div class="flex items-center gap-2">
+            <h1 class="text-xl font-bold bg-gradient-to-r from-primary-400 via-accent-400 to-secondary-400 bg-clip-text text-transparent">
+              Virtumancer
+            </h1>
+            <!-- Version Badge -->
+            <span class="px-2 py-0.5 bg-primary-500/20 text-primary-300 text-xs font-medium rounded-full">
+              v1.0
+            </span>
+          </div>
+          <p class="text-xs text-slate-400 mt-1">Hypervisor Management Platform</p>
         </div>
       </div>
+      
+      <!-- Optional: Animated Glow Effect on Hover -->
+      <div class="absolute inset-0 bg-gradient-to-r from-primary-600/5 via-accent-600/5 to-secondary-600/5 opacity-0 hover:opacity-100 transition-opacity duration-500 rounded-xl pointer-events-none"></div>
     </div>
 
     <!-- Navigation Items -->
@@ -119,12 +118,13 @@
         <router-link
           to="/settings"
           :class="[
-            'w-full flex items-center gap-3 p-3 text-left transition-all duration-300 no-underline',
+            'w-full flex items-center justify-center p-3 text-left transition-all duration-300 no-underline',
             {
               'text-white bg-gradient-to-r from-primary-600/20 to-accent-600/20 shadow-glow-sm': route.path === '/settings',
               'text-slate-300 hover:text-white': route.path !== '/settings'
             }
           ]"
+          title="Settings"
         >
           <!-- Icon -->
           <div :class="[
@@ -137,12 +137,6 @@
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
             </svg>
-          </div>
-
-          <!-- Label -->
-          <div v-if="!collapsed" class="flex-1">
-            <div class="font-medium">Settings</div>
-            <div class="text-xs text-slate-400">Application preferences</div>
           </div>
 
           <!-- Active Indicator -->

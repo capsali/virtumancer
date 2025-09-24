@@ -26,6 +26,12 @@ const routes: RouteRecordRaw[] = [
     props: true
   },
   {
+    path: '/vnc/:hostId/:vmName',
+    name: 'vnc-console',
+    component: () => import('@/views/VNCView.vue'),
+    props: true
+  },
+  {
     path: '/network',
     name: 'network-topology',
     component: () => import('@/views/NetworkTopologyView.vue')

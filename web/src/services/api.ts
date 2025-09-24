@@ -288,6 +288,7 @@ function transformBackendVMToFrontend(backendVM: BackendVMResponse, hostId: stri
     diskSizeGB: 0, // Not provided by backend, set default  
     networkInterface: '', // Not provided by backend, set default
     syncStatus: backendVM.sync_status as any,
+    graphics: backendVM.graphics,
     createdAt: '', // Not provided by backend, set default
     updatedAt: '', // Not provided by backend, set default
   };

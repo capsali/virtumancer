@@ -122,13 +122,33 @@ const appStore = useAppStore();
 
 // Current view information based on route
 const currentView = computed(() => {
-  const routeMap: Record<string, { title: string; status: string }> = {
-    '/': { title: 'Home', status: 'All Systems Operational' },
-    '/network': { title: 'Network Topology', status: 'Active' },
-    default: { title: 'VirtuMancer', status: 'Active' }
-  };
+  const path = route.path;
   
-  return routeMap[route.path] || routeMap.default;
+  // Dynamic route matching
+  if (path === '/') {
+    return { title: 'Home', status: 'All Systems Operational' };
+  } else if (path === '/network') {
+    return { title: 'Network Topology', status: 'Active' };
+  } else if (path === '/settings') {
+    return { title: 'Settings', status: 'Configuration' };
+  } else if (path === '/vms') {
+    return { title: 'Virtual Machines', status: 'Managing VMs' };
+  } else if (path === '/logs') {
+    return { title: 'Logs', status: 'Monitoring' };
+  } else if (path.startsWith('/hosts/')) {
+    if (path.includes('/vms/')) {
+      const vmName = route.params.vmName as string;
+      return { title: `VM: ${vmName || 'Details'}`, status: 'VM Management' };
+    } else {
+      return { title: 'Host Dashboard', status: 'Host Management' };
+    }
+  } else if (path.startsWith('/vnc/') || path.startsWith('/spice/')) {
+    const vmName = route.params.vmName as string;
+    return { title: `Console: ${vmName || 'VM'}`, status: 'Remote Access' };
+  }
+  
+  // Default fallback for unknown routes
+  return { title: 'Virtumancer', status: 'Active' };
 });
 
 // Use real data from stores

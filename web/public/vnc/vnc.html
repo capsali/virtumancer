@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VNC Console - Virtumancer</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background: #000;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+        }
+        
+        .vnc-container {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .vnc-status {
+            color: white;
+            text-align: center;
+            padding: 20px;
+        }
+        
+        .vnc-loading {
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 0.6; }
+            50% { opacity: 1; }
+            100% { opacity: 0.6; }
+        }
+        
+        .vnc-screen {
+            width: 100%;
+            height: 100%;
+            background: #222;
+        }
+        
+        .error {
+            color: #ff6b6b;
+        }
+        
+        .connected {
+            color: #51cf66;
+        }
+    </style>
+</head>
+<body>
+    <div class="vnc-container">
+        <div id="vnc-status" class="vnc-status vnc-loading">
+            Connecting to VNC console...
+        </div>
+        <canvas id="vnc-screen" class="vnc-screen" style="display: none;"></canvas>
+    </div>
+    
+    <script>
+        // Simple VNC client implementation
+        class SimpleVNCClient {
+            constructor(canvas, statusElement) {
+                this.canvas = canvas;
+                this.ctx = canvas.getContext('2d');
+                this.statusElement = statusElement;
+                this.websocket = null;
+                this.connected = false;
+            }
+            
+            connect(wsUrl) {
+                this.updateStatus('Connecting to VNC console...', 'vnc-loading');
+                
+                try {
+                    this.websocket = new WebSocket(wsUrl);
+                    this.websocket.binaryType = 'arraybuffer';
+                    
+                    this.websocket.onopen = () => {
+                        this.connected = true;
+                        this.updateStatus('Connected to VNC console', 'connected');
+                        this.canvas.style.display = 'block';
+                        this.setupEventListeners();
+                    };
+                    
+                    this.websocket.onmessage = (event) => {
+                        // Basic VNC protocol handling would go here
+                        // For now, this is a placeholder that shows connectivity
+                        console.log('VNC data received:', event.data);
+                    };
+                    
+                    this.websocket.onclose = () => {
+                        this.connected = false;
+                        this.updateStatus('VNC connection closed', 'error');
+                        this.canvas.style.display = 'none';
+                    };
+                    
+                    this.websocket.onerror = (error) => {
+                        this.connected = false;
+                        this.updateStatus('VNC connection failed', 'error');
+                        console.error('VNC WebSocket error:', error);
+                    };
+                } catch (error) {
+                    this.updateStatus('Failed to connect to VNC console', 'error');
+                    console.error('VNC connection error:', error);
+                }
+            }
+            
+            updateStatus(message, className) {
+                this.statusElement.textContent = message;
+                this.statusElement.className = `vnc-status ${className}`;
+            }
+            
+            setupEventListeners() {
+                // Mouse and keyboard event handlers would go here
+                // For now, just resize handling
+                this.resizeCanvas();
+                window.addEventListener('resize', () => this.resizeCanvas());
+            }
+            
+            resizeCanvas() {
+                const container = this.canvas.parentElement;
+                this.canvas.width = container.clientWidth;
+                this.canvas.height = container.clientHeight;
+                
+                // Fill with a dark background to show the canvas is active
+                this.ctx.fillStyle = '#1a1a1a';
+                this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+                
+                // Show a message indicating VNC is connected but no framebuffer updates yet
+                this.ctx.fillStyle = '#666';
+                this.ctx.font = '16px Arial';
+                this.ctx.textAlign = 'center';
+                this.ctx.fillText('VNC Console Connected', this.canvas.width / 2, this.canvas.height / 2);
+                this.ctx.fillText('(Full VNC implementation pending)', this.canvas.width / 2, this.canvas.height / 2 + 30);
+            }
+            
+            disconnect() {
+                if (this.websocket) {
+                    this.websocket.close();
+                }
+            }
+        }
+        
+        // Initialize VNC client
+        document.addEventListener('DOMContentLoaded', () => {
+            const canvas = document.getElementById('vnc-screen');
+            const statusElement = document.getElementById('vnc-status');
+            const vncClient = new SimpleVNCClient(canvas, statusElement);
+            
+            // Get connection parameters from URL
+            const urlParams = new URLSearchParams(window.location.search);
+            const host = urlParams.get('host') || window.location.hostname;
+            const port = urlParams.get('port') || window.location.port || (window.location.protocol === 'https:' ? '443' : '80');
+            const path = urlParams.get('path') || '';
+            const encrypt = urlParams.get('encrypt') === '1' || window.location.protocol === 'https:';
+            
+            // Build WebSocket URL
+            const protocol = encrypt ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${host}:${port}${path}`;
+            
+            console.log('Connecting to VNC WebSocket:', wsUrl);
+            vncClient.connect(wsUrl);
+            
+            // Cleanup on page unload
+            window.addEventListener('beforeunload', () => {
+                vncClient.disconnect();
+            });
+        });
+    </script>
+</body>
+</html>
