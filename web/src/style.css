@@ -131,12 +131,14 @@
       0 0 60px rgba(255, 255, 255, 0.10);
   }
 
-  /* Button glow effects */
+  /* Enhanced Button glow effects */
   .button-glow {
     transition: all 200ms ease-in-out;
     position: relative;
+    border: 1px solid transparent;
   }
 
+  /* Default glow (primary/blue) */
   .button-glow:hover {
     box-shadow: 
       0 0 15px rgba(59, 130, 246, 0.3),
@@ -145,17 +147,118 @@
     transform: translateY(-1px);
   }
 
-  .button-glow.cancel:hover {
+  /* Ghost/Cancel button glow (gray) */
+  .button-glow.cancel:hover,
+  .button-glow[data-variant="ghost"]:hover {
     box-shadow: 
       0 0 15px rgba(156, 163, 175, 0.3),
       0 0 30px rgba(156, 163, 175, 0.2),
       0 0 45px rgba(156, 163, 175, 0.1);
   }
 
-  .button-glow.apply:hover {
+  /* Success/Apply/Confirm button glow (green) */
+  .button-glow.apply:hover,
+  .button-glow.confirm:hover,
+  .button-glow.success:hover {
     box-shadow: 
       0 0 15px rgba(34, 197, 94, 0.4),
       0 0 30px rgba(34, 197, 94, 0.3),
       0 0 45px rgba(34, 197, 94, 0.2);
+  }
+
+  /* Danger button glow (red) */
+  .button-glow.danger:hover,
+  .button-glow[data-variant="danger"]:hover {
+    box-shadow: 
+      0 0 15px rgba(239, 68, 68, 0.4),
+      0 0 30px rgba(239, 68, 68, 0.3),
+      0 0 45px rgba(239, 68, 68, 0.2);
+  }
+
+  /* Accent button glow (cyan) */
+  .button-glow.accent:hover,
+  .button-glow[data-variant="accent"]:hover {
+    box-shadow: 
+      0 0 15px rgba(6, 182, 212, 0.4),
+      0 0 30px rgba(6, 182, 212, 0.3),
+      0 0 45px rgba(6, 182, 212, 0.2);
+  }
+
+  /* Neon button glow (purple) */
+  .button-glow.neon:hover,
+  .button-glow[data-variant="neon"]:hover {
+    box-shadow: 
+      0 0 15px rgba(168, 85, 247, 0.4),
+      0 0 30px rgba(168, 85, 247, 0.3),
+      0 0 45px rgba(168, 85, 247, 0.2);
+  }
+
+  /* Enhanced range input styling for better keyboard navigation */
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+  }
+
+  input[type="range"]::-webkit-slider-track {
+    height: 8px;
+    background: rgba(71, 85, 105, 0.6);
+    border-radius: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 20px;
+    height: 20px;
+    background: rgba(148, 163, 184, 0.9);
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  input[type="range"]:focus::-webkit-slider-thumb {
+    background: rgba(148, 163, 184, 1);
+    border-color: rgba(148, 163, 184, 0.8);
+    box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.3);
+  }
+
+  input[type="range"]:hover::-webkit-slider-thumb {
+    background: rgba(148, 163, 184, 1);
+    transform: scale(1.1);
+  }
+
+  /* Firefox range styling */
+  input[type="range"]::-moz-range-track {
+    height: 8px;
+    background: rgba(71, 85, 105, 0.6);
+    border-radius: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  input[type="range"]::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    background: rgba(148, 163, 184, 0.9);
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  /* Focus trap debugging - ensure elements are visible and focusable */
+  .modal-content {
+    isolation: isolate;
+  }
+
+  /* Ensure buttons and form elements are properly focusable */
+  button:focus,
+  input:focus,
+  select:focus,
+  textarea:focus,
+  [tabindex]:focus {
+    outline: 2px solid rgba(148, 163, 184, 0.8) !important;
+    outline-offset: 2px !important;
   }
 }

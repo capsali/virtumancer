@@ -1,100 +1,66 @@
 <template>
-  <Teleport to="body">
-    <div
-      v-if="open"
-      class="fixed inset-0 z-50 flex items-center justify-center p-4"
-      @click.self="close"
-    >
-      <!-- Backdrop -->
-      <div class="absolute inset-0 bg-black/60 backdrop-blur-sm"></div>
-      
-      <!-- Modal -->
-      <FCard
-        class="relative w-full max-w-md glass-medium border border-white/10 modal-glow"
-      >
-        <div class="space-y-6">
-          <!-- Header -->
-          <div class="flex items-center justify-between">
-            <h2 class="text-xl font-semibold text-white">Add New Host</h2>
-            <FButton
-              size="sm"
-              variant="ghost"
-              @click="close"
-            >
-              ✕
-            </FButton>
-          </div>
+  <BaseModal 
+    :show="open"
+    @close="close"
+    title="Add New Host"
+    size="md"
+    cancel-text="Cancel"
+    :confirm-text="isLoading ? 'Adding...' : 'Add Host'"
+    confirm-variant="ghost"
+    :confirm-disabled="isLoading || !formData.uri.trim()"
+    :cancel-disabled="isLoading"
+    @confirm="handleSubmit"
+  >
+    <form @submit.prevent="handleSubmit" class="space-y-4">
+      <div>
+        <label for="host-uri" class="block text-sm font-medium text-white mb-2">
+          Host URI *
+        </label>
+        <input
+          id="host-uri"
+          v-model="formData.uri"
+          type="text"
+          placeholder="qemu+ssh://user@hostname/system"
+          class="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-transparent transition-all"
+          tabindex="1"
+          required
+        />
+        <p class="text-xs text-slate-400 mt-1">
+          Examples: qemu:///system, qemu+ssh://user@host/system
+        </p>
+      </div>
 
-          <!-- Form -->
-          <form @submit.prevent="handleSubmit" class="space-y-4">
-            <div>
-              <label class="block text-sm font-medium text-white mb-2">
-                Host URI *
-              </label>
-              <input
-                v-model="formData.uri"
-                type="text"
-                placeholder="qemu+ssh://user@hostname/system"
-                class="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent transition-all"
-                required
-              />
-              <p class="text-xs text-slate-400 mt-1">
-                Examples: qemu:///system, qemu+ssh://user@host/system
-              </p>
-            </div>
+      <div class="flex items-center gap-2">
+        <input
+          v-model="formData.auto_reconnect_disabled"
+          type="checkbox"
+          id="auto-reconnect"
+          tabindex="2"
+          class="w-4 h-4 text-primary-600 bg-white/10 border-white/20 rounded focus:ring-slate-400"
+        />
+        <label for="auto-reconnect" class="text-sm text-white">
+          Disable auto-reconnect
+        </label>
+      </div>
 
-            <div class="flex items-center gap-2">
-              <input
-                v-model="formData.auto_reconnect_disabled"
-                type="checkbox"
-                id="auto-reconnect"
-                class="w-4 h-4 text-primary-600 bg-white/10 border-white/20 rounded focus:ring-primary-400"
-              />
-              <label for="auto-reconnect" class="text-sm text-white">
-                Disable auto-reconnect
-              </label>
-            </div>
+      <!-- Error Display -->
+      <div v-if="error" class="p-3 bg-red-500/10 border border-red-400/20 rounded-lg">
+        <p class="text-sm text-red-400">{{ error }}</p>
+      </div>
+    </form>
 
-            <!-- Actions -->
-            <div class="flex gap-3 pt-4">
-              <FButton
-                type="button"
-                variant="ghost"
-                @click="close"
-                class="flex-1"
-                :disabled="isLoading"
-              >
-                Cancel
-              </FButton>
-              <FButton
-                type="submit"
-                variant="primary"
-                :disabled="isLoading || !formData.uri.trim()"
-                class="flex-1"
-              >
-                <span v-if="!isLoading">Add Host</span>
-                <span v-else class="flex items-center gap-2">
-                  <div class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                  Adding...
-                </span>
-              </FButton>
-            </div>
-          </form>
-
-          <!-- Error Display -->
-          <div v-if="error" class="p-3 bg-red-500/10 border border-red-400/20 rounded-lg">
-            <p class="text-sm text-red-400">{{ error }}</p>
-          </div>
-        </div>
-      </FCard>
-    </div>
-  </Teleport>
+    <template #confirm-content v-if="isLoading">
+      <div class="flex items-center gap-2">
+        <div class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+        Adding...
+      </div>
+    </template>
+  </BaseModal>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, watch } from 'vue';
-import FCard from '@/components/ui/FCard.vue';
-import FButton from '@/components/ui/FButton.vue';
+import BaseModal from '@/components/ui/BaseModal.vue';
 import { useHostStore } from '@/stores/hostStore';
 import type { Host } from '@/types';
 
@@ -178,19 +144,5 @@ const handleSubmit = async (): Promise<void> => {
   }
 };
 
-// Close on Escape key
-const handleKeydown = (event: KeyboardEvent): void => {
-  if (event.key === 'Escape' && props.open) {
-    close();
-  }
-};
-
-// Add/remove event listener
-watch(() => props.open, (isOpen) => {
-  if (isOpen) {
-    document.addEventListener('keydown', handleKeydown);
-  } else {
-    document.removeEventListener('keydown', handleKeydown);
-  }
-});
+// Modal keyboard navigation is now handled by BaseModal
 </script>
