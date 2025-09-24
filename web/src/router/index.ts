@@ -31,9 +31,19 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/NetworkTopologyView.vue')
   },
   {
-    path: '/logs',
-    name: 'logs',
-    component: () => import('@/views/LogsView.vue')
+    path: '/hosts',
+    name: 'hosts',
+    component: () => import('@/views/HostsView.vue')
+  },
+  {
+    path: '/vms',
+    name: 'vms',
+    component: () => import('@/views/VMListView.vue')
+  },
+  {
+    path: '/settings',
+    name: 'settings',
+    component: () => import('@/views/SettingsView.vue')
   },
   {
     path: '/error-demo',
