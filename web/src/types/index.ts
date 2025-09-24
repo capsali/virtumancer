@@ -67,6 +67,12 @@ export interface VMStats {
   memory_mb: number;
   disk_read_mb: number;
   disk_write_mb: number;
+  disk_read_kib_per_sec?: number;
+  disk_write_kib_per_sec?: number;
+  disk_read_iops?: number;
+  disk_write_iops?: number;
+  network_rx_mbps?: number;
+  network_tx_mbps?: number;
   network_rx_mb: number;
   network_tx_mb: number;
   uptime: number;

@@ -767,3 +767,189 @@ func (h *APIHandler) GetDashboardOverview(w http.ResponseWriter, r *http.Request
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
 }
+
+// GetMetricsSettings returns persistent metrics settings (smoothing, units, cpu default)
+func (h *APIHandler) GetMetricsSettings(w http.ResponseWriter, r *http.Request) {
+	// Look up the global metrics settings row
+	var s storage.Setting
+	if err := h.DB.Where("key = ?", "metrics:global").First(&s).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			// Return defaults if not found
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"diskSmoothAlpha":   0.3,
+				"netSmoothAlpha":    0.6,
+				"cpuDisplayDefault": "host",
+				"units":             map[string]string{"disk": "kib", "network": "mb"},
+			})
+			return
+		}
+		h.HandleError(w, err, "get_metrics_settings")
+		return
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(s.ValueJSON), &payload); err != nil {
+		h.HandleError(w, err, "parse_metrics_settings")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(payload)
+}
+
+// GetRuntimeMetricsSettings returns the current HostService runtime smoothing
+// alpha values so UIs can verify the active configuration without inspecting DB.
+func (h *APIHandler) GetRuntimeMetricsSettings(w http.ResponseWriter, r *http.Request) {
+	resp := map[string]interface{}{}
+	// Default to nils
+	resp["cpuSmoothAlpha"] = nil
+	resp["diskSmoothAlpha"] = nil
+	resp["netSmoothAlpha"] = nil
+	// Default cpu display to host unless overridden by persisted settings
+	resp["cpuDisplayDefault"] = "host"
+
+	if h.HostService != nil {
+		if hs, ok := h.HostService.(*services.HostService); ok {
+			cpu, disk, net := hs.GetRuntimeSmoothing()
+			resp["cpuSmoothAlpha"] = cpu
+			resp["diskSmoothAlpha"] = disk
+			resp["netSmoothAlpha"] = net
+		}
+	}
+
+	// Try to read persisted cpuDisplayDefault from metrics:global and override default
+	if h.DB != nil {
+		var s storage.Setting
+		if err := h.DB.Where("key = ?", "metrics:global").First(&s).Error; err != nil {
+			if err != gorm.ErrRecordNotFound {
+				h.HandleError(w, err, "get_runtime_metrics_settings")
+				return
+			}
+		} else {
+			var payload map[string]interface{}
+			if err := json.Unmarshal([]byte(s.ValueJSON), &payload); err == nil {
+				if v, ok := payload["cpuDisplayDefault"].(string); ok {
+					resp["cpuDisplayDefault"] = v
+				}
+			}
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+// UpdateMetricsSettings persists metrics settings. Body expects JSON with keys matching the defaults.
+func (h *APIHandler) UpdateMetricsSettings(w http.ResponseWriter, r *http.Request) {
+	var payload map[string]interface{}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		apiErr := NewAPIError(ErrorCodeValidation, "Invalid request body", "Failed to parse JSON request")
+		WriteError(w, apiErr, http.StatusBadRequest)
+		return
+	}
+
+	// Validate payload fields (optional keys allowed)
+	if v, ok := payload["diskSmoothAlpha"]; ok {
+		if num, ok2 := v.(float64); !ok2 || num < 0 || num > 1 {
+			apiErr := NewAPIError(ErrorCodeValidation, "Invalid diskSmoothAlpha", "Expected number between 0 and 1")
+			WriteError(w, apiErr, http.StatusBadRequest)
+			return
+		}
+	}
+	if v, ok := payload["cpuSmoothAlpha"]; ok {
+		if num, ok2 := v.(float64); !ok2 || num < 0 || num > 1 {
+			apiErr := NewAPIError(ErrorCodeValidation, "Invalid cpuSmoothAlpha", "Expected number between 0 and 1")
+			WriteError(w, apiErr, http.StatusBadRequest)
+			return
+		}
+	}
+	if v, ok := payload["netSmoothAlpha"]; ok {
+		if num, ok2 := v.(float64); !ok2 || num < 0 || num > 1 {
+			apiErr := NewAPIError(ErrorCodeValidation, "Invalid netSmoothAlpha", "Expected number between 0 and 1")
+			WriteError(w, apiErr, http.StatusBadRequest)
+			return
+		}
+	}
+	if v, ok := payload["cpuDisplayDefault"]; ok {
+		if sVal, ok2 := v.(string); !ok2 || (sVal != "host" && sVal != "guest" && sVal != "raw") {
+			apiErr := NewAPIError(ErrorCodeValidation, "Invalid cpuDisplayDefault", "Expected one of 'host','guest','raw'")
+			WriteError(w, apiErr, http.StatusBadRequest)
+			return
+		}
+	}
+	if v, ok := payload["units"]; ok {
+		if unitsMap, ok2 := v.(map[string]interface{}); ok2 {
+			if d, ok3 := unitsMap["disk"]; ok3 {
+				if ds, ok4 := d.(string); !ok4 || (ds != "kib" && ds != "mib") {
+					apiErr := NewAPIError(ErrorCodeValidation, "Invalid units.disk", "Expected 'kib' or 'mib'")
+					WriteError(w, apiErr, http.StatusBadRequest)
+					return
+				}
+			}
+			if n, ok3 := unitsMap["network"]; ok3 {
+				if ns, ok4 := n.(string); !ok4 || (ns != "kb" && ns != "mb") {
+					apiErr := NewAPIError(ErrorCodeValidation, "Invalid units.network", "Expected 'kb' or 'mb'")
+					WriteError(w, apiErr, http.StatusBadRequest)
+					return
+				}
+			}
+		} else {
+			apiErr := NewAPIError(ErrorCodeValidation, "Invalid units", "Expected object with 'disk' and/or 'network'")
+			WriteError(w, apiErr, http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Marshal back to JSON for storage
+	b, err := json.Marshal(payload)
+	if err != nil {
+		h.HandleError(w, err, "marshal_metrics_settings")
+		return
+	}
+
+	var s storage.Setting
+	if err := h.DB.Where("key = ?", "metrics:global").First(&s).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			s = storage.Setting{Key: "metrics:global", ValueJSON: string(b), OwnerType: "global"}
+			if err := h.DB.Create(&s).Error; err != nil {
+				h.HandleError(w, err, "create_metrics_settings")
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		h.HandleError(w, err, "update_metrics_settings")
+		return
+	}
+
+	// Update existing
+	s.ValueJSON = string(b)
+	if err := h.DB.Save(&s).Error; err != nil {
+		h.HandleError(w, err, "save_metrics_settings")
+		return
+	}
+
+	// Try to inform HostService to reload metrics settings so smoothing changes apply immediately.
+	if h.HostService != nil {
+		if hs, ok := h.HostService.(*services.HostService); ok {
+			if err := hs.ReloadMetricsSettings(); err != nil {
+				log.Warnf("ReloadMetricsSettings failed: %v", err)
+			}
+		}
+	}
+
+	// Broadcast the saved settings payload over websocket so clients can update immediately
+	if h.Hub != nil {
+		var payloadMap map[string]interface{}
+		if err := json.Unmarshal([]byte(s.ValueJSON), &payloadMap); err == nil {
+			log.Infof("Broadcasting metrics-settings-changed to clients (payload present=%v)", payloadMap != nil)
+			h.Hub.BroadcastMessage(ws.Message{Type: "metrics-settings-changed", Payload: payloadMap})
+		} else {
+			// fallback to simple notification
+			log.Infof("Broadcasting metrics-settings-changed to clients (no payload, unmarshal error)")
+			h.Hub.BroadcastMessage(ws.Message{Type: "metrics-settings-changed"})
+		}
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}

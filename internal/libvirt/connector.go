@@ -70,6 +70,8 @@ type DomainDiskStats struct {
 	Device     string `json:"device"`
 	ReadBytes  int64  `json:"read_bytes"`
 	WriteBytes int64  `json:"write_bytes"`
+	ReadReq    int64  `json:"read_req"`
+	WriteReq   int64  `json:"write_req"`
 }
 
 // DomainNetworkStats holds I/O statistics for a single network interface.
@@ -1303,13 +1305,14 @@ func (c *Connector) GetDomainStats(hostID, vmName string) (*VMStats, error) {
 			log.Debugf("Warning: could not get block stats for device %s on VM %s: %v", disk.Target.Dev, vmName, err)
 			continue
 		}
-		_ = rdReq // Suppress unused variable warning
-		_ = wrReq // Suppress unused variable warning
-		_ = errs  // Suppress unused variable warning
+		// rdReq/wrReq/errs are available from DomainBlockStats and used for IOPS calculation
+		_ = errs // suppress unused when not used elsewhere
 		diskStats = append(diskStats, DomainDiskStats{
 			Device:     disk.Target.Dev,
 			ReadBytes:  rdBytes,
 			WriteBytes: wrBytes,
+			ReadReq:    rdReq,
+			WriteReq:   wrReq,
 		})
 	}
 

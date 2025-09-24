@@ -872,6 +872,16 @@ type AuditLog struct {
 	Details    string
 }
 
+// Setting represents a simple key/value configuration entry.
+// OwnerType/OwnerID allow scoping (e.g., 'user', 'host') for future extensibility.
+type Setting struct {
+	gorm.Model
+	Key       string `gorm:"size:128;index" json:"key"`
+	ValueJSON string `gorm:"type:text" json:"value_json"`
+	OwnerType string `gorm:"size:64;index;default:global" json:"owner_type"`
+	OwnerID   *uint  `json:"owner_id"` // nullable owner id
+}
+
 // AttachmentAllocation is an index table that maps VM attachments across device types
 // to allow fast, aggregated queries ("all attachments for a VM") without scanning
 // every per-device attachment table.
@@ -1159,6 +1169,7 @@ func InitDB(dataSourceName string) (*gorm.DB, error) {
 		&Permission{},
 		&Task{},
 		&AuditLog{},
+		&Setting{},
 		&DiscoveredVM{},
 	)
 	if err != nil {

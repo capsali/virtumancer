@@ -489,7 +489,7 @@ export class WebSocketManager {
     this.ws?.close();
     this.ws = null;
   }
-}
+};
 
 // Dashboard API methods
 export const dashboardApi = {
@@ -548,6 +548,17 @@ export const dashboardApi = {
     return apiClient.get('/dashboard/overview');
   }
 };
+
+// Settings API
+export const settingsApi = {
+  async getMetrics(): Promise<any> {
+    return apiClient.get<any>(`/settings/metrics`, `get_metrics_settings`);
+  },
+
+  async updateMetrics(payload: any): Promise<void> {
+    return apiClient.put(`/settings/metrics`, payload, `update_metrics_settings`);
+  }
+}
 
 // Export singleton WebSocket manager
 export const wsManager = new WebSocketManager();

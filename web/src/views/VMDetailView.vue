@@ -184,19 +184,9 @@
       <div class="flex items-center justify-between mb-4">
         <h3 class="text-lg font-semibold text-white">Performance Stats</h3>
         <div class="flex items-center gap-3">
+          <FButton variant="outline" size="sm" @click="showMetricSettings = true">⚙️ Metrics</FButton>
           <div class="flex items-center gap-2 text-sm text-slate-400">
-            <label class="flex items-center gap-2" title="Guest CPU: pcentbase / guest vCPUs (virt-manager 'CPU usage')">
-              <input type="radio" v-model="cpuDisplayMode" value="guest" />
-              <span>Guest CPU</span>
-            </label>
-            <label class="flex items-center gap-2" title="Host CPU: pcentbase / host CPUs (virt-manager 'Host CPU usage')">
-              <input type="radio" v-model="cpuDisplayMode" value="host" />
-              <span>Host CPU</span>
-            </label>
-            <label class="flex items-center gap-2" title="Per-core raw percentage (pcentbase)">
-              <input type="radio" v-model="cpuDisplayMode" value="raw" />
-              <span>Raw %</span>
-            </label>
+            <div class="text-sm text-slate-400">CPU Usage</div>
           </div>
           <FButton
             variant="ghost"
@@ -215,26 +205,28 @@
       
       <div v-if="vmStats" class="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div class="text-center p-3 bg-white/5 rounded-lg">
-          <div class="text-2xl font-bold text-primary-400">
-            {{ (
-              cpuDisplayMode === 'guest' ? (vmStats.cpu_percent_guest ?? vmStats.cpu_percent ?? 0) :
-              cpuDisplayMode === 'host' ? (vmStats.cpu_percent_host ?? vmStats.cpu_percent ?? 0) :
-              cpuDisplayMode === 'raw' ? (vmStats.cpu_percent_raw ?? vmStats.cpu_percent_core ?? vmStats.cpu_percent ?? 0) :
-              (vmStats.cpu_percent ?? 0)
-            ).toFixed(1) }}%
-          </div>
-          <div class="text-sm text-slate-400">
-            {{ cpuDisplayMode === 'guest' ? 'Guest CPU' : cpuDisplayMode === 'host' ? 'Host CPU' : 'Raw %' }}
-          </div>
+          <div class="text-2xl font-bold text-primary-400">{{ cpuValue.toFixed(1) }}%</div>
+          <div class="text-sm text-slate-400">CPU Usage ({{ cpuLabel }})</div>
         </div>
         <div class="text-center p-3 bg-white/5 rounded-lg">
           <div class="text-2xl font-bold text-accent-400">{{ formatBytes((vmStats.memory_mb || 0) * 1024 * 1024) }}</div>
           <div class="text-sm text-slate-400">Memory Usage</div>
         </div>
-        <div class="text-center p-3 bg-white/5 rounded-lg">
-          <div class="text-2xl font-bold text-secondary-400">{{ formatBytes((vmStats.disk_read_mb || 0) * 1024 * 1024) }}</div>
-          <div class="text-sm text-slate-400">Disk Read</div>
+        <div class="text-center p-3 bg-white/5 rounded-lg col-span-2 md:col-span-1">
+          <div class="text-sm text-slate-400">Disk I/O</div>
+          <div class="text-3xl font-bold text-secondary-400">{{ formatDisk((vmStats.disk_read_kib_per_sec || 0)) }}</div>
+          <div class="text-sm text-slate-400 mt-1">Read • <span class="font-medium">{{ (vmStats.disk_read_kib_per_sec || 0).toFixed(1) }} KiB/s</span></div>
+          <div class="text-sm text-slate-400 mt-2">Write • <span class="font-medium">{{ (vmStats.disk_write_kib_per_sec || 0).toFixed(1) }} KiB/s</span></div>
+          <div class="text-xs text-slate-500 mt-2">IOPS: R {{ (vmStats.disk_read_iops || 0).toFixed(1) }} • W {{ (vmStats.disk_write_iops || 0).toFixed(1) }}</div>
         </div>
+        <div class="text-center p-3 bg-white/5 rounded-lg">
+          <div class="text-sm text-slate-400">Network</div>
+          <div class="text-3xl font-bold text-secondary-400">{{ formatNetwork((vmStats.network_rx_mbps || 0)) }}</div>
+          <div class="text-sm text-slate-400 mt-1">RX • <span class="font-medium">{{ (vmStats.network_rx_mbps || vmStats.network_rx_mb || 0).toFixed(2) }} {{ settings.units.network === 'kb' ? 'KB/s' : 'MB/s' }}</span></div>
+          <div class="text-sm text-slate-400 mt-2">TX • <span class="font-medium">{{ (vmStats.network_tx_mbps || vmStats.network_tx_mb || 0).toFixed(2) }} {{ settings.units.network === 'kb' ? 'KB/s' : 'MB/s' }}</span></div>
+        </div>
+
+      <MetricSettingsModal v-if="showMetricSettings" :show="showMetricSettings" @close="showMetricSettings=false" @applied="refreshStats" />
         <div class="text-center p-3 bg-white/5 rounded-lg">
           <div class="text-2xl font-bold text-primary-400">{{ formatUptime(vmStats.uptime || 0) }}</div>
           <div class="text-sm text-slate-400">Uptime</div>
@@ -315,9 +307,11 @@ import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useVMStore } from '@/stores/vmStore';
 import { useUIStore } from '@/stores/uiStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 import FCard from '@/components/ui/FCard.vue';
 import FButton from '@/components/ui/FButton.vue';
 import VMHardwareConfigModalExtended from '@/components/modals/VMHardwareConfigModalExtended.vue';
+import MetricSettingsModal from '@/components/modals/MetricSettingsModal.vue';
 import type { VirtualMachine, VMStats } from '@/types';
 import { wsManager } from '@/services/api';
 
@@ -339,7 +333,36 @@ const vmStats = ref<VMStats | null>(null);
 const error = ref<string | null>(null);
 const loadingStats = ref(false);
 const showExtendedHardwareModal = ref(false);
-const cpuDisplayMode = ref<'host'|'core'|'guest'|'raw'>('host');
+// simplified CPU display: show smoothed host-normalized `cpu_percent`
+const showMetricSettings = ref(false);
+
+const settings = useSettingsStore();
+
+function formatDisk(valueKiB: number) {
+  if (settings.units.disk === 'mib') return (valueKiB/1024).toFixed(2) + ' MiB/s'
+  return valueKiB.toFixed(1) + ' KiB/s'
+}
+
+function formatNetwork(valueMBps: number) {
+  if (settings.units.network === 'kb') return (valueMBps*1024).toFixed(1) + ' KB/s'
+  return valueMBps.toFixed(2) + ' MB/s'
+}
+
+const cpuValue = computed(() => {
+  if (!vmStats.value) return 0
+  const s = settings.cpuDisplayDefault
+  if (s === 'guest') return (vmStats.value.cpu_percent_guest ?? vmStats.value.cpu_percent ?? 0)
+  if (s === 'raw') return (vmStats.value.cpu_percent_raw ?? vmStats.value.cpu_percent_core ?? vmStats.value.cpu_percent ?? 0)
+  // default host
+  return (vmStats.value.cpu_percent_host ?? vmStats.value.cpu_percent ?? 0)
+})
+
+const cpuLabel = computed(() => {
+  const s = settings.cpuDisplayDefault
+  if (s === 'guest') return 'Guest'
+  if (s === 'raw') return 'Raw %'
+  return 'Host'
+})
 
 // Get VM data
 const loadVM = async (): Promise<void> => {

@@ -117,6 +117,11 @@ func main() {
 		r.Get("/dashboard/stats", apiHandler.GetDashboardStats)
 		r.Get("/dashboard/activity", apiHandler.GetDashboardActivity)
 		r.Get("/dashboard/overview", apiHandler.GetDashboardOverview)
+
+		// Settings routes
+		r.Get("/settings/metrics", apiHandler.GetMetricsSettings)
+		r.Put("/settings/metrics", apiHandler.UpdateMetricsSettings)
+		r.Get("/settings/metrics/runtime", apiHandler.GetRuntimeMetricsSettings)
 	})
 
 	// WebSocket route for UI updates

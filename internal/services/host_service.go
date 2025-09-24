@@ -66,9 +66,17 @@ type ProcessedVMStats struct {
 	MemoryMB       float64 `json:"memory_mb"`
 	DiskReadMB     float64 `json:"disk_read_mb"`
 	DiskWriteMB    float64 `json:"disk_write_mb"`
-	NetworkRxMB    float64 `json:"network_rx_mb"`
-	NetworkTxMB    float64 `json:"network_tx_mb"`
-	Uptime         int64   `json:"uptime"`
+	// Disk read/write rates in KiB/s
+	DiskReadKiBPerSec  float64 `json:"disk_read_kib_per_sec"`
+	DiskWriteKiBPerSec float64 `json:"disk_write_kib_per_sec"`
+	// Disk IOPS (requests/sec summed across devices)
+	DiskReadIOPS  float64 `json:"disk_read_iops"`
+	DiskWriteIOPS float64 `json:"disk_write_iops"`
+	NetworkRxMB   float64 `json:"network_rx_mb"`
+	NetworkTxMB   float64 `json:"network_tx_mb"`
+	NetworkRxMBps float64 `json:"network_rx_mbps"`
+	NetworkTxMBps float64 `json:"network_tx_mbps"`
+	Uptime        int64   `json:"uptime"`
 }
 
 // DashboardStats holds aggregated system-wide statistics for the dashboard.
@@ -206,20 +214,28 @@ type HostServiceProvider interface {
 }
 
 type HostService struct {
-	db             *gorm.DB
-	connector      *libvirt.Connector
-	hub            *ws.Hub
-	monitor        *MonitoringManager
-	hostMonitor    *HostMonitoringManager
-	syncMutex      sync.Map // map[string]*sync.Mutex for per-host sync locking
-	lastSync       sync.Map // map[string]time.Time for last sync time
-	vmPollers      sync.Map // map[string]chan struct{} for stopping VM state polling
-	prevCpuSamples sync.Map // key: "hostID:vmName" -> struct{cpuTime uint64; at time.Time}
-	hostCores      sync.Map // key: hostID -> uint (number of cores)
+	db              *gorm.DB
+	connector       *libvirt.Connector
+	hub             *ws.Hub
+	monitor         *MonitoringManager
+	hostMonitor     *HostMonitoringManager
+	syncMutex       sync.Map // map[string]*sync.Mutex for per-host sync locking
+	lastSync        sync.Map // map[string]time.Time for last sync time
+	vmPollers       sync.Map // map[string]chan struct{} for stopping VM state polling
+	prevCpuSamples  sync.Map // key: "hostID:vmName" -> struct{cpuTime uint64; at time.Time}
+	prevDiskSamples sync.Map // key: "hostID:vmName" -> struct{readBytes int64; writeBytes int64; readReq int64; writeReq int64; at time.Time}
+	prevNetSamples  sync.Map // key: "hostID:vmName" -> struct{rxBytes int64; txBytes int64; at time.Time}
+	hostCores       sync.Map // key: hostID -> uint (number of cores)
 	// smoothing state: store last smoothed host-normalized percent per vm
 	cpuSmoothStore sync.Map // key: "hostID:vmName" -> float64
+	// disk smoothing store: key: "hostID:vmName" -> struct{read float64; write float64; readIOPS float64; writeIOPS float64}
+	diskSmoothStore sync.Map
+	// network smoothing store: key: "hostID:vmName" -> struct{rx float64; tx float64}
+	netSmoothStore sync.Map
 	// smoothing alpha (0..1) - higher = more responsive, lower = smoother
-	cpuSmoothAlpha float64
+	cpuSmoothAlpha  float64
+	netSmoothAlpha  float64
+	diskSmoothAlpha float64
 }
 
 func NewHostService(db *gorm.DB, connector *libvirt.Connector, hub *ws.Hub) *HostService {
@@ -232,7 +248,71 @@ func NewHostService(db *gorm.DB, connector *libvirt.Connector, hub *ws.Hub) *Hos
 	s.hostMonitor = NewHostMonitoringManager(s)
 	// default smoothing alpha
 	s.cpuSmoothAlpha = 0.3
+	// default network smoothing alpha (more responsive)
+	s.netSmoothAlpha = 0.6
+	// default disk smoothing alpha
+	s.diskSmoothAlpha = 0.3
 	return s
+}
+
+// ReloadMetricsSettings reads persisted global metrics settings from the database
+// and applies them to the HostService smoothing configuration. It is safe to
+// call at startup and after settings changes.
+func (s *HostService) ReloadMetricsSettings() error {
+	var st storage.Setting
+	if err := s.db.Where("key = ?", "metrics:global").First(&st).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			// No settings persisted; keep defaults
+			return nil
+		}
+		return err
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(st.ValueJSON), &payload); err != nil {
+		return err
+	}
+
+	if v, ok := payload["diskSmoothAlpha"]; ok {
+		if num, ok2 := v.(float64); ok2 {
+			if num < 0 {
+				num = 0
+			}
+			if num > 1 {
+				num = 1
+			}
+			s.diskSmoothAlpha = num
+		}
+	}
+	if v, ok := payload["netSmoothAlpha"]; ok {
+		if num, ok2 := v.(float64); ok2 {
+			if num < 0 {
+				num = 0
+			}
+			if num > 1 {
+				num = 1
+			}
+			s.netSmoothAlpha = num
+		}
+	}
+	if v, ok := payload["cpuSmoothAlpha"]; ok {
+		if num, ok2 := v.(float64); ok2 {
+			if num < 0 {
+				num = 0
+			}
+			if num > 1 {
+				num = 1
+			}
+			s.cpuSmoothAlpha = num
+		}
+	}
+	// Note: cpu smoothing alpha is not currently persisted separately; keep default
+	return nil
+}
+
+// GetRuntimeSmoothing returns the currently active smoothing alpha values.
+func (s *HostService) GetRuntimeSmoothing() (cpu, disk, net float64) {
+	return s.cpuSmoothAlpha, s.diskSmoothAlpha, s.netSmoothAlpha
 }
 
 // EnsureHostConnected ensures there's an active libvirt connection for the
@@ -2721,9 +2801,12 @@ func (s *HostService) transformVMStats(hostID, vmName string, rawStats *libvirt.
 
 	// Calculate total disk I/O (sum across all devices)
 	var totalDiskReadBytes, totalDiskWriteBytes int64
+	var totalDiskReadReqs, totalDiskWriteReqs int64
 	for _, disk := range rawStats.DiskStats {
 		totalDiskReadBytes += disk.ReadBytes
 		totalDiskWriteBytes += disk.WriteBytes
+		totalDiskReadReqs += disk.ReadReq
+		totalDiskWriteReqs += disk.WriteReq
 	}
 
 	// Calculate total network I/O (sum across all interfaces)
@@ -2758,18 +2841,241 @@ func (s *HostService) transformVMStats(hostID, vmName string, rawStats *libvirt.
 	}
 	s.cpuSmoothStore.Store(smoothedKey, smoothed)
 
+	// Calculate disk rates and IOPS using previous sample if available
+	diskKey := fmt.Sprintf("%s:%s:disk", hostID, vmName)
+	var diskReadKiBPerSec, diskWriteKiBPerSec, diskReadIOPS, diskWriteIOPS float64
+	now := time.Now()
+	if v, ok := s.prevDiskSamples.Load(diskKey); ok {
+		prev := v.(struct {
+			readBytes  int64
+			writeBytes int64
+			readReq    int64
+			writeReq   int64
+			at         time.Time
+		})
+		deltaT := now.Sub(prev.at).Seconds()
+		if deltaT > 0.05 { // ignore too-small intervals to avoid division blowups
+			// compute deltas, guarding against counter wrap or negative values
+			deltaReadBytes64 := totalDiskReadBytes - prev.readBytes
+			deltaWriteBytes64 := totalDiskWriteBytes - prev.writeBytes
+			deltaReadReq64 := totalDiskReadReqs - prev.readReq
+			deltaWriteReq64 := totalDiskWriteReqs - prev.writeReq
+
+			if deltaReadBytes64 < 0 {
+				deltaReadBytes64 = 0
+			}
+			if deltaWriteBytes64 < 0 {
+				deltaWriteBytes64 = 0
+			}
+			if deltaReadReq64 < 0 {
+				deltaReadReq64 = 0
+			}
+			if deltaWriteReq64 < 0 {
+				deltaWriteReq64 = 0
+			}
+
+			deltaReadBytes := float64(deltaReadBytes64)
+			deltaWriteBytes := float64(deltaWriteBytes64)
+			deltaReadReq := float64(deltaReadReq64)
+			deltaWriteReq := float64(deltaWriteReq64)
+
+			// bytes/sec -> KiB/s
+			rawReadKiB := (deltaReadBytes / deltaT) / 1024.0
+			rawWriteKiB := (deltaWriteBytes / deltaT) / 1024.0
+
+			// IOPS = requests/sec
+			rawReadIOPS := deltaReadReq / deltaT
+			rawWriteIOPS := deltaWriteReq / deltaT
+
+			// early guard: if there were no actual byte/request deltas, produce zero
+			if deltaReadBytes64 == 0 {
+				rawReadKiB = 0
+				rawReadIOPS = 0
+			}
+			if deltaWriteBytes64 == 0 {
+				rawWriteKiB = 0
+				rawWriteIOPS = 0
+			}
+
+			// Clamp suspiciously large raw rates before seeding smoothing store
+			maxKiB := 1e7 // ~10 GB/s in KiB/s
+			if rawReadKiB < 0 {
+				rawReadKiB = 0
+			}
+			if rawWriteKiB < 0 {
+				rawWriteKiB = 0
+			}
+			if rawReadKiB > maxKiB*10 {
+				// treat as invalid/outlier (possible counter wrap) -> ignore this sample
+				rawReadKiB = 0
+				rawReadIOPS = 0
+			}
+			if rawWriteKiB > maxKiB*10 {
+				rawWriteKiB = 0
+				rawWriteIOPS = 0
+			}
+
+			// Get previous smooth value or initialize to zeros (do NOT seed with raw to avoid large outliers)
+			var prevSmooth struct {
+				read      float64
+				write     float64
+				readIOPS  float64
+				writeIOPS float64
+			}
+			if vsm, ok := s.diskSmoothStore.Load(diskKey); ok {
+				prevSmooth = vsm.(struct {
+					read      float64
+					write     float64
+					readIOPS  float64
+					writeIOPS float64
+				})
+			} else {
+				prevSmooth = struct {
+					read      float64
+					write     float64
+					readIOPS  float64
+					writeIOPS float64
+				}{read: 0, write: 0, readIOPS: 0, writeIOPS: 0}
+			}
+
+			alpha := s.diskSmoothAlpha
+			diskReadKiBPerSec = alpha*rawReadKiB + (1.0-alpha)*prevSmooth.read
+			diskWriteKiBPerSec = alpha*rawWriteKiB + (1.0-alpha)*prevSmooth.write
+			diskReadIOPS = alpha*rawReadIOPS + (1.0-alpha)*prevSmooth.readIOPS
+			diskWriteIOPS = alpha*rawWriteIOPS + (1.0-alpha)*prevSmooth.writeIOPS
+
+			// Update smoothing store with clamped/smoothed values
+			// Ensure non-negative and clamp to sane upper limit
+			if diskReadKiBPerSec < 0 {
+				diskReadKiBPerSec = 0
+			}
+			if diskWriteKiBPerSec < 0 {
+				diskWriteKiBPerSec = 0
+			}
+			if diskReadKiBPerSec > maxKiB {
+				diskReadKiBPerSec = maxKiB
+			}
+			if diskWriteKiBPerSec > maxKiB {
+				diskWriteKiBPerSec = maxKiB
+			}
+
+			s.diskSmoothStore.Store(diskKey, struct {
+				read      float64
+				write     float64
+				readIOPS  float64
+				writeIOPS float64
+			}{read: diskReadKiBPerSec, write: diskWriteKiBPerSec, readIOPS: diskReadIOPS, writeIOPS: diskWriteIOPS})
+		}
+	}
+	// Store current disk sample for next delta
+	s.prevDiskSamples.Store(diskKey, struct {
+		readBytes  int64
+		writeBytes int64
+		readReq    int64
+		writeReq   int64
+		at         time.Time
+	}{readBytes: totalDiskReadBytes, writeBytes: totalDiskWriteBytes, readReq: totalDiskReadReqs, writeReq: totalDiskWriteReqs, at: now})
+
+	// Calculate network rates (MB/s) with smoothing and guards
+	netKey := fmt.Sprintf("%s:%s:net", hostID, vmName)
+	var netRxMBps, netTxMBps float64
+	if v, ok := s.prevNetSamples.Load(netKey); ok {
+		prev := v.(struct {
+			rxBytes int64
+			txBytes int64
+			at      time.Time
+		})
+		deltaT := now.Sub(prev.at).Seconds()
+		if deltaT > 0.05 {
+			deltaRx := totalNetworkRxBytes - prev.rxBytes
+			deltaTx := totalNetworkTxBytes - prev.txBytes
+			if deltaRx < 0 {
+				deltaRx = 0
+			}
+			if deltaTx < 0 {
+				deltaTx = 0
+			}
+
+			rawRxMBps := (float64(deltaRx) / deltaT) / (1024.0 * 1024.0)
+			rawTxMBps := (float64(deltaTx) / deltaT) / (1024.0 * 1024.0)
+
+			// if no activity, produce zero
+			if deltaRx == 0 {
+				rawRxMBps = 0
+			}
+			if deltaTx == 0 {
+				rawTxMBps = 0
+			}
+
+			// smoothing
+
+			var prevNetSmooth struct {
+				rx float64
+				tx float64
+			}
+			if vsm, ok := s.netSmoothStore.Load(netKey); ok {
+				ps := vsm.(struct {
+					rx float64
+					tx float64
+				})
+				prevNetSmooth.rx = ps.rx
+				prevNetSmooth.tx = ps.tx
+			} else {
+				prevNetSmooth = struct {
+					rx float64
+					tx float64
+				}{rx: 0, tx: 0}
+			}
+			alpha := s.netSmoothAlpha
+			netRxMBps = alpha*rawRxMBps + (1.0-alpha)*prevNetSmooth.rx
+			netTxMBps = alpha*rawTxMBps + (1.0-alpha)*prevNetSmooth.tx
+
+			// clamp
+			if netRxMBps < 0 {
+				netRxMBps = 0
+			}
+			if netTxMBps < 0 {
+				netTxMBps = 0
+			}
+			maxMBps := 10_000.0 // very high cap (10 GB/s)
+			if netRxMBps > maxMBps {
+				netRxMBps = maxMBps
+			}
+			if netTxMBps > maxMBps {
+				netTxMBps = maxMBps
+			}
+
+			// store back into netSmoothStore at netKey for reuse
+			s.netSmoothStore.Store(netKey, struct {
+				rx float64
+				tx float64
+			}{rx: netRxMBps, tx: netTxMBps})
+		}
+	}
+	s.prevNetSamples.Store(netKey, struct {
+		rxBytes int64
+		txBytes int64
+		at      time.Time
+	}{rxBytes: totalNetworkRxBytes, txBytes: totalNetworkTxBytes, at: now})
+
 	return &ProcessedVMStats{
-		CPUPercent:      smoothed,
-		CPUPercentCore:  corePercent,
-		CPUPercentRaw:   rawPercent,
-		CPUPercentGuest: guestPercent,
-		CPUPercentHost:  hostPercent,
-		MemoryMB:        memoryMB,
-		DiskReadMB:      float64(totalDiskReadBytes) / (1024 * 1024),  // Convert bytes to MB
-		DiskWriteMB:     float64(totalDiskWriteBytes) / (1024 * 1024), // Convert bytes to MB
-		NetworkRxMB:     float64(totalNetworkRxBytes) / (1024 * 1024), // Convert bytes to MB
-		NetworkTxMB:     float64(totalNetworkTxBytes) / (1024 * 1024), // Convert bytes to MB
-		Uptime:          uptime,
+		CPUPercent:         smoothed,
+		CPUPercentCore:     corePercent,
+		CPUPercentRaw:      rawPercent,
+		CPUPercentGuest:    guestPercent,
+		CPUPercentHost:     hostPercent,
+		MemoryMB:           memoryMB,
+		DiskReadMB:         float64(totalDiskReadBytes) / (1024 * 1024),  // Convert bytes to MB
+		DiskWriteMB:        float64(totalDiskWriteBytes) / (1024 * 1024), // Convert bytes to MB
+		DiskReadKiBPerSec:  diskReadKiBPerSec,
+		DiskWriteKiBPerSec: diskWriteKiBPerSec,
+		DiskReadIOPS:       diskReadIOPS,
+		DiskWriteIOPS:      diskWriteIOPS,
+		NetworkRxMB:        float64(totalNetworkRxBytes) / (1024 * 1024), // Convert bytes to MB
+		NetworkTxMB:        float64(totalNetworkTxBytes) / (1024 * 1024), // Convert bytes to MB
+		NetworkRxMBps:      netRxMBps,
+		NetworkTxMBps:      netTxMBps,
+		Uptime:             uptime,
 	}, nil
 }
 

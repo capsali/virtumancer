@@ -179,6 +179,45 @@ export const useAppStore = defineStore('app', () => {
         // Trigger data sync after reconnection
         syncData();
       });
+
+      // Listen for metrics settings changes and refresh local settings
+      // When the server broadcasts metrics-settings-changed, prefer to use the
+      // provided payload directly (avoids an extra API round-trip). Handler
+      // receives (payload, meta) from wsManager internals.
+      wsManager.on('metrics-settings-changed', async (payload: any) => {
+        try {
+          const settingsStore = (await import('@/stores/settingsStore')).useSettingsStore();
+          if (payload && typeof payload === 'object') {
+            if (typeof payload.diskSmoothAlpha === 'number') settingsStore.setDiskAlpha(payload.diskSmoothAlpha);
+            if (typeof payload.netSmoothAlpha === 'number') settingsStore.setNetAlpha(payload.netSmoothAlpha);
+            if (typeof payload.cpuSmoothAlpha === 'number') settingsStore.setCpuAlpha(payload.cpuSmoothAlpha);
+            if (typeof payload.cpuDisplayDefault === 'string') settingsStore.setCpuDefault(payload.cpuDisplayDefault);
+            if (payload.units) {
+              if (payload.units.disk) settingsStore.setUnits('disk', payload.units.disk);
+              if (payload.units.network) settingsStore.setUnits('network', payload.units.network);
+            }
+            uiStore.addToast('Metrics settings updated', 'info', 3000);
+            return;
+          }
+
+          // Fallback: if no payload present, attempt to fetch canonical state
+          const settingsApi = (await import('@/services/api')).settingsApi;
+          const remote = await settingsApi.getMetrics();
+          if (remote) {
+            if (typeof remote.diskSmoothAlpha === 'number') settingsStore.setDiskAlpha(remote.diskSmoothAlpha);
+            if (typeof remote.netSmoothAlpha === 'number') settingsStore.setNetAlpha(remote.netSmoothAlpha);
+            if (typeof remote.cpuSmoothAlpha === 'number') settingsStore.setCpuAlpha(remote.cpuSmoothAlpha);
+            if (typeof remote.cpuDisplayDefault === 'string') settingsStore.setCpuDefault(remote.cpuDisplayDefault);
+            if (remote.units) {
+              if (remote.units.disk) settingsStore.setUnits('disk', remote.units.disk);
+              if (remote.units.network) settingsStore.setUnits('network', remote.units.network);
+            }
+            uiStore.addToast('Metrics settings updated', 'info', 3000);
+          }
+        } catch (e) {
+          console.warn('Failed to process metrics settings change', e);
+        }
+      });
       
     } catch (error) {
       console.warn('WebSocket connection failed, continuing without real-time updates:', error);
