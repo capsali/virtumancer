@@ -8,6 +8,8 @@
         <!-- Use responsive CSS instead of default spice.css -->
         <link rel="stylesheet" type="text/css" href="spice_responsive.css" />
 
+        
+
         <!-- ES2015/ES6 modules polyfill -->
         <script type="module">
             window._spice_has_module_support = true;
@@ -79,8 +81,8 @@
                 // Notify parent of connection attempt
                 if (window.parent && window.parent !== window) {
                     window.parent.postMessage({
-                        type: 'spice-status',
-                        status: 'Connecting'
+                            type: 'spice-status',
+                            status: 'Connecting'
                     }, '*');
                 }
 
@@ -98,6 +100,7 @@
                     console.error("SPICE connection error:", e.toString());
                     spice_error(e);
                 }
+
             }
 
             function disconnect()
@@ -254,6 +257,8 @@
                         containerWidth: container?.offsetWidth,
                         containerHeight: container?.offsetHeight
                     });
+
+                    
                 }
             }
 

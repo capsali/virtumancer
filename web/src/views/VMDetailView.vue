@@ -288,31 +288,31 @@
       </div>
     </div>
 
-    <!-- Console Preview Card (Compact) -->
+    <!-- Console Preview Card -->
     <div v-if="vm && vm.state === 'ACTIVE' && getConsoleType(vm)" class="mb-6">
-      <FCard class="card-glow">
-        <div class="p-3">
-          <div class="flex items-center justify-between mb-2">
-            <div class="flex items-center gap-2">
-              <div class="w-6 h-6 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center">
-                <svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+      <FCard class="card-glow max-w-md">
+        <div class="p-4">
+          <div class="flex items-center justify-between mb-4">
+              <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center">
+                <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
                   <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm0 4a1 1 0 011-1h12a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1V8zm8 2a1 1 0 100 2h2a1 1 0 100-2h-2z" clip-rule="evenodd" />
                 </svg>
               </div>
               <div>
-                <h4 class="text-sm font-bold text-white">Console Preview</h4>
-                <p class="text-xs text-slate-400">{{ getConsoleStatusText() }}</p>
+                <h4 class="text-lg font-bold text-white">Console Preview</h4>
+                <p class="text-sm text-slate-400">{{ getConsoleStatusText() }}</p>
+                <!-- debug removed -->
               </div>
             </div>
-            <div class="flex items-center gap-1">
+            <div class="flex items-center gap-2">
               <FButton
                 variant="ghost"
                 size="sm"
                 @click="refreshConsolePreview"
-                class="p-1"
                 title="Refresh Preview"
               >
-                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
                 </svg>
               </FButton>
@@ -320,7 +320,6 @@
                 variant="accent"
                 size="sm"
                 @click="openConsole"
-                class="px-2 py-1 text-xs"
               >
                 Open Full
               </FButton>
@@ -329,15 +328,25 @@
 
           <!-- Console Preview Content -->
           <div class="bg-slate-900/50 rounded-lg border border-slate-700/50 overflow-hidden">
-            <div class="aspect-[16/10] bg-black rounded-lg overflow-hidden relative">
+            <div class="bg-black rounded-lg overflow-hidden relative h-44">
               <!-- Direct console connection attempt -->
               <div class="absolute inset-0">
+                <!-- VNC Preview Component -->
+                <VNCPreview
+                  v-if="getConsoleType(vm) === 'vnc' && vm"
+                  :host-id="props.hostId"
+                  :vm-name="props.vmName"
+                  :width="280"
+                  :height="175"
+                  class="w-full h-full"
+                />
+                <!-- SPICE Preview Iframe -->
                 <iframe
                   ref="consolePreviewIframe"
-                  v-if="consolePreviewSrc"
+                  v-else-if="consolePreviewSrc"
                   :src="consolePreviewSrc"
                   class="w-full h-full border-0 pointer-events-none"
-                  :title="`${vm.name} Console Preview`"
+                  :title="`${vm?.name || 'VM'} Console Preview`"
                   scrolling="no"
                   frameborder="0"
                   @load="onConsolePreviewLoad"
@@ -701,6 +710,7 @@ import MetricSettingsModal from '@/components/modals/MetricSettingsModal.vue';
 import type { VirtualMachine, VMStats } from '@/types';
 import { wsManager } from '@/services/api';
 import { getConsoleRoute, getConsoleType, getConsoleDisplayName } from '@/utils/console';
+import VNCPreview from '@/components/vm/VNCPreview.vue';
 
 interface Props {
   hostId: string;
@@ -731,14 +741,15 @@ const consoleRefreshKey = ref(0);
 
 // Console preview source
 const consolePreviewSrc = computed(() => {
-  if (!vm.value || vm.value.state !== 'ACTIVE' || !getConsoleType(vm.value)) {
+  if (!vm.value || vm.value.state !== 'ACTIVE') {
     return null;
   }
 
   const consoleType = getConsoleType(vm.value);
   const host = window.location.hostname;
   const port = window.location.port || (window.location.protocol === 'https:' ? '443' : '80');
-  
+
+  // Only return iframe URL for SPICE consoles
   if (consoleType === 'spice') {
     const path = `api/v1/hosts/${props.hostId}/vms/${props.vmName}/spice`;
     const params = new URLSearchParams({
@@ -751,19 +762,9 @@ const consolePreviewSrc = computed(() => {
       _refresh: consoleRefreshKey.value.toString()
     });
     return `/spice/spice_responsive.html?${params.toString()}`;
-  } else if (consoleType === 'vnc') {
-    const path = `api/v1/hosts/${props.hostId}/vms/${props.vmName}/vnc`;
-    const params = new URLSearchParams({
-      host,
-      port,
-      path,
-      autoconnect: 'true',
-      resize: 'scale',
-      _refresh: consoleRefreshKey.value.toString()
-    });
-    return `/vnc/vnc.html?${params.toString()}`;
   }
-  
+
+  // VNC consoles use the VNCPreview component instead of iframe
   return null;
 });
 
@@ -771,6 +772,8 @@ const consolePreviewSrc = computed(() => {
 const onConsolePreviewLoad = () => {
   consoleConnected.value = true;
 };
+
+// ...existing code...
 
 const refreshConsolePreview = () => {
   consoleConnected.value = false;
@@ -801,20 +804,18 @@ const stopConsoleRefresh = () => {
 // Console status text
 const getConsoleStatusText = (): string => {
   if (!vm.value) return 'Loading...';
-  
+
   if (vm.value.state !== 'ACTIVE') {
     return 'Start VM to access console';
   }
-  
+
   const consoleType = getConsoleType(vm.value);
   if (!consoleType) {
     return 'No graphics console available';
   }
-  
-  return `${getConsoleDisplayName(vm.value)} console ready`;
-};
 
-// Context actions for the back button
+  return `${getConsoleDisplayName(vm.value)} console ready`;
+};// Context actions for the back button
 const vmContextActions = computed(() => [
   // Clone and Export actions removed as requested
 ]);

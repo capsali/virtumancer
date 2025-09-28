@@ -22,11 +22,12 @@ html, body {
 
 /* Make spice-area fill the container (not viewport) and prevent overflow */
 #spice-area {
-    position: absolute;
+    position: relative;
     top: 0;
     left: 0;
     width: 100%;
-    height: 100%;
+    /* Allow the iframe host to control height; don't force 100% which can make it very tall */
+    height: auto;
     margin: 0 !important;
     padding: 0 !important;
     border: none !important;
@@ -35,16 +36,16 @@ html, body {
     background-color: #000000 !important; /* Pure black background */
     overflow: hidden;
     box-sizing: border-box;
-    contain: layout size;
 }
 
 /* Make spice-screen responsive and centered with strict containment */
 .spice-screen {
-    position: absolute;
+    position: relative;
     top: 0;
     left: 0;
     width: 100%;
-    height: 100%;
+    /* Allow height to be determined by content; embedded container may be taller than canvas */
+    height: auto;
     margin: 0 !important;
     padding: 0 !important;
     background-color: #000000 !important; /* Pure black background */
@@ -52,7 +53,6 @@ html, body {
     align-items: center;
     justify-content: center;
     overflow: hidden;
-    contain: layout size style;
     box-sizing: border-box;
 }
 
@@ -62,7 +62,7 @@ html, body {
     align-items: center;
     justify-content: center;
     width: 100%;
-    height: 100%;
+    height: auto;
     overflow: hidden;
     box-sizing: border-box;
 }
@@ -92,8 +92,11 @@ html, body {
 
 /* Remove any margins or gaps around the canvas */
 .spice-screen canvas:only-child {
-    width: 100% !important;
-    height: 100% !important;
+    /* Let canvas size itself according to its intrinsic size when embedded, but constrain to max dims */
+    width: auto !important;
+    height: auto !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
     object-fit: contain;
 }
 
@@ -165,8 +168,9 @@ html, body {
 }
 
 /* Ultimate safety net - prevent ANY element from exceeding bounds */
-* {
-    max-width: 100% !important;
+/* When embedded we avoid forcing global max-width rules that can shrink canvas unexpectedly */
+:root.embedded-spice * {
+    max-width: none !important;
 }
 
 body, html {
