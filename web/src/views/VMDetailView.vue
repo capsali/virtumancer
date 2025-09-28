@@ -462,6 +462,19 @@
               <span class="text-white font-medium">{{ vm.networkInterface || 'default' }}</span>
             </div>
           </div>
+
+          <!-- Uptime -->
+          <div class="space-y-2">
+            <span class="text-xs text-slate-500 uppercase tracking-wide font-medium">Uptime</span>
+            <div class="bg-slate-800/50 rounded-lg p-3 border border-slate-700/50">
+              <span
+                class="text-white font-medium"
+                :title="uptimeAvailable ? `${uptimeSeconds}s` : 'Unknown'"
+              >
+                {{ uptimeAvailable ? formatUptime(uptimeSeconds) : '—' }}
+              </span>
+            </div>
+          </div>
           
           <div class="space-y-2">
             <span class="text-xs text-slate-500 uppercase tracking-wide font-medium">CPU Model</span>
@@ -940,6 +953,20 @@ const cpuLabel = computed(() => {
   if (s === 'raw') return 'Raw %'
   return 'Host'
 })
+
+// Uptime helpers: prefer vmStats.uptime (seconds), fallback to vm.uptime if available
+const uptimeSeconds = computed(() => {
+  if (vmStats.value && typeof vmStats.value.uptime === 'number') return vmStats.value.uptime;
+  // vm may not have an uptime field; guard access
+  // @ts-ignore - vm shape may not include uptime in types
+  if (vm.value && typeof (vm.value as any).uptime === 'number') return (vm.value as any).uptime;
+  return 0;
+});
+
+const uptimeAvailable = computed(() => {
+  return (vmStats.value && typeof vmStats.value.uptime === 'number' && vmStats.value.uptime > 0) ||
+    (vm.value && typeof (vm.value as any).uptime === 'number' && (vm.value as any).uptime > 0);
+});
 
 // Get VM data
 const loadVM = async (): Promise<void> => {
