@@ -49,7 +49,10 @@
           :disabled="!!vm.taskState"
           class="flex items-center gap-2"
         >
-          ▶️ Start
+          <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" />
+          </svg>
+          Start
         </FButton>
         
         <FButton
@@ -59,7 +62,10 @@
           :disabled="!!vm.taskState"
           class="flex items-center gap-2"
         >
-          ⏹️ Shutdown
+          <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clip-rule="evenodd" />
+          </svg>
+          Shutdown
         </FButton>
         
         <FButton
@@ -69,7 +75,10 @@
           :disabled="!!vm.taskState"
           class="flex items-center gap-2"
         >
-          🔄 Reboot
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
+          Reboot
         </FButton>
         
         <FButton
@@ -78,7 +87,10 @@
           @click="openConsole"
           class="flex items-center gap-2"
         >
-          💻 Console
+          <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+            <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm0 4a1 1 0 011-1h12a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1V8zm8 2a1 1 0 100 2h2a1 1 0 100-2h-2z" clip-rule="evenodd" />
+          </svg>
+          Console
         </FButton>
       </div>
 
@@ -89,111 +101,171 @@
           @click="showExtendedHardwareModal = true"
           class="flex items-center gap-2"
         >
-          🔧 Extended Hardware Configuration
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+          </svg>
+          Extended Hardware Configuration
         </FButton>
       </div>
     </FCard>
 
-    <!-- VM Information Grid -->
-    <div v-if="vm" class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-      <!-- Hardware Specs -->
-      <FCard class="p-6 card-glow">
-        <h3 class="text-lg font-semibold text-white mb-4">Hardware</h3>
-        <div class="space-y-3">
-          <div class="flex justify-between">
-            <span class="text-slate-400">CPU Cores:</span>
-            <span class="text-white font-medium">{{ vm.vcpuCount || 0 }}</span>
+    <!-- VM Information - Wide Card -->
+    <FCard v-if="vm" class="card-glow">
+      <div class="p-6">
+        <div class="flex items-center gap-4 mb-6">
+          <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-purple-500 to-violet-500 flex items-center justify-center shadow-lg">
+            <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+            </svg>
           </div>
-          <div class="flex justify-between">
-            <span class="text-slate-400">Memory:</span>
-            <span class="text-white font-medium">{{ formatBytes((vm.memoryMB || 0) * 1024 * 1024) }}</span>
-          </div>
-          <div class="flex justify-between">
-            <span class="text-slate-400">Disk Size:</span>
-            <span class="text-white font-medium">{{ vm.diskSizeGB || 0 }} GB</span>
-          </div>
-          <div class="flex justify-between">
-            <span class="text-slate-400">CPU Model:</span>
-            <span class="text-white font-medium">{{ vm.cpuModel || 'Default' }}</span>
+          <div>
+            <h3 class="text-2xl font-bold text-white">Virtual Machine Details</h3>
+            <p class="text-slate-400">Hardware configuration and system information</p>
           </div>
         </div>
-      </FCard>
-
-      <!-- System Information -->
-      <FCard class="p-6 card-glow">
-        <h3 class="text-lg font-semibold text-white mb-4">System</h3>
-        <div class="space-y-3">
-          <div class="flex justify-between">
-            <span class="text-slate-400">OS Type:</span>
-            <span class="text-white font-medium">{{ vm.osType || 'Unknown' }}</span>
+        
+        <!-- VM Info Grid -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          <div class="space-y-2">
+            <span class="text-xs text-slate-500 uppercase tracking-wide font-medium">VM Name</span>
+            <div class="bg-slate-800/50 rounded-lg p-3 border border-slate-700/50">
+              <span class="text-white font-medium" :title="vm.name">{{ vm.name }}</span>
+            </div>
           </div>
-          <div class="flex justify-between">
-            <span class="text-slate-400">Boot Device:</span>
-            <span class="text-white font-medium">{{ vm.bootDevice || 'hd' }}</span>
+          
+          <div class="space-y-2">
+            <span class="text-xs text-slate-500 uppercase tracking-wide font-medium">Operating System</span>
+            <div class="bg-slate-800/50 rounded-lg p-3 border border-slate-700/50">
+              <span class="text-white font-medium">{{ vm.osType || 'Unknown' }}</span>
+            </div>
           </div>
-          <div class="flex justify-between">
-            <span class="text-slate-400">Network:</span>
-            <span class="text-white font-medium">{{ vm.networkInterface || 'default' }}</span>
+          
+          <div class="space-y-2 sm:col-span-2 lg:col-span-1">
+            <span class="text-xs text-slate-500 uppercase tracking-wide font-medium">UUID</span>
+            <div class="bg-slate-800/50 rounded-lg p-3 border border-slate-700/50">
+              <span class="text-slate-300 text-sm break-all font-mono" :title="vm.uuid">{{ vm.uuid }}</span>
+            </div>
           </div>
-          <div class="flex justify-between">
-            <span class="text-slate-400">UUID:</span>
-            <span class="text-white font-mono text-sm">{{ vm.uuid }}</span>
+          
+          <div class="space-y-2">
+            <span class="text-xs text-slate-500 uppercase tracking-wide font-medium">CPU Cores</span>
+            <div class="bg-slate-800/50 rounded-lg p-3 border border-slate-700/50">
+              <div class="flex items-center gap-2">
+                <div class="w-2 h-2 bg-blue-400 rounded-full"></div>
+                <span class="text-blue-400 text-lg font-bold">{{ vm.vcpuCount || 0 }}</span>
+                <span class="text-slate-400 text-sm">cores</span>
+              </div>
+            </div>
+          </div>
+          
+          <div class="space-y-2">
+            <span class="text-xs text-slate-500 uppercase tracking-wide font-medium">Memory</span>
+            <div class="bg-slate-800/50 rounded-lg p-3 border border-slate-700/50">
+              <div class="flex items-center gap-2">
+                <div class="w-2 h-2 bg-purple-400 rounded-full"></div>
+                <span class="text-purple-400 text-lg font-bold">{{ formatBytes((vm.memoryMB || 0) * 1024 * 1024) }}</span>
+              </div>
+            </div>
+          </div>
+          
+          <div class="space-y-2">
+            <span class="text-xs text-slate-500 uppercase tracking-wide font-medium">Disk Size</span>
+            <div class="bg-slate-800/50 rounded-lg p-3 border border-slate-700/50">
+              <div class="flex items-center gap-2">
+                <div class="w-2 h-2 bg-green-400 rounded-full"></div>
+                <span class="text-green-400 text-lg font-bold">{{ vm.diskSizeGB || 0 }}</span>
+                <span class="text-slate-400 text-sm">GB</span>
+              </div>
+            </div>
+          </div>
+          
+          <div class="space-y-2">
+            <span class="text-xs text-slate-500 uppercase tracking-wide font-medium">Boot Device</span>
+            <div class="bg-slate-800/50 rounded-lg p-3 border border-slate-700/50">
+              <span class="text-white font-medium">{{ vm.bootDevice || 'hd' }}</span>
+            </div>
+          </div>
+          
+          <div class="space-y-2">
+            <span class="text-xs text-slate-500 uppercase tracking-wide font-medium">Network</span>
+            <div class="bg-slate-800/50 rounded-lg p-3 border border-slate-700/50">
+              <span class="text-white font-medium">{{ vm.networkInterface || 'default' }}</span>
+            </div>
+          </div>
+          
+          <div class="space-y-2">
+            <span class="text-xs text-slate-500 uppercase tracking-wide font-medium">CPU Model</span>
+            <div class="bg-slate-800/50 rounded-lg p-3 border border-slate-700/50">
+              <span class="text-white font-medium">{{ vm.cpuModel || 'Default' }}</span>
+            </div>
+          </div>
+          
+          <div class="space-y-2">
+            <span class="text-xs text-slate-500 uppercase tracking-wide font-medium">Current State</span>
+            <div class="bg-slate-800/50 rounded-lg p-3 border border-slate-700/50">
+              <div class="flex items-center gap-2">
+                <div :class="[
+                  'w-2 h-2 rounded-full',
+                  vm.state === 'ACTIVE' ? 'bg-green-400 animate-pulse' : 
+                  vm.state === 'STOPPED' ? 'bg-red-400' : 'bg-yellow-400'
+                ]"></div>
+                <span :class="[
+                  'font-medium',
+                  vm.state === 'ACTIVE' ? 'text-green-400' : 
+                  vm.state === 'STOPPED' ? 'text-red-400' : 'text-yellow-400'
+                ]">
+                  {{ vm.state }}
+                </span>
+              </div>
+            </div>
+          </div>
+          
+          <div class="space-y-2">
+            <span class="text-xs text-slate-500 uppercase tracking-wide font-medium">Sync Status</span>
+            <div class="bg-slate-800/50 rounded-lg p-3 border border-slate-700/50">
+              <div class="flex items-center gap-2">
+                <div :class="[
+                  'w-2 h-2 rounded-full',
+                  vm.syncStatus === 'SYNCED' ? 'bg-green-400' : 
+                  vm.syncStatus === 'DRIFTED' ? 'bg-yellow-400' : 'bg-gray-400'
+                ]"></div>
+                <span :class="[
+                  'font-medium',
+                  vm.syncStatus === 'SYNCED' ? 'text-green-400' : 
+                  vm.syncStatus === 'DRIFTED' ? 'text-yellow-400' : 'text-gray-400'
+                ]">
+                  {{ vm.syncStatus }}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
-      </FCard>
+      </div>
+    </FCard>
 
-      <!-- Status Information -->
-      <FCard class="p-6 card-glow">
-        <h3 class="text-lg font-semibold text-white mb-4">Status</h3>
-        <div class="space-y-3">
-          <div class="flex justify-between">
-            <span class="text-slate-400">Current State:</span>
-            <span :class="[
-              'font-medium',
-              vm.state === 'ACTIVE' ? 'text-green-400' : 
-              vm.state === 'STOPPED' ? 'text-red-400' : 'text-yellow-400'
-            ]">
-              {{ vm.state }}
-            </span>
-          </div>
-          <div class="flex justify-between">
-            <span class="text-slate-400">Libvirt State:</span>
-            <span class="text-white font-medium">{{ vm.libvirtState }}</span>
-          </div>
-          <div class="flex justify-between">
-            <span class="text-slate-400">Sync Status:</span>
-            <span :class="[
-              'font-medium',
-              vm.syncStatus === 'SYNCED' ? 'text-green-400' : 
-              vm.syncStatus === 'DRIFTED' ? 'text-yellow-400' : 'text-gray-400'
-            ]">
-              {{ vm.syncStatus }}
-            </span>
-          </div>
-          <div class="flex justify-between">
-            <span class="text-slate-400">Source:</span>
-            <span class="text-white font-medium capitalize">{{ vm.source }}</span>
-          </div>
-        </div>
-      </FCard>
-    </div>
-
-    <!-- Performance Stats -->
-    <FCard v-if="vm && vm.state === 'ACTIVE'" class="p-6 card-glow">
-      <div class="flex items-center justify-between mb-4">
-        <h3 class="text-lg font-semibold text-white">Performance Stats</h3>
+    <!-- Performance Metrics - Compact Cards -->
+    <div v-if="vm && vm.state === 'ACTIVE'" class="space-y-4">
+      <div class="flex items-center justify-between">
+        <h3 class="text-xl font-bold text-white">Performance Metrics</h3>
         <div class="flex items-center gap-3">
-          <FButton variant="outline" size="sm" @click="showMetricSettings = true">⚙️ Metrics</FButton>
-          <div class="flex items-center gap-2 text-sm text-slate-400">
-            <div class="text-sm text-slate-400">CPU Usage</div>
-          </div>
+          <FButton variant="outline" size="sm" @click="showMetricSettings = true">
+            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+            </svg>
+            Metrics
+          </FButton>
           <FButton
             variant="ghost"
             size="sm"
             @click="refreshStats"
             :disabled="loadingStats"
           >
-            <span v-if="!loadingStats">🔄 Refresh</span>
+            <span v-if="!loadingStats" class="flex items-center gap-2">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+              </svg>
+              Refresh
+            </span>
             <span v-else class="flex items-center gap-2">
               <div class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
               Loading...
@@ -202,39 +274,112 @@
         </div>
       </div>
       
-      <div v-if="vmStats" class="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div class="text-center p-3 bg-white/5 rounded-lg">
-          <div class="text-2xl font-bold text-primary-400">{{ cpuValue.toFixed(1) }}%</div>
-          <div class="text-sm text-slate-400">CPU Usage ({{ cpuLabel }})</div>
-        </div>
-        <div class="text-center p-3 bg-white/5 rounded-lg">
-          <div class="text-2xl font-bold text-accent-400">{{ formatBytes((vmStats.memory_mb || 0) * 1024 * 1024) }}</div>
-          <div class="text-sm text-slate-400">Memory Usage</div>
-        </div>
-        <div class="text-center p-3 bg-white/5 rounded-lg col-span-2 md:col-span-1">
-          <div class="text-sm text-slate-400">Disk I/O</div>
-          <div class="text-3xl font-bold text-secondary-400">{{ formatDisk((vmStats.disk_read_kib_per_sec || 0)) }}</div>
-          <div class="text-sm text-slate-400 mt-1">Read • <span class="font-medium">{{ (vmStats.disk_read_kib_per_sec || 0).toFixed(1) }} KiB/s</span></div>
-          <div class="text-sm text-slate-400 mt-2">Write • <span class="font-medium">{{ (vmStats.disk_write_kib_per_sec || 0).toFixed(1) }} KiB/s</span></div>
-          <div class="text-xs text-slate-500 mt-2">IOPS: R {{ (vmStats.disk_read_iops || 0).toFixed(1) }} • W {{ (vmStats.disk_write_iops || 0).toFixed(1) }}</div>
-        </div>
-        <div class="text-center p-3 bg-white/5 rounded-lg">
-          <div class="text-sm text-slate-400">Network</div>
-          <div class="text-3xl font-bold text-secondary-400">{{ formatNetwork((vmStats.network_rx_mbps || 0)) }}</div>
-          <div class="text-sm text-slate-400 mt-1">RX • <span class="font-medium">{{ (vmStats.network_rx_mbps || vmStats.network_rx_mb || 0).toFixed(2) }} {{ settings.units.network === 'kb' ? 'KB/s' : 'MB/s' }}</span></div>
-          <div class="text-sm text-slate-400 mt-2">TX • <span class="font-medium">{{ (vmStats.network_tx_mbps || vmStats.network_tx_mb || 0).toFixed(2) }} {{ settings.units.network === 'kb' ? 'KB/s' : 'MB/s' }}</span></div>
-        </div>
-
-        <div class="text-center p-3 bg-white/5 rounded-lg">
-          <div class="text-2xl font-bold text-primary-400">{{ formatUptime(vmStats.uptime || 0) }}</div>
-          <div class="text-sm text-slate-400">Uptime</div>
-        </div>
+      <div v-if="vmStats" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <!-- CPU Usage -->
+        <FCard class="card-glow">
+          <div class="p-4">
+            <div class="flex items-center gap-3 mb-4">
+              <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center">
+                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 00-2 2zM9 9h6v6H9V9z"/>
+                </svg>
+              </div>
+              <h4 class="text-lg font-bold text-white">CPU</h4>
+            </div>
+            <div class="text-center">
+              <div class="text-2xl font-bold text-blue-400">{{ cpuValue.toFixed(1) }}%</div>
+              <div class="text-xs text-slate-400 mt-1">{{ cpuLabel }}</div>
+            </div>
+          </div>
+        </FCard>
+        
+        <!-- Memory Usage -->
+        <FCard class="card-glow">
+          <div class="p-4">
+            <div class="flex items-center gap-3 mb-4">
+              <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/>
+                </svg>
+              </div>
+              <h4 class="text-lg font-bold text-white">Memory</h4>
+            </div>
+            <div class="text-center">
+              <div class="text-xl font-bold text-purple-400">{{ formatBytes((vmStats.memory_mb || 0) * 1024 * 1024) }}</div>
+              <div class="text-xs text-slate-400 mt-1">Usage</div>
+            </div>
+          </div>
+        </FCard>
+        
+        <!-- Disk I/O -->
+        <FCard class="card-glow">
+          <div class="p-4">
+            <div class="flex items-center gap-3 mb-4">
+              <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-green-500 to-teal-500 flex items-center justify-center">
+                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3-3m0 0l-3 3m3-3v12"/>
+                </svg>
+              </div>
+              <h4 class="text-lg font-bold text-white">Disk I/O</h4>
+            </div>
+            <div class="text-center">
+              <div class="text-lg font-bold text-green-400">{{ formatDisk((vmStats.disk_read_kib_per_sec || 0)) }}</div>
+              <div class="text-xs text-slate-400 mt-1">R: {{ (vmStats.disk_read_kib_per_sec || 0).toFixed(1) }} KiB/s</div>
+              <div class="text-xs text-slate-400">W: {{ (vmStats.disk_write_kib_per_sec || 0).toFixed(1) }} KiB/s</div>
+            </div>
+          </div>
+        </FCard>
+        
+        <!-- Network -->
+        <FCard class="card-glow">
+          <div class="p-4">
+            <div class="flex items-center gap-3 mb-4">
+              <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-cyan-500 to-blue-500 flex items-center justify-center">
+                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                </svg>
+              </div>
+              <h4 class="text-lg font-bold text-white">Network</h4>
+            </div>
+            <div class="text-center">
+              <div class="text-lg font-bold text-cyan-400">{{ formatNetwork((vmStats.network_rx_mbps || 0)) }}</div>
+              <div class="text-xs text-slate-400 mt-1">RX: {{ (vmStats.network_rx_mbps || vmStats.network_rx_mb || 0).toFixed(2) }} {{ settings.units.network === 'kb' ? 'KB/s' : 'MB/s' }}</div>
+              <div class="text-xs text-slate-400">TX: {{ (vmStats.network_tx_mbps || vmStats.network_tx_mb || 0).toFixed(2) }} {{ settings.units.network === 'kb' ? 'KB/s' : 'MB/s' }}</div>
+            </div>
+          </div>
+        </FCard>
+        
+        <!-- Uptime -->
+        <FCard class="card-glow">
+          <div class="p-4">
+            <div class="flex items-center gap-3 mb-4">
+              <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center">
+                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+              </div>
+              <h4 class="text-lg font-bold text-white">Uptime</h4>
+            </div>
+            <div class="text-center">
+              <div class="text-xl font-bold text-orange-400">{{ formatUptime(vmStats.uptime || 0) }}</div>
+              <div class="text-xs text-slate-400 mt-1">Running</div>
+            </div>
+          </div>
+        </FCard>
       </div>
       
-      <div v-else class="text-center py-8 text-slate-400">
-        No performance data available
+      <div v-else class="text-center py-8">
+        <FCard class="card-glow p-8">
+          <div class="flex justify-center mb-4">
+            <svg class="w-12 h-12 text-slate-600" fill="currentColor" viewBox="0 0 20 20">
+              <path fill-rule="evenodd" d="M3 3a1 1 0 000 2v8a2 2 0 002 2h2.586l-1.293 1.293a1 1 0 101.414 1.414L10 15.414l2.293 2.293a1 1 0 001.414-1.414L12.414 15H15a2 2 0 002-2V5a1 1 0 100-2H3zm11.707 4.707a1 1 0 00-1.414-1.414L10 9.586 6.707 6.293a1 1 0 00-1.414 1.414l4 4a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+            </svg>
+          </div>
+          <h4 class="text-lg font-semibold text-white mb-2">No Performance Data Available</h4>
+          <p class="text-slate-400">Performance metrics are only available when the VM is running.</p>
+        </FCard>
       </div>
-    </FCard>
+    </div>
 
     <!-- Advanced Actions -->
     <FCard v-if="vm" class="p-6 card-glow">
@@ -244,33 +389,47 @@
           variant="ghost"
           @click="handleVMAction('sync')"
           :disabled="!!vm.taskState"
+          class="flex items-center gap-2"
         >
-          🔄 Sync from Libvirt
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
+          Sync from Libvirt
         </FButton>
         <FButton
           variant="ghost"
           @click="handleVMAction('rebuild')"
           :disabled="!!vm.taskState"
+          class="flex items-center gap-2"
         >
-          🏗️ Rebuild from DB
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
+          Rebuild from DB
         </FButton>
         <FButton
           v-if="vm.state === 'ACTIVE'"
           variant="ghost"
           @click="handleVMAction('forceOff')"
           :disabled="!!vm.taskState"
-          class="text-orange-400 hover:bg-orange-500/10"
+          class="text-orange-400 hover:bg-orange-500/10 flex items-center gap-2"
         >
-          ⚡ Force Off
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+          </svg>
+          Force Off
         </FButton>
         <FButton
           v-if="vm.state === 'ACTIVE'"
           variant="ghost"
           @click="handleVMAction('forceReset')"
           :disabled="!!vm.taskState"
-          class="text-red-400 hover:bg-red-500/10"
+          class="text-red-400 hover:bg-red-500/10 flex items-center gap-2"
         >
-          ⚡ Force Reset
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+          </svg>
+          Force Reset
         </FButton>
       </div>
     </FCard>

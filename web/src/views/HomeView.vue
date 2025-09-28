@@ -175,13 +175,13 @@
               <div class="flex justify-between items-center mb-2">
                 <span class="text-sm text-slate-400">CPU Allocation</span>
                 <span class="text-sm font-medium text-white">
-                  {{ Math.round(dashboardStats.resources.cpuUtilization) }}%
+                  {{ Math.round(Math.min(dashboardStats.resources.cpuUtilization, 100)) }}%
                 </span>
               </div>
-              <div class="w-full bg-slate-700 rounded-full h-2">
+              <div class="w-full bg-slate-700 rounded-full h-2 overflow-hidden">
                 <div 
                   class="h-2 bg-gradient-to-r from-green-500 to-emerald-500 rounded-full transition-all duration-300"
-                  :style="{ width: `${dashboardStats.resources.cpuUtilization}%` }"
+                  :style="{ width: `${Math.min(dashboardStats.resources.cpuUtilization, 100)}%` }"
                 ></div>
               </div>
               <div class="flex justify-between text-xs text-slate-500 mt-1">
@@ -238,37 +238,7 @@
       </FCard>
     </div>
 
-    <!-- Quick Actions -->
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-      <FCard
-        v-for="(action, index) in quickActions"
-        :key="action.id"
-        :class="`animate-fade-in delay-${(index + 1) * 150} card-glow`"
-        interactive
-      >
-        <button 
-          class="w-full text-center cursor-pointer focus:outline-none"
-          @click="handleActionClick(action)"
-        >
-          <div :class="[
-            'w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4',
-            action.iconBg,
-            action.shadow
-          ]">
-            <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="action.iconPath"/>
-            </svg>
-          </div>
-          <h3 class="text-xl font-bold text-white mb-2">{{ action.title }}</h3>
-          <p class="text-slate-400 mb-6">{{ action.description }}</p>
-          <div class="w-full">
-            <FButton :variant="action.buttonVariant" class="w-full" @click.stop>
-              {{ action.buttonText }}
-            </FButton>
-          </div>
-        </button>
-      </FCard>
-    </div>
+
 
     <!-- Recent Activity -->
     <div v-if="recentActivities.length > 0">
@@ -501,66 +471,7 @@ const formatTimestamp = (timestamp: string) => {
   return `${Math.floor(diffMins / 1440)} day ago`;
 };
 
-// Quick action buttons - now with real functionality
-const quickActions = ref([
-  {
-    id: 'hosts',
-    title: 'Manage Hosts',
-    description: 'Add, configure, and monitor hypervisor hosts',
-    iconBg: 'bg-gradient-to-br from-accent-500 to-accent-600',
-    iconPath: 'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10',
-    shadow: 'shadow-neon-cyan',
-    buttonVariant: 'accent' as const,
-    buttonText: 'View Hosts',
-    glowColor: 'accent' as const,
-    action: () => {
-      // Navigate to first available host or show host management
-      if (hostStore.connectedHosts.length > 0) {
-        const firstHost = hostStore.connectedHosts[0];
-        if (firstHost?.id) {
-          router.push(`/hosts/${firstHost.id}`);
-        }
-      } else {
-        // Open add host modal
-        showAddHostModal.value = true;
-      }
-    }
-  },
-  {
-    id: 'network',
-    title: 'Network Topology',
-    description: 'Visualize infrastructure and network relationships',
-    iconBg: 'bg-gradient-to-br from-primary-500 to-primary-600',
-    iconPath: 'M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0',
-    shadow: 'shadow-neon-blue',
-    buttonVariant: 'primary' as const,
-    buttonText: 'View Topology',
-    glowColor: 'primary' as const,
-    action: () => router.push('/network')
-  },
-  {
-    id: 'monitoring',
-    title: 'System Monitor',
-    description: 'Real-time performance metrics and alerts',
-    iconBg: 'bg-gradient-to-br from-neon-purple to-neon-pink',
-    iconPath: 'M13 10V3L4 14h7v7l9-11h-7z',
-    shadow: '',
-    buttonVariant: 'neon' as const,
-    buttonText: 'View Metrics',
-    glowColor: 'neon-purple' as const,
-    action: () => {
-      // Refresh dashboard data to show latest metrics
-      loadDashboardData();
-      uiStore.addToast('Dashboard data refreshed', 'success', 3000);
-    }
-  }
-]);
 
-const handleActionClick = (action: any) => {
-  if (action.action) {
-    action.action();
-  }
-};
 
 const handleHostAdded = (host: any) => {
   console.log('Host added successfully:', host);

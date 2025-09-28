@@ -158,24 +158,36 @@
               size="sm"
               @click.stop="handleVMAction(vm, 'start')"
               :disabled="vm.state === 'ACTIVE' || !!vm.taskState"
+              class="flex items-center gap-2"
             >
-              ▶️ Start
+              <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" />
+              </svg>
+              Start
             </FButton>
             <FButton
               variant="ghost"
               size="sm"
               @click.stop="handleVMAction(vm, 'stop')"
               :disabled="vm.state === 'STOPPED' || !!vm.taskState"
+              class="flex items-center gap-2"
             >
-              ⏹️ Stop
+              <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clip-rule="evenodd" />
+              </svg>
+              Stop
             </FButton>
             <FButton
               variant="outline"
               size="sm"
               @click.stop="openVMConsole(vm)"
               :disabled="vm.state !== 'ACTIVE'"
+              class="flex items-center gap-2"
             >
-              🖥️ Console
+              <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm0 4a1 1 0 011-1h12a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1V8zm8 2a1 1 0 100 2h2a1 1 0 100-2h-2z" clip-rule="evenodd" />
+              </svg>
+              Console
             </FButton>
           </div>
         </div>
@@ -290,7 +302,9 @@
                   class="text-xs p-1 xl:px-2"
                   title="Start VM"
                 >
-                  ▶️
+                  <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" />
+                  </svg>
                 </FButton>
                 <FButton
                   variant="ghost"
@@ -300,7 +314,9 @@
                   class="text-xs p-1 xl:px-2"
                   title="Stop VM"
                 >
-                  ⏹️
+                  <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clip-rule="evenodd" />
+                  </svg>
                 </FButton>
                 <FButton
                   variant="outline"
@@ -310,7 +326,9 @@
                   class="text-xs p-1 xl:px-2"
                   title="Open Console"
                 >
-                  🖥️
+                  <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm0 4a1 1 0 011-1h12a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1V8zm8 2a1 1 0 100 2h2a1 1 0 100-2h-2z" clip-rule="evenodd" />
+                  </svg>
                 </FButton>
                 <!-- Dropdown Menu -->
                 <div class="relative">
@@ -321,7 +339,9 @@
                     class="text-xs p-1 xl:px-2"
                     title="More Actions"
                   >
-                    ⋯
+                    <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+                    </svg>
                   </FButton>
                   <div 
                     v-if="activeDropdown === vm.uuid"
@@ -330,34 +350,52 @@
                     <div class="py-1">
                       <button
                         @click.stop="viewVMDetails(vm)"
-                        class="w-full px-4 py-2 text-left text-sm text-slate-300 hover:bg-slate-700/50 hover:text-white transition-colors"
+                        class="w-full px-4 py-2 text-left text-sm text-slate-300 hover:bg-slate-700/50 hover:text-white transition-colors flex items-center gap-3"
                       >
-                        📊 View Details
+                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                          <path d="M2 10a8 8 0 018-8v8h8a8 8 0 11-16 0z" />
+                          <path d="M12 2.252A8.014 8.014 0 0117.748 8H12V2.252z" />
+                        </svg>
+                        View Details
                       </button>
                       <button
                         @click.stop="editVM(vm)"
-                        class="w-full px-4 py-2 text-left text-sm text-slate-300 hover:bg-slate-700/50 hover:text-white transition-colors"
+                        class="w-full px-4 py-2 text-left text-sm text-slate-300 hover:bg-slate-700/50 hover:text-white transition-colors flex items-center gap-3"
                       >
-                        ✏️ Edit Settings
+                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                          <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                        </svg>
+                        Edit Settings
                       </button>
                       <button
                         @click.stop="cloneVM(vm)"
-                        class="w-full px-4 py-2 text-left text-sm text-slate-300 hover:bg-slate-700/50 hover:text-white transition-colors"
+                        class="w-full px-4 py-2 text-left text-sm text-slate-300 hover:bg-slate-700/50 hover:text-white transition-colors flex items-center gap-3"
                       >
-                        📋 Clone VM
+                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                          <path d="M8 2a1 1 0 000 2h2a1 1 0 100-2H8z" />
+                          <path d="M3 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v6h-4.586l1.293-1.293a1 1 0 00-1.414-1.414l-3 3a1 1 0 000 1.414l3 3a1 1 0 001.414-1.414L10.414 13H15v3a2 2 0 01-2 2H5a2 2 0 01-2-2V5zM15 11.586l-3-3a1 1 0 00-1.414 1.414L11.586 11H9a1 1 0 100 2h2.586l-1 1a1 1 0 001.414 1.414l3-3z" />
+                        </svg>
+                        Clone VM
                       </button>
                       <button
                         @click.stop="exportVM(vm)"
-                        class="w-full px-4 py-2 text-left text-sm text-slate-300 hover:bg-slate-700/50 hover:text-white transition-colors"
+                        class="w-full px-4 py-2 text-left text-sm text-slate-300 hover:bg-slate-700/50 hover:text-white transition-colors flex items-center gap-3"
                       >
-                        📦 Export
+                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                          <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd" />
+                        </svg>
+                        Export
                       </button>
                       <hr class="border-slate-600/50 my-1">
                       <button
                         @click.stop="deleteVM(vm)"
-                        class="w-full px-4 py-2 text-left text-sm text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-colors"
+                        class="w-full px-4 py-2 text-left text-sm text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-colors flex items-center gap-3"
                       >
-                        🗑️ Delete VM
+                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                          <path fill-rule="evenodd" d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" clip-rule="evenodd" />
+                          <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+                        </svg>
+                        Delete VM
                       </button>
                     </div>
                   </div>
@@ -411,7 +449,9 @@
                 class="text-xs p-1 opacity-0 group-hover:opacity-100 transition-opacity"
                 title="Start VM"
               >
-                ▶️
+                <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" />
+                </svg>
               </FButton>
               <FButton
                 variant="ghost"
@@ -421,7 +461,9 @@
                 class="text-xs p-1 opacity-0 group-hover:opacity-100 transition-opacity"
                 title="Stop VM"
               >
-                ⏹️
+                <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clip-rule="evenodd" />
+                </svg>
               </FButton>
               <FButton
                 variant="outline"
@@ -431,7 +473,9 @@
                 class="text-xs p-1 opacity-0 group-hover:opacity-100 transition-opacity"
                 title="Console"
               >
-                🖥️
+                <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm0 4a1 1 0 011-1h12a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1V8zm8 2a1 1 0 100 2h2a1 1 0 100-2h-2z" clip-rule="evenodd" />
+                </svg>
               </FButton>
             </div>
           </div>
@@ -443,7 +487,11 @@
 
     <!-- Empty State -->
     <div v-else-if="filteredVMs.length === 0" class="text-center py-12">
-      <div class="text-6xl mb-4">🖥️</div>
+      <div class="flex justify-center mb-4">
+        <svg class="w-16 h-16 text-slate-600" fill="currentColor" viewBox="0 0 20 20">
+          <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm0 4a1 1 0 011-1h12a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1V8zm8 2a1 1 0 100 2h2a1 1 0 100-2h-2z" clip-rule="evenodd" />
+        </svg>
+      </div>
       <h3 class="text-xl font-semibold text-white mb-2">No Virtual Machines Found</h3>
       <p class="text-slate-400">No virtual machines match your current filters.</p>
     </div>
