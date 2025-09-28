@@ -7,28 +7,28 @@
 
     <!-- VM Header -->
     <div class="flex items-center justify-between">
-      <div class="flex items-center gap-4">
-        <FBackButton :context-actions="vmContextActions" />
+      <div class="flex items-center gap-6">
+        <FBackButton :context-actions="vmContextActions" :compact="true" />
         <div>
-          <div class="flex items-center gap-3">
-            <h1 class="text-2xl font-bold text-white">{{ vm?.name || 'Loading...' }}</h1>
-            <span v-if="vm?.uuid" class="text-sm text-slate-400 font-mono bg-slate-800/50 px-2 py-1 rounded">
+          <div class="flex items-center gap-3 mb-1">
+            <h1 class="text-3xl font-bold text-white">{{ vm?.name || 'Loading...' }}</h1>
+            <span v-if="vm?.uuid" class="text-sm text-slate-400 font-mono bg-slate-800/50 px-3 py-1.5 rounded-lg border border-slate-700/30">
               {{ vm.uuid.substring(0, 8) }}
             </span>
           </div>
-          <p class="text-slate-400">{{ vm?.description || 'VM Details' }}</p>
+          <p class="text-slate-400 text-lg">{{ vm?.description || 'VM Details' }}</p>
         </div>
       </div>
       
-      <div v-if="vm" class="flex items-center gap-3">
+      <div v-if="vm" class="flex items-center gap-4">
         <!-- Status Badge -->
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-3 bg-slate-800/30 px-4 py-2 rounded-xl border border-slate-700/30">
           <div :class="[
-            'w-3 h-3 rounded-full',
+            'w-3 h-3 rounded-full shadow-lg',
             getVMStatusColor(vm.state)
           ]"></div>
           <span :class="[
-            'px-3 py-1 rounded-full text-sm font-medium',
+            'px-3 py-1 rounded-full text-sm font-semibold',
             getVMStateBadgeClass(vm.state)
           ]">
             {{ (vm.state || 'UNKNOWN').toLowerCase() }}
@@ -149,17 +149,17 @@
     <div v-if="vm && vm.state === 'ACTIVE'" class="grid grid-cols-1 xl:grid-cols-3 gap-6">
       <!-- Left Column: Performance Metrics -->
       <div class="xl:col-span-2 space-y-6">
-        <FCard v-if="vmStats" class="card-glow">
-          <div class="p-6">
+        <FCard v-if="vmStats" class="card-glow h-80">
+          <div class="p-6 h-full flex flex-col">
             <div class="flex items-center justify-between mb-6">
               <div class="flex items-center gap-4">
-                <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center shadow-lg">
-                  <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center shadow-xl ring-2 ring-blue-500/20">
+                  <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
                   </svg>
                 </div>
                 <div>
-                  <h3 class="text-xl font-bold text-white">Performance Metrics</h3>
+                  <h3 class="text-2xl font-bold text-white">Performance Metrics</h3>
                   <p class="text-sm text-slate-400">Real-time system resource usage</p>
                 </div>
               </div>
@@ -189,7 +189,7 @@
               </div>
             </div>
 
-            <div class="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-6 flex-1">
               <!-- CPU Usage -->
               <div class="text-center">
                 <div class="w-14 h-14 mx-auto mb-3 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center shadow-lg">
@@ -238,17 +238,7 @@
                 <p class="text-xs font-medium text-cyan-300">TX: {{ (vmStats.network_tx_mbps || vmStats.network_tx_mb || 0).toFixed(2) }} {{ settings.units.network === 'kb' ? 'KB/s' : 'MB/s' }}</p>
               </div>
 
-              <!-- Uptime -->
-              <div class="text-center">
-                <div class="w-14 h-14 mx-auto mb-3 rounded-xl bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center shadow-lg">
-                  <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                  </svg>
-                </div>
-                <h4 class="text-sm font-semibold text-slate-300 mb-1">Uptime</h4>
-                <p class="text-lg font-bold text-orange-400">{{ formatUptime(vmStats.uptime || 0) }}</p>
-                <p class="text-xs text-slate-500">Running</p>
-              </div>
+
             </div>
           </div>
         </FCard>
@@ -269,39 +259,30 @@
       <!-- Right Column: Console Preview -->
       <div class="xl:col-span-1">
         <div v-if="getConsoleType(vm)" class="space-y-6">
-          <FCard class="card-glow">
+          <FCard class="card-glow cursor-pointer hover:shadow-xl hover:bg-slate-800/20 transition-all duration-300 hover:scale-[1.02]" @click="openConsole">
             <div class="p-4">
               <div class="flex items-center justify-between mb-4">
                 <div class="flex items-center gap-3">
-                  <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center">
-                    <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                  <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center shadow-xl ring-2 ring-emerald-500/20">
+                    <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
                       <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm0 4a1 1 0 011-1h12a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1V8zm8 2a1 1 0 100 2h2a1 1 0 100-2h-2z" clip-rule="evenodd" />
                     </svg>
                   </div>
                   <div>
-                    <h4 class="text-lg font-bold text-white">Console Preview</h4>
+                    <h4 class="text-xl font-bold text-white">Console Preview</h4>
                     <p class="text-sm text-slate-400">{{ getConsoleStatusText() }}</p>
                   </div>
                 </div>
-              </div>
-
-              <div class="flex items-center gap-2 mb-4">
                 <FButton
                   variant="ghost"
                   size="sm"
-                  @click="refreshConsolePreview"
+                  @click.stop="refreshConsolePreview"
                   title="Refresh Preview"
+                  class="hover:bg-emerald-500/10 hover:text-emerald-400 transition-colors"
                 >
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
                   </svg>
-                </FButton>
-                <FButton
-                  variant="accent"
-                  size="sm"
-                  @click="openConsole"
-                >
-                  Open Full
                 </FButton>
               </div>
 
@@ -310,15 +291,30 @@
                 <div class="bg-black rounded-lg overflow-hidden relative h-60">
                   <!-- Direct console connection attempt -->
                   <div class="absolute inset-0">
-                    <!-- VNC Preview Component -->
-                    <VNCPreview
-                      v-if="getConsoleType(vm) === 'vnc' && vm"
-                      :host-id="props.hostId"
-                      :vm-name="props.vmName"
-                      :width="320"
-                      :height="240"
-                      class="w-full h-full"
-                    />
+                    <!-- VNC Preview Snapshot -->
+                    <div v-if="getConsoleType(vm) === 'vnc' && vm" class="w-full h-full relative">
+                      <!-- Current snapshot -->
+                      <img
+                        v-if="consoleSnapshot"
+                        :src="consoleSnapshot"
+                        class="w-full h-full object-contain rounded transition-opacity duration-300"
+                        :class="{ 'opacity-70': isCapturingSnapshot }"
+                        alt="Console Preview"
+                      />
+                      <!-- Loading state -->
+                      <div v-else class="w-full h-full bg-slate-800 flex items-center justify-center">
+                        <div class="text-center text-slate-400">
+                          <div class="w-6 h-6 border-2 border-slate-500 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                          <p class="text-xs">Loading console preview...</p>
+                        </div>
+                      </div>
+                      <!-- Refresh indicator -->
+                      <div v-if="isCapturingSnapshot" class="absolute inset-0 flex items-center justify-center bg-black/20 rounded">
+                        <div class="bg-black/60 rounded-full p-3">
+                          <div class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        </div>
+                      </div>
+                    </div>
                     <!-- SPICE Preview Iframe -->
                     <iframe
                       ref="consolePreviewIframe"
@@ -363,7 +359,7 @@
       <div class="p-6">
         <div class="flex items-center justify-between mb-6">
           <div class="flex items-center gap-4">
-            <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-purple-500 to-violet-500 flex items-center justify-center shadow-lg">
+            <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-purple-500 to-violet-500 flex items-center justify-center shadow-xl ring-2 ring-purple-500/20">
               <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
               </svg>
@@ -685,6 +681,15 @@
       @applied="refreshStats"
     />
 
+    <!-- Hardware Configuration Modal (overlay) -->
+    <VMHardwareConfigModalExtended
+      v-if="showHardwareConfig && vm"
+      :show="showHardwareConfig"
+      :host-id="props.hostId"
+      :vm-name="props.vmName"
+      @close="showHardwareConfig = false"
+      @saved="loadVM"
+    />
 
   </div>
 </template>
@@ -704,7 +709,8 @@ import MetricSettingsModal from '@/components/modals/MetricSettingsModal.vue';
 import type { VirtualMachine, VMStats } from '@/types';
 import { wsManager } from '@/services/api';
 import { getConsoleRoute, getConsoleType, getConsoleDisplayName } from '@/utils/console';
-import VNCPreview from '@/components/vm/VNCPreview.vue';
+// @ts-ignore
+import RFB from '@novnc/novnc/lib/rfb';
 
 interface Props {
   hostId: string;
@@ -726,12 +732,16 @@ const loadingStats = ref(false);
 const showExtendedHardwareModal = ref(false);
 // simplified CPU display: show smoothed host-normalized `cpu_percent`
 const showMetricSettings = ref(false);
+const showHardwareConfig = ref(false);
 const vmDetailsExpanded = ref(false);
 
 // Console preview state
 const consolePreviewIframe = ref<HTMLIFrameElement | null>(null);
 const consoleConnected = ref(false);
 const consoleRefreshKey = ref(0);
+const consoleSnapshot = ref<string | null>(null);
+const lastSnapshotTime = ref<number>(0);
+const isCapturingSnapshot = ref<boolean>(false);
 
 // Console preview source
 const consolePreviewSrc = computed(() => {
@@ -782,20 +792,99 @@ const onConsolePreviewLoad = () => {
 const refreshConsolePreview = () => {
   consoleConnected.value = false;
   consoleRefreshKey.value++;
+  
+  // For VNC, capture a new snapshot
+  if (vm.value && getConsoleType(vm.value) === 'vnc') {
+    captureVNCSnapshot();
+  }
 };
 
-// Auto-refresh console preview every 30 seconds when active
+// Capture VNC snapshot for preview
+const captureVNCSnapshot = async () => {
+  if (!vm.value) return;
+  
+  isCapturingSnapshot.value = true;
+  
+  try {
+    // Create a temporary canvas for snapshot
+    const canvas = document.createElement('canvas');
+    canvas.width = 320;
+    canvas.height = 240;
+    const ctx = canvas.getContext('2d');
+    
+    if (!ctx) return;
+    
+    // Create temporary RFB connection for snapshot
+    const tempDiv = document.createElement('div');
+    tempDiv.style.display = 'none';
+    document.body.appendChild(tempDiv);
+    
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = window.location.host;
+    const wsUrl = `${protocol}//${host}/api/v1/hosts/${props.hostId}/vms/${props.vmName}/console`;
+    
+    // @ts-ignore
+    const tempRfb = new RFB(tempDiv, wsUrl, { credentials: {} });
+    tempRfb.viewOnly = true;
+    tempRfb.scaleViewport = false;
+    
+    // Set up one-time snapshot capture
+    const captureFrame = () => {
+      try {
+        const vncCanvas = tempDiv.querySelector('canvas') as HTMLCanvasElement;
+        if (vncCanvas) {
+          // Draw VNC canvas to our snapshot canvas
+          ctx.drawImage(vncCanvas, 0, 0, 320, 240);
+          
+          // Convert to data URL
+          consoleSnapshot.value = canvas.toDataURL('image/png');
+          lastSnapshotTime.value = Date.now();
+        }
+      } catch (error) {
+        console.warn('Failed to capture VNC snapshot:', error);
+      } finally {
+        // Clean up
+        tempRfb.disconnect();
+        document.body.removeChild(tempDiv);
+        isCapturingSnapshot.value = false;
+      }
+    };
+    
+    // Capture frame after connection
+    tempRfb.addEventListener('connect', () => {
+      setTimeout(captureFrame, 1000); // Wait 1 second for frame to load
+    });
+    
+    tempRfb.addEventListener('disconnect', () => {
+      if (document.body.contains(tempDiv)) {
+        document.body.removeChild(tempDiv);
+      }
+    });
+    
+  } catch (error) {
+    console.warn('Failed to setup VNC snapshot:', error);
+    isCapturingSnapshot.value = false;
+  }
+};
+
+// Auto-refresh console preview every 15 seconds when active
 let consoleRefreshInterval: number | null = null;
 
 const startConsoleRefresh = () => {
   if (consoleRefreshInterval) {
     clearInterval(consoleRefreshInterval);
   }
+  
+  // Initial snapshot for VNC
+  if (vm.value && getConsoleType(vm.value) === 'vnc') {
+    setTimeout(() => captureVNCSnapshot(), 2000); // Initial delay to let VM load
+  }
+  
   consoleRefreshInterval = setInterval(() => {
     if (vm.value?.state === 'ACTIVE' && getConsoleType(vm.value)) {
       refreshConsolePreview();
     }
-  }, 30000); // Refresh every 30 seconds
+  }, 15000); // Refresh every 15 seconds instead of 30
 };
 
 const stopConsoleRefresh = () => {
@@ -958,8 +1047,7 @@ const openConsole = (): void => {
 const openVMSettings = (): void => {
   if (!vm.value) return;
   
-  // TODO: Open VM settings modal
-  uiStore.addToast('VM Settings modal not yet implemented', 'info');
+  showHardwareConfig.value = true;
 };
 
 // Utility functions
