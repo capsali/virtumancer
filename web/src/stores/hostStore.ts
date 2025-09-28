@@ -28,7 +28,8 @@ export const useHostStore = defineStore('hosts', () => {
     vmReconcile: null,
     vmImport: null,
     hostImportAll: null,
-    connectHost: {}
+    connectHost: {},
+    hostStats: {}
   });
 
   // Connection state tracking with debouncing
@@ -191,11 +192,18 @@ export const useHostStore = defineStore('hosts', () => {
     clearError('fetchHostStats');
     
     try {
+      loading.value.hostStats[id] = true;
+      console.log('Fetching host stats for:', id);
       const stats = await hostApi.getStats(id);
+      console.log('Received host stats:', stats);
       hostStats.value[id] = stats;
+      console.log('Host stats stored:', hostStats.value[id]);
     } catch (error) {
+      console.error('Error fetching host stats:', error);
       handleError('fetchHostStats', error);
       // Don't throw here, stats are optional
+    } finally {
+      loading.value.hostStats[id] = false;
     }
   };
 

@@ -232,6 +232,7 @@ export interface LoadingStates {
   vmImport: string | null;
   hostImportAll: string | null;
   connectHost: Record<string, boolean>;
+  hostStats: Record<string, boolean>;
 }
 
 // API Response types

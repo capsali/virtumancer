@@ -185,6 +185,7 @@ type HostServiceProvider interface {
 	EnsureHostConnectedForced(hostID string) error
 	DisconnectHost(hostID string, userInitiated bool) error
 	GetHostInfo(hostID string) (*libvirt.HostInfo, error)
+	GetHostStats(hostID string) (*libvirt.HostStats, error)
 	AddHost(host storage.Host) (*storage.Host, error)
 	RemoveHost(hostID string) error
 	ConnectToAllHosts()
@@ -722,6 +723,14 @@ func (s *HostService) GetHostInfo(hostID string) (*libvirt.HostInfo, error) {
 		return nil, err
 	}
 	return s.connector.GetHostInfo(hostID)
+}
+
+// GetHostStats returns real-time statistics for a host.
+func (s *HostService) GetHostStats(hostID string) (*libvirt.HostStats, error) {
+	if err := s.EnsureHostConnected(hostID); err != nil {
+		return nil, err
+	}
+	return s.connector.GetHostStats(hostID)
 }
 
 // GetPortsForHostFromDB returns ports scoped to the given host (the host's

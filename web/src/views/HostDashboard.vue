@@ -240,7 +240,8 @@
             </div>
             <div class="flex justify-between items-center">
               <span class="text-slate-400 text-sm">Current Usage</span>
-              <span v-if="selectedHost.stats" class="text-2xl font-bold" :class="getCPUUsageColor(selectedHost.stats.cpu_percent || 0)">{{ Math.round(selectedHost.stats.cpu_percent || 0) }}%</span>
+              <span v-if="selectedHost.stats && selectedHost.stats.cpu_percent !== undefined" class="text-2xl font-bold" :class="getCPUUsageColor(selectedHost.stats.cpu_percent)">{{ Math.round(selectedHost.stats.cpu_percent) }}%</span>
+              <span v-else-if="loading.hostStats[selectedHost.id]" class="text-slate-500 text-sm">Loading...</span>
               <span v-else class="text-slate-500 text-sm">Unavailable</span>
             </div>
             <div v-if="selectedHost.stats" class="w-full bg-slate-700 rounded-full h-3">
@@ -265,7 +266,7 @@
             </div>
             <h3 class="text-lg font-bold text-white">Memory Usage</h3>
           </div>
-          <div class="space-y-3" v-if="selectedHost.stats">
+          <div class="space-y-3" v-if="selectedHost.stats && selectedHost.stats.memory_total !== undefined">
             <div class="flex justify-between items-center">
               <span class="text-slate-400 text-sm">Used</span>
               <span class="font-medium" :class="getMemoryUsageColor(((selectedHost.stats.memory_total - selectedHost.stats.memory_available) / selectedHost.stats.memory_total) * 100)">
@@ -294,6 +295,7 @@
               ></div>
             </div>
           </div>
+          <div v-else-if="loading.hostStats[selectedHost.id]" class="text-slate-500 text-sm text-center">Loading memory data...</div>
           <div v-else class="text-slate-500 text-sm text-center">Memory data unavailable</div>
         </div>
       </FCard>
@@ -600,7 +602,10 @@ const loading = computed(() => hostStore.loading);
 const selectedHost = computed(() => {
   if (!selectedHostId.value) return null;
   const hosts = hostStore.hostsWithStats;
-  return hosts.find(host => host.id === selectedHostId.value) || null;
+  const host = hosts.find(host => host.id === selectedHostId.value) || null;
+  console.log('Selected host:', host);
+  console.log('Selected host stats:', host?.stats);
+  return host;
 });
 
 const managedVMs = computed(() => 
@@ -615,6 +620,9 @@ const discoveredVMs = computed(() =>
 const selectHost = (hostId: string): void => {
   selectedHostId.value = hostId;
   hostStore.selectHost(hostId);
+  
+  // Always try to fetch host stats, even if not connected
+  hostStore.fetchHostStats(hostId);
   
   // Fetch VMs for this host
   if (hostStore.getHostById(hostId)?.state === 'CONNECTED') {

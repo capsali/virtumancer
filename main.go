@@ -147,8 +147,8 @@ func main() {
 	certFile := "localhost.crt"
 	keyFile := "localhost.key"
 
-	log.Infof("Starting HTTPS server on :8888")
-	err = http.ListenAndServeTLS(":8888", certFile, keyFile, r)
+	log.Infof("Starting HTTPS server on :8890")
+	err = http.ListenAndServeTLS(":8890", certFile, keyFile, r)
 	if err != nil {
 		log.Debugf("Could not start HTTPS server: %v", err)
 		log.Infof("Please ensure 'localhost.crt' and 'localhost.key' are present in the root directory.")

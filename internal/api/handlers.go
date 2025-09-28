@@ -702,7 +702,14 @@ func (h *APIHandler) UpdateVMState(w http.ResponseWriter, r *http.Request) {
 func (h *APIHandler) GetHostStats(w http.ResponseWriter, r *http.Request) {
 	hostID := chi.URLParam(r, "hostID")
 
-	// Get basic host info first
+	// Get real-time host statistics
+	hostStats, err := h.HostService.GetHostStats(hostID)
+	if err != nil {
+		h.HandleError(w, err, fmt.Sprintf("get_host_stats_%s", hostID))
+		return
+	}
+
+	// Get basic host info
 	hostInfo, err := h.HostService.GetHostInfo(hostID)
 	if err != nil {
 		h.HandleError(w, err, fmt.Sprintf("get_host_info_%s", hostID))
@@ -729,11 +736,18 @@ func (h *APIHandler) GetHostStats(w http.ResponseWriter, r *http.Request) {
 		vmCounts[string(vm.State)]++
 	}
 
-	// Build response with host info and VM statistics
+	// Build response with real-time stats and VM statistics
 	stats := map[string]interface{}{
-		"host_info": hostInfo,
-		"vm_counts": vmCounts,
-		"total_vms": len(vms),
+		"cpu_percent":      hostStats.CPUUtilization * 100, // Convert to percentage
+		"memory_total":     hostInfo.Memory,
+		"memory_available": hostInfo.Memory - hostStats.MemoryUsed,
+		"disk_total":       0, // TODO: implement disk stats
+		"disk_free":        0, // TODO: implement disk stats
+		"uptime":           0, // TODO: implement uptime
+		"vm_count":         len(vms),
+		"host_info":        hostInfo,
+		"vm_counts":        vmCounts,
+		"total_vms":        len(vms),
 		"resources": map[string]interface{}{
 			"memory_bytes": hostInfo.Memory,
 			"cpu_count":    hostInfo.CPU,

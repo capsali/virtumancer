@@ -23,6 +23,7 @@ func (d *dummyHostService) EnsureHostConnected(hostID string) error             
 func (d *dummyHostService) EnsureHostConnectedForced(hostID string) error          { return nil }
 func (d *dummyHostService) DisconnectHost(hostID string, userInitiated bool) error { return nil }
 func (d *dummyHostService) GetHostInfo(hostID string) (*libvirt.HostInfo, error)   { return nil, nil }
+func (d *dummyHostService) GetHostStats(hostID string) (*libvirt.HostStats, error) { return nil, nil }
 func (d *dummyHostService) AddHost(host storage.Host) (*storage.Host, error)       { return &host, nil }
 func (d *dummyHostService) RemoveHost(hostID string) error                         { return nil }
 func (d *dummyHostService) ConnectToAllHosts()                                     {}

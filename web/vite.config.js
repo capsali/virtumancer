@@ -27,7 +27,7 @@ export default defineConfig({
     proxy: {
       // This rule handles both REST API calls and the VNC console WebSocket.
       '/api': {
-        target: 'https://localhost:8888',
+        target: 'https://localhost:8890',
         changeOrigin: true,
         // Allow proxying to a backend with a self-signed certificate.
         secure: false,
@@ -36,7 +36,7 @@ export default defineConfig({
       },
       // This rule handles the separate WebSocket for general UI updates.
       '/ws': {
-        target: 'wss://localhost:8888',
+        target: 'wss://localhost:8890',
         ws: true,
         changeOrigin: true,
         // Allow proxying to a backend with a self-signed certificate.
