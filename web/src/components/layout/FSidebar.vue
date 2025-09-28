@@ -111,49 +111,6 @@
       </div>
     </div>
 
-    <!-- Bottom System Section -->
-    <div class="p-4 space-y-2 border-t border-white/10">
-      <!-- Settings -->
-      <div class="group relative overflow-hidden rounded-xl hover:bg-white/5 transition-all duration-300">
-        <router-link
-          to="/settings"
-          :class="[
-            'w-full flex items-center justify-center p-3 text-left transition-all duration-300 no-underline',
-            {
-              'text-white bg-gradient-to-r from-primary-600/20 to-accent-600/20 shadow-glow-sm': route.path === '/settings',
-              'text-slate-300 hover:text-white': route.path !== '/settings'
-            }
-          ]"
-          title="Settings"
-        >
-          <!-- Icon -->
-          <div :class="[
-            'w-8 h-8 flex items-center justify-center rounded-lg transition-all duration-300',
-            {
-              'bg-gradient-to-br from-primary-500 to-accent-500 shadow-neon-blue': route.path === '/settings',
-              'bg-slate-600/50 group-hover:bg-slate-500/50': route.path !== '/settings'
-            }
-          ]">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
-            </svg>
-          </div>
-
-          <!-- Active Indicator -->
-          <div
-            v-if="route.path === '/settings'"
-            class="absolute right-0 top-1/2 transform -translate-y-1/2 w-1 h-8 bg-gradient-to-b from-primary-400 to-accent-400 rounded-l-full pointer-events-none"
-          ></div>
-        </router-link>
-
-        <!-- Hover Glow Effect -->
-        <div
-          v-if="route.path !== '/settings'"
-          class="absolute inset-0 bg-gradient-to-r from-primary-600/0 via-primary-600/5 to-accent-600/0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl pointer-events-none"
-        ></div>
-      </div>
-    </div>
-
     <!-- Bottom Section -->
     <div class="p-4 border-t border-white/10 space-y-3">
       <!-- Settings Button -->

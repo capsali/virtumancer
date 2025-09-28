@@ -10,7 +10,12 @@
       <div class="flex items-center gap-4">
         <FBackButton :context-actions="vmContextActions" />
         <div>
-          <h1 class="text-2xl font-bold text-white">{{ vm?.name || 'Loading...' }}</h1>
+          <div class="flex items-center gap-3">
+            <h1 class="text-2xl font-bold text-white">{{ vm?.name || 'Loading...' }}</h1>
+            <span v-if="vm?.uuid" class="text-sm text-slate-400 font-mono bg-slate-800/50 px-2 py-1 rounded">
+              {{ vm.uuid.substring(0, 8) }}
+            </span>
+          </div>
           <p class="text-slate-400">{{ vm?.description || 'VM Details' }}</p>
         </div>
       </div>
@@ -119,6 +124,20 @@
             >
               <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                 <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm0 4a1 1 0 011-1h12a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1V8zm8 2a1 1 0 100 2h2a1 1 0 100-2h-2z" clip-rule="evenodd" />
+              </svg>
+            </FButton>
+            
+            <div class="w-px h-6 bg-slate-600 mx-1"></div>
+            
+            <FButton
+              variant="ghost"
+              size="sm"
+              @click="openVMSettings"
+              class="px-3 py-2"
+              title="VM Settings"
+            >
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
               </svg>
             </FButton>
           </div>
@@ -272,20 +291,20 @@
     <!-- Console Preview Card (Compact) -->
     <div v-if="vm && vm.state === 'ACTIVE' && getConsoleType(vm)" class="mb-6">
       <FCard class="card-glow">
-        <div class="p-4">
-          <div class="flex items-center justify-between mb-3">
-            <div class="flex items-center gap-3">
-              <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center">
-                <svg class="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+        <div class="p-3">
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2">
+              <div class="w-6 h-6 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center">
+                <svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
                   <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm0 4a1 1 0 011-1h12a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1V8zm8 2a1 1 0 100 2h2a1 1 0 100-2h-2z" clip-rule="evenodd" />
                 </svg>
               </div>
               <div>
-                <h4 class="text-lg font-bold text-white">Console Preview</h4>
+                <h4 class="text-sm font-bold text-white">Console Preview</h4>
                 <p class="text-xs text-slate-400">{{ getConsoleStatusText() }}</p>
               </div>
             </div>
-            <div class="flex items-center gap-2">
+            <div class="flex items-center gap-1">
               <FButton
                 variant="ghost"
                 size="sm"
@@ -293,7 +312,7 @@
                 class="p-1"
                 title="Refresh Preview"
               >
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
                 </svg>
               </FButton>
@@ -301,13 +320,13 @@
                 variant="accent"
                 size="sm"
                 @click="openConsole"
-                class="px-3 py-1 text-xs"
+                class="px-2 py-1 text-xs"
               >
                 Open Full
               </FButton>
             </div>
           </div>
-          
+
           <!-- Console Preview Content -->
           <div class="bg-slate-900/50 rounded-lg border border-slate-700/50 overflow-hidden">
             <div class="aspect-[16/10] bg-black rounded-lg overflow-hidden relative">
@@ -325,67 +344,9 @@
                 />
                 <div v-else class="w-full h-full bg-slate-800 flex items-center justify-center">
                   <div class="text-center text-slate-400">
-                    <div class="w-4 h-4 border-2 border-slate-500 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                    <div class="w-3 h-3 border-2 border-slate-500 border-t-transparent rounded-full animate-spin mx-auto mb-1"></div>
                     <p class="text-xs">Connecting to console...</p>
                   </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </FCard>
-    </div>
-
-    <!-- Console Preview Card (Compact) -->
-    <div v-if="vm && vm.state === 'ACTIVE' && getConsoleType(vm)" class="mb-6">
-      <FCard class="card-glow">
-        <div class="p-4">
-          <div class="flex items-center justify-between mb-3">
-            <div class="flex items-center gap-3">
-              <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center">
-                <svg class="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
-                  <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm0 4a1 1 0 011-1h12a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1V8zm8 2a1 1 0 100 2h2a1 1 0 100-2h-2z" clip-rule="evenodd" />
-                </svg>
-              </div>
-              <div>
-                <h4 class="text-lg font-bold text-white">Console Preview</h4>
-                <p class="text-xs text-slate-400">{{ getConsoleStatusText() }}</p>
-              </div>
-            </div>
-            <div class="flex items-center gap-2">
-              <FButton
-                variant="ghost"
-                size="sm"
-                @click="refreshConsolePreview"
-                class="p-1"
-                title="Refresh Preview"
-              >
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-                </svg>
-              </FButton>
-              <FButton
-                variant="accent"
-                size="sm"
-                @click="openConsole"
-                class="px-3 py-1 text-xs"
-              >
-                Open Full
-              </FButton>
-            </div>
-          </div>
-          
-          <!-- Console Preview Content -->
-          <div class="bg-slate-900/50 rounded-lg border border-slate-700/50 overflow-hidden">
-            <div class="aspect-[16/10] bg-black rounded-lg overflow-hidden relative">
-              <!-- Console Preview Display -->
-              <div v-if="vm.state === 'ACTIVE'" class="w-full h-full bg-slate-900 flex items-center justify-center">
-                <div class="text-center text-slate-400">
-                  <svg class="w-12 h-12 mx-auto mb-3 text-slate-600" fill="currentColor" viewBox="0 0 20 20">
-                    <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm0 4a1 1 0 011-1h12a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1V8zm8 2a1 1 0 100 2h2a1 1 0 100-2h-2z" clip-rule="evenodd" />
-                  </svg>
-                  <h5 class="text-sm font-semibold text-white mb-1">Console Ready</h5>
-                  <p class="text-xs">Click "Open Full" to access console</p>
                 </div>
               </div>
             </div>
@@ -855,22 +816,7 @@ const getConsoleStatusText = (): string => {
 
 // Context actions for the back button
 const vmContextActions = computed(() => [
-  {
-    label: 'Clone',
-    action: () => {
-      // TODO: Implement VM cloning
-      console.log('Clone VM:', vm.value?.name);
-    },
-    icon: 'copy'
-  },
-  {
-    label: 'Export',
-    action: () => {
-      // TODO: Implement VM export
-      console.log('Export VM:', vm.value?.name);
-    },
-    icon: 'download'
-  }
+  // Clone and Export actions removed as requested
 ]);
 
 const settings = useSettingsStore();
@@ -1001,6 +947,14 @@ const openConsole = (): void => {
   } else {
     uiStore.addToast('No console available for this VM', 'warning');
   }
+};
+
+// Open VM settings modal
+const openVMSettings = (): void => {
+  if (!vm.value) return;
+  
+  // TODO: Open VM settings modal
+  uiStore.addToast('VM Settings modal not yet implemented', 'info');
 };
 
 // Utility functions
