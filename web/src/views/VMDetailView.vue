@@ -145,222 +145,216 @@
       </div>
     </div>
 
-    <!-- Performance Metrics - Compact Cards -->
-    <div v-if="vm && vm.state === 'ACTIVE'" class="space-y-4">
-      <div class="flex items-center justify-between">
-        <h3 class="text-xl font-bold text-white">Performance Metrics</h3>
-        <div class="flex items-center gap-3">
-          <FButton variant="outline" size="sm" @click="showMetricSettings = true" title="Metrics Settings">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
-            </svg>
-          </FButton>
-          <FButton
-            variant="ghost"
-            size="sm"
-            @click="refreshStats"
-            :disabled="loadingStats"
-          >
-            <span v-if="!loadingStats" class="flex items-center gap-2">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-              </svg>
-              Refresh
-            </span>
-            <span v-else class="flex items-center gap-2">
-              <div class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-              Loading...
-            </span>
-          </FButton>
-        </div>
-      </div>
-      
-      <div v-if="vmStats" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        <!-- CPU Usage -->
-        <FCard class="card-glow">
-          <div class="p-4">
-            <div class="flex items-center gap-3 mb-4">
-              <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center">
-                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 00-2 2zM9 9h6v6H9V9z"/>
-                </svg>
+    <!-- Main Content Layout - Two Columns for Active VMs -->
+    <div v-if="vm && vm.state === 'ACTIVE'" class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+      <!-- Left Column: Performance Metrics -->
+      <div class="xl:col-span-2 space-y-6">
+        <FCard v-if="vmStats" class="card-glow">
+          <div class="p-6">
+            <div class="flex items-center justify-between mb-6">
+              <div class="flex items-center gap-4">
+                <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center shadow-lg">
+                  <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                  </svg>
+                </div>
+                <div>
+                  <h3 class="text-xl font-bold text-white">Performance Metrics</h3>
+                  <p class="text-sm text-slate-400">Real-time system resource usage</p>
+                </div>
               </div>
-              <h4 class="text-lg font-bold text-white">CPU</h4>
-            </div>
-            <div class="text-center">
-              <div class="text-2xl font-bold text-blue-400">{{ cpuValue.toFixed(1) }}%</div>
-              <div class="text-xs text-slate-400 mt-1">{{ cpuLabel }}</div>
-            </div>
-          </div>
-        </FCard>
-        
-        <!-- Memory Usage -->
-        <FCard class="card-glow">
-          <div class="p-4">
-            <div class="flex items-center gap-3 mb-4">
-              <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
-                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/>
-                </svg>
-              </div>
-              <h4 class="text-lg font-bold text-white">Memory</h4>
-            </div>
-            <div class="text-center">
-              <div class="text-xl font-bold text-purple-400">{{ formatBytes((vmStats.memory_mb || 0) * 1024 * 1024) }}</div>
-              <div class="text-xs text-slate-400 mt-1">Usage</div>
-            </div>
-          </div>
-        </FCard>
-        
-        <!-- Disk I/O -->
-        <FCard class="card-glow">
-          <div class="p-4">
-            <div class="flex items-center gap-3 mb-4">
-              <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-green-500 to-teal-500 flex items-center justify-center">
-                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3-3m0 0l-3 3m3-3v12"/>
-                </svg>
-              </div>
-              <h4 class="text-lg font-bold text-white">Disk I/O</h4>
-            </div>
-            <div class="text-center space-y-2">
-              <div class="text-sm font-medium text-green-400">
-                Read: {{ (vmStats.disk_read_kib_per_sec || 0).toFixed(1) }} KiB/s
-              </div>
-              <div class="text-sm font-medium text-green-300">
-                Write: {{ (vmStats.disk_write_kib_per_sec || 0).toFixed(1) }} KiB/s
-              </div>
-            </div>
-          </div>
-        </FCard>
-        
-        <!-- Network -->
-        <FCard class="card-glow">
-          <div class="p-4">
-            <div class="flex items-center gap-3 mb-4">
-              <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-cyan-500 to-blue-500 flex items-center justify-center">
-                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
-                </svg>
-              </div>
-              <h4 class="text-lg font-bold text-white">Network</h4>
-            </div>
-            <div class="text-center space-y-2">
-              <div class="text-sm font-medium text-cyan-400">
-                RX: {{ (vmStats.network_rx_mbps || vmStats.network_rx_mb || 0).toFixed(2) }} {{ settings.units.network === 'kb' ? 'KB/s' : 'MB/s' }}
-              </div>
-              <div class="text-sm font-medium text-cyan-300">
-                TX: {{ (vmStats.network_tx_mbps || vmStats.network_tx_mb || 0).toFixed(2) }} {{ settings.units.network === 'kb' ? 'KB/s' : 'MB/s' }}
-              </div>
-            </div>
-          </div>
-        </FCard>
-        
-        <!-- Uptime -->
-        <FCard class="card-glow">
-          <div class="p-4">
-            <div class="flex items-center gap-3 mb-4">
-              <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center">
-                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                </svg>
-              </div>
-              <h4 class="text-lg font-bold text-white">Uptime</h4>
-            </div>
-            <div class="text-center">
-              <div class="text-xl font-bold text-orange-400">{{ formatUptime(vmStats.uptime || 0) }}</div>
-              <div class="text-xs text-slate-400 mt-1">Running</div>
-            </div>
-          </div>
-        </FCard>
-      </div>
-      
-      <div v-else class="text-center py-8">
-        <FCard class="card-glow p-8">
-          <div class="flex justify-center mb-4">
-            <svg class="w-12 h-12 text-slate-600" fill="currentColor" viewBox="0 0 20 20">
-              <path fill-rule="evenodd" d="M3 3a1 1 0 000 2v8a2 2 0 002 2h2.586l-1.293 1.293a1 1 0 101.414 1.414L10 15.414l2.293 2.293a1 1 0 001.414-1.414L12.414 15H15a2 2 0 002-2V5a1 1 0 100-2H3zm11.707 4.707a1 1 0 00-1.414-1.414L10 9.586 6.707 6.293a1 1 0 00-1.414 1.414l4 4a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
-            </svg>
-          </div>
-          <h4 class="text-lg font-semibold text-white mb-2">No Performance Data Available</h4>
-          <p class="text-slate-400">Performance metrics are only available when the VM is running.</p>
-        </FCard>
-      </div>
-    </div>
-
-    <!-- Console Preview Card -->
-    <div v-if="vm && vm.state === 'ACTIVE' && getConsoleType(vm)" class="mb-6">
-      <FCard class="card-glow max-w-md">
-        <div class="p-4">
-          <div class="flex items-center justify-between mb-4">
               <div class="flex items-center gap-3">
-              <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center">
-                <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
-                  <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm0 4a1 1 0 011-1h12a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1V8zm8 2a1 1 0 100 2h2a1 1 0 100-2h-2z" clip-rule="evenodd" />
-                </svg>
-              </div>
-              <div>
-                <h4 class="text-lg font-bold text-white">Console Preview</h4>
-                <p class="text-sm text-slate-400">{{ getConsoleStatusText() }}</p>
-                <!-- debug removed -->
+                <FButton variant="outline" size="sm" @click="showMetricSettings = true" title="Metrics Settings">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                  </svg>
+                </FButton>
+                <FButton
+                  variant="ghost"
+                  size="sm"
+                  @click="refreshStats"
+                  :disabled="loadingStats"
+                >
+                  <span v-if="!loadingStats" class="flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                    </svg>
+                    Refresh
+                  </span>
+                  <span v-else class="flex items-center gap-2">
+                    <div class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                    Loading...
+                  </span>
+                </FButton>
               </div>
             </div>
-            <div class="flex items-center gap-2">
-              <FButton
-                variant="ghost"
-                size="sm"
-                @click="refreshConsolePreview"
-                title="Refresh Preview"
-              >
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-                </svg>
-              </FButton>
-              <FButton
-                variant="accent"
-                size="sm"
-                @click="openConsole"
-              >
-                Open Full
-              </FButton>
+
+            <div class="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+              <!-- CPU Usage -->
+              <div class="text-center">
+                <div class="w-14 h-14 mx-auto mb-3 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center shadow-lg">
+                  <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 00-2 2zM9 9h6v6H9V9z"/>
+                  </svg>
+                </div>
+                <h4 class="text-sm font-semibold text-slate-300 mb-1">CPU</h4>
+                <p class="text-lg font-bold text-blue-400">{{ cpuValue.toFixed(1) }}%</p>
+                <p class="text-xs text-slate-500">{{ cpuLabel }}</p>
+              </div>
+
+              <!-- Memory Usage -->
+              <div class="text-center">
+                <div class="w-14 h-14 mx-auto mb-3 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shadow-lg">
+                  <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/>
+                  </svg>
+                </div>
+                <h4 class="text-sm font-semibold text-slate-300 mb-1">Memory</h4>
+                <p class="text-lg font-bold text-purple-400">{{ formatBytes((vmStats.memory_mb || 0) * 1024 * 1024) }}</p>
+                <p class="text-xs text-slate-500">Usage</p>
+              </div>
+
+              <!-- Disk I/O -->
+              <div class="text-center">
+                <div class="w-14 h-14 mx-auto mb-3 rounded-xl bg-gradient-to-br from-green-500 to-teal-500 flex items-center justify-center shadow-lg">
+                  <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3-3m0 0l-3 3m3-3v12"/>
+                  </svg>
+                </div>
+                <h4 class="text-sm font-semibold text-slate-300 mb-1">Disk I/O</h4>
+                <p class="text-xs font-medium text-green-400">R: {{ (vmStats.disk_read_kib_per_sec || 0).toFixed(1) }} KiB/s</p>
+                <p class="text-xs font-medium text-green-300">W: {{ (vmStats.disk_write_kib_per_sec || 0).toFixed(1) }} KiB/s</p>
+              </div>
+
+              <!-- Network I/O -->
+              <div class="text-center">
+                <div class="w-14 h-14 mx-auto mb-3 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-500 flex items-center justify-center shadow-lg">
+                  <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                  </svg>
+                </div>
+                <h4 class="text-sm font-semibold text-slate-300 mb-1">Network</h4>
+                <p class="text-xs font-medium text-cyan-400">RX: {{ (vmStats.network_rx_mbps || vmStats.network_rx_mb || 0).toFixed(2) }} {{ settings.units.network === 'kb' ? 'KB/s' : 'MB/s' }}</p>
+                <p class="text-xs font-medium text-cyan-300">TX: {{ (vmStats.network_tx_mbps || vmStats.network_tx_mb || 0).toFixed(2) }} {{ settings.units.network === 'kb' ? 'KB/s' : 'MB/s' }}</p>
+              </div>
+
+              <!-- Uptime -->
+              <div class="text-center">
+                <div class="w-14 h-14 mx-auto mb-3 rounded-xl bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center shadow-lg">
+                  <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                  </svg>
+                </div>
+                <h4 class="text-sm font-semibold text-slate-300 mb-1">Uptime</h4>
+                <p class="text-lg font-bold text-orange-400">{{ formatUptime(vmStats.uptime || 0) }}</p>
+                <p class="text-xs text-slate-500">Running</p>
+              </div>
             </div>
           </div>
+        </FCard>
+        
+        <FCard v-else class="card-glow">
+          <div class="p-8 text-center">
+            <div class="flex justify-center mb-4">
+              <svg class="w-12 h-12 text-slate-600" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M3 3a1 1 0 000 2v8a2 2 0 002 2h2.586l-1.293 1.293a1 1 0 101.414 1.414L10 15.414l2.293 2.293a1 1 0 001.414-1.414L12.414 15H15a2 2 0 002-2V5a1 1 0 100-2H3zm11.707 4.707a1 1 0 00-1.414-1.414L10 9.586 6.707 6.293a1 1 0 00-1.414 1.414l4 4a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+              </svg>
+            </div>
+            <h4 class="text-lg font-semibold text-white mb-2">No Performance Data Available</h4>
+            <p class="text-slate-400">Performance metrics are only available when the VM is running.</p>
+          </div>
+        </FCard>
+      </div>
 
-          <!-- Console Preview Content -->
-          <div class="bg-slate-900/50 rounded-lg border border-slate-700/50 overflow-hidden">
-            <div class="bg-black rounded-lg overflow-hidden relative h-44">
-              <!-- Direct console connection attempt -->
-              <div class="absolute inset-0">
-                <!-- VNC Preview Component -->
-                <VNCPreview
-                  v-if="getConsoleType(vm) === 'vnc' && vm"
-                  :host-id="props.hostId"
-                  :vm-name="props.vmName"
-                  :width="280"
-                  :height="175"
-                  class="w-full h-full"
-                />
-                <!-- SPICE Preview Iframe -->
-                <iframe
-                  ref="consolePreviewIframe"
-                  v-else-if="consolePreviewSrc"
-                  :src="consolePreviewSrc"
-                  class="w-full h-full border-0 pointer-events-none"
-                  :title="`${vm?.name || 'VM'} Console Preview`"
-                  scrolling="no"
-                  frameborder="0"
-                  @load="onConsolePreviewLoad"
-                />
-                <div v-else class="w-full h-full bg-slate-800 flex items-center justify-center">
-                  <div class="text-center text-slate-400">
-                    <div class="w-3 h-3 border-2 border-slate-500 border-t-transparent rounded-full animate-spin mx-auto mb-1"></div>
-                    <p class="text-xs">Connecting to console...</p>
+      <!-- Right Column: Console Preview -->
+      <div class="xl:col-span-1">
+        <div v-if="getConsoleType(vm)" class="space-y-6">
+          <FCard class="card-glow">
+            <div class="p-4">
+              <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center gap-3">
+                  <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center">
+                    <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                      <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm0 4a1 1 0 011-1h12a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1V8zm8 2a1 1 0 100 2h2a1 1 0 100-2h-2z" clip-rule="evenodd" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h4 class="text-lg font-bold text-white">Console Preview</h4>
+                    <p class="text-sm text-slate-400">{{ getConsoleStatusText() }}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="flex items-center gap-2 mb-4">
+                <FButton
+                  variant="ghost"
+                  size="sm"
+                  @click="refreshConsolePreview"
+                  title="Refresh Preview"
+                >
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                  </svg>
+                </FButton>
+                <FButton
+                  variant="accent"
+                  size="sm"
+                  @click="openConsole"
+                >
+                  Open Full
+                </FButton>
+              </div>
+
+              <!-- Console Preview Content -->
+              <div class="bg-slate-900/50 rounded-lg border border-slate-700/50 overflow-hidden">
+                <div class="bg-black rounded-lg overflow-hidden relative h-60">
+                  <!-- Direct console connection attempt -->
+                  <div class="absolute inset-0">
+                    <!-- VNC Preview Component -->
+                    <VNCPreview
+                      v-if="getConsoleType(vm) === 'vnc' && vm"
+                      :host-id="props.hostId"
+                      :vm-name="props.vmName"
+                      :width="320"
+                      :height="240"
+                      class="w-full h-full"
+                    />
+                    <!-- SPICE Preview Iframe -->
+                    <iframe
+                      ref="consolePreviewIframe"
+                      v-else-if="consolePreviewSrc"
+                      :src="consolePreviewSrc"
+                      class="w-full h-full border-0 pointer-events-none"
+                      :title="`${vm?.name || 'VM'} Console Preview`"
+                      scrolling="no"
+                      frameborder="0"
+                      @load="onConsolePreviewLoad"
+                    />
+                    <div v-else class="w-full h-full bg-slate-800 flex items-center justify-center">
+                      <div class="text-center text-slate-400">
+                        <div class="w-3 h-3 border-2 border-slate-500 border-t-transparent rounded-full animate-spin mx-auto mb-1"></div>
+                        <p class="text-xs">Connecting to console...</p>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
+          </FCard>
         </div>
+      </div>
+    </div>
+
+    <!-- Fallback for inactive VMs -->
+    <div v-else-if="vm && vm.state !== 'ACTIVE'" class="text-center py-8">
+      <FCard class="card-glow p-8">
+        <div class="flex justify-center mb-4">
+          <svg class="w-12 h-12 text-slate-600" fill="currentColor" viewBox="0 0 20 20">
+            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clip-rule="evenodd" />
+          </svg>
+        </div>
+        <h4 class="text-lg font-semibold text-white mb-2">Virtual Machine Stopped</h4>
+        <p class="text-slate-400">Performance metrics and console preview are only available when the VM is running.</p>
       </FCard>
     </div>
 
