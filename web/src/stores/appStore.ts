@@ -87,6 +87,8 @@ export const useAppStore = defineStore('app', () => {
           if (typeof remote.netSmoothAlpha === 'number') settingsStore.setNetAlpha(remote.netSmoothAlpha);
           if (typeof remote.cpuSmoothAlpha === 'number') settingsStore.setCpuAlpha(remote.cpuSmoothAlpha);
           if (typeof remote.cpuDisplayDefault === 'string') settingsStore.setCpuDefault(remote.cpuDisplayDefault);
+          // Load preview scale preference if present on the server
+          if (typeof remote.previewScale === 'string') settingsStore.setPreviewScale(remote.previewScale);
           if (remote.units) {
             if (remote.units.disk) settingsStore.setUnits('disk', remote.units.disk);
             if (remote.units.network) settingsStore.setUnits('network', remote.units.network);
@@ -212,6 +214,7 @@ export const useAppStore = defineStore('app', () => {
             if (typeof payload.netSmoothAlpha === 'number') settingsStore.setNetAlpha(payload.netSmoothAlpha);
             if (typeof payload.cpuSmoothAlpha === 'number') settingsStore.setCpuAlpha(payload.cpuSmoothAlpha);
             if (typeof payload.cpuDisplayDefault === 'string') settingsStore.setCpuDefault(payload.cpuDisplayDefault);
+              if (typeof payload.previewScale === 'string') settingsStore.setPreviewScale(payload.previewScale);
             if (payload.units) {
               if (payload.units.disk) settingsStore.setUnits('disk', payload.units.disk);
               if (payload.units.network) settingsStore.setUnits('network', payload.units.network);

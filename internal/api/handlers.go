@@ -830,9 +830,35 @@ func (h *APIHandler) GetDashboardOverview(w http.ResponseWriter, r *http.Request
 
 // GetMetricsSettings returns persistent metrics settings (smoothing, units, cpu default)
 func (h *APIHandler) GetMetricsSettings(w http.ResponseWriter, r *http.Request) {
-	// Look up the global metrics settings row
+	// Try to look up a user-scoped metrics settings row if X-User-Id header is provided.
 	var s storage.Setting
-	if err := h.DB.Where("key = ?", "metrics:global").First(&s).Error; err != nil {
+	var err error
+	userHeader := r.Header.Get("X-User-Id")
+	if userHeader != "" {
+		if parsed, perr := strconv.ParseUint(userHeader, 10, 64); perr == nil {
+			// Prefer owner-scoped (user) setting
+			uid := uint(parsed)
+			err = h.DB.Where("key = ? AND owner_type = ? AND owner_id = ?", "metrics:global", "user", uid).First(&s).Error
+			if err == nil {
+				var payload map[string]interface{}
+				if uerr := json.Unmarshal([]byte(s.ValueJSON), &payload); uerr != nil {
+					h.HandleError(w, uerr, "parse_metrics_settings")
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(payload)
+				return
+			}
+			// if not found, fall through to global
+			if err != gorm.ErrRecordNotFound {
+				h.HandleError(w, err, "get_metrics_settings")
+				return
+			}
+		}
+	}
+
+	// Look up the global metrics settings row
+	if err = h.DB.Where("key = ?", "metrics:global").First(&s).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			// Return defaults if not found
 			w.Header().Set("Content-Type", "application/json")
@@ -840,6 +866,7 @@ func (h *APIHandler) GetMetricsSettings(w http.ResponseWriter, r *http.Request) 
 				"diskSmoothAlpha":   0.3,
 				"netSmoothAlpha":    0.6,
 				"cpuDisplayDefault": "host",
+				"previewScale":      "fit",
 				"units":             map[string]string{"disk": "kib", "network": "mb"},
 			})
 			return
@@ -937,6 +964,13 @@ func (h *APIHandler) UpdateMetricsSettings(w http.ResponseWriter, r *http.Reques
 			return
 		}
 	}
+	if v, ok := payload["previewScale"]; ok {
+		if sVal, ok2 := v.(string); !ok2 || (sVal != "fit" && sVal != "fill") {
+			apiErr := NewAPIError(ErrorCodeValidation, "Invalid previewScale", "Expected one of 'fit','fill'")
+			WriteError(w, apiErr, http.StatusBadRequest)
+			return
+		}
+	}
 	if v, ok := payload["units"]; ok {
 		if unitsMap, ok2 := v.(map[string]interface{}); ok2 {
 			if d, ok3 := unitsMap["disk"]; ok3 {
@@ -967,7 +1001,47 @@ func (h *APIHandler) UpdateMetricsSettings(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// Determine if request is for a user-scoped setting via X-User-Id header.
+	userHeader := r.Header.Get("X-User-Id")
 	var s storage.Setting
+	if userHeader != "" {
+		if parsed, perr := strconv.ParseUint(userHeader, 10, 64); perr == nil {
+			uid := uint(parsed)
+			// Upsert user-scoped setting
+			if err := h.DB.Where("key = ? AND owner_type = ? AND owner_id = ?", "metrics:global", "user", uid).First(&s).Error; err != nil {
+				if err == gorm.ErrRecordNotFound {
+					s = storage.Setting{Key: "metrics:global", ValueJSON: string(b), OwnerType: "user", OwnerID: &uid}
+					if err := h.DB.Create(&s).Error; err != nil {
+						h.HandleError(w, err, "create_metrics_settings")
+						return
+					}
+					w.WriteHeader(http.StatusNoContent)
+					return
+				}
+				h.HandleError(w, err, "update_metrics_settings")
+				return
+			}
+			// Update existing user-scoped
+			s.ValueJSON = string(b)
+			if err := h.DB.Save(&s).Error; err != nil {
+				h.HandleError(w, err, "save_metrics_settings")
+				return
+			}
+			// Broadcast scoped update (include owner info so clients may ignore if not relevant)
+			var payloadMap map[string]interface{}
+			if err := json.Unmarshal([]byte(s.ValueJSON), &payloadMap); err == nil {
+				payloadMap["ownerType"] = "user"
+				payloadMap["ownerId"] = uid
+				if h.Hub != nil {
+					h.Hub.BroadcastMessage(ws.Message{Type: "metrics-settings-changed", Payload: payloadMap})
+				}
+			}
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+	}
+
+	// Fallback to global persistence
 	if err := h.DB.Where("key = ?", "metrics:global").First(&s).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			s = storage.Setting{Key: "metrics:global", ValueJSON: string(b), OwnerType: "global"}
@@ -982,7 +1056,7 @@ func (h *APIHandler) UpdateMetricsSettings(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Update existing
+	// Update existing global
 	s.ValueJSON = string(b)
 	if err := h.DB.Save(&s).Error; err != nil {
 		h.HandleError(w, err, "save_metrics_settings")

@@ -63,6 +63,20 @@
                 <option value="light">Light</option>
               </select>
             </div>
+            <div class="flex items-center justify-between">
+              <div>
+                <span class="text-sm text-slate-300">Console Preview Scaling</span>
+                <p class="text-xs text-slate-400">Choose how console previews should be scaled in cards</p>
+              </div>
+              <select
+                v-model="settingsStore.previewScale"
+                @change="handlePreviewScaleChange"
+                class="px-3 py-1 bg-slate-800/50 border border-slate-600/50 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/50"
+              >
+                <option value="fit">Fit (preserve framebuffer size)</option>
+                <option value="fill">Fill (scale to fill preview)</option>
+              </select>
+            </div>
           </div>
         </div>
       </FCard>
@@ -198,6 +212,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useHostStore } from '@/stores/hostStore'
 import { useVMStore } from '@/stores/vmStore'
 import { useSettingsStore } from '@/stores/settingsStore'
+import { useUIStore } from '@/stores/uiStore'
 import { useTheme } from '@/composables/useTheme'
 import { useUserPreferences } from '@/composables/useUserPreferences'
 import FCard from '@/components/ui/FCard.vue'
@@ -242,6 +257,19 @@ const handleClearCache = () => {
 const resetViewPreferences = () => {
   if (confirm('Reset view preferences to defaults?')) {
     userPrefs.resetPreferences()
+  }
+}
+
+const handlePreviewScaleChange = async () => {
+  try {
+    // Persist previewScale via settings API
+    const { settingsApi } = await import('@/services/api')
+    await settingsApi.updateMetrics({ previewScale: settingsStore.previewScale })
+    const uiStore = useUIStore()
+    uiStore.addToast('Preview scaling preference saved', 'success', 3000)
+  } catch (e) {
+    const uiStore = useUIStore()
+    uiStore.addToast('Failed to save preview scaling preference', 'error', 5000)
   }
 }
 

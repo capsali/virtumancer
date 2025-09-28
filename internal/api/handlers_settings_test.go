@@ -119,7 +119,7 @@ func TestUpdateMetricsValidation(t *testing.T) {
 	}
 
 	// valid payload
-	body2 := map[string]interface{}{"diskSmoothAlpha": 0.4, "netSmoothAlpha": 0.2, "cpuSmoothAlpha": 0.1, "cpuDisplayDefault": "guest", "units": map[string]string{"disk": "mib", "network": "kb"}}
+	body2 := map[string]interface{}{"diskSmoothAlpha": 0.4, "netSmoothAlpha": 0.2, "cpuSmoothAlpha": 0.1, "cpuDisplayDefault": "guest", "units": map[string]string{"disk": "mib", "network": "kb"}, "previewScale": "fill"}
 	b2, _ := json.Marshal(body2)
 	rr2 := httptest.NewRecorder()
 	req2 := httptest.NewRequest("PUT", "/api/v1/settings/metrics", bytes.NewReader(b2))
@@ -139,6 +139,9 @@ func TestUpdateMetricsValidation(t *testing.T) {
 	}
 	if parsed["cpuDisplayDefault"] != "guest" {
 		t.Fatalf("stored cpuDisplayDefault mismatch: %v", parsed["cpuDisplayDefault"])
+	}
+	if parsed["previewScale"] != "fill" {
+		t.Fatalf("stored previewScale mismatch: %v", parsed["previewScale"])
 	}
 }
 
@@ -166,5 +169,36 @@ func TestGetRuntimeMetricsIncludesCpuDisplayDefault(t *testing.T) {
 	}
 	if out["cpuDisplayDefault"] != "raw" {
 		t.Fatalf("expected cpuDisplayDefault 'raw', got %v", out["cpuDisplayDefault"])
+	}
+}
+
+func TestUserScopedMetricsPersistence(t *testing.T) {
+	h, db := setupTestHandler(t)
+
+	// valid payload for user 42
+	body := map[string]interface{}{"previewScale": "fill"}
+	b, _ := json.Marshal(body)
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest("PUT", "/api/v1/settings/metrics", bytes.NewReader(b))
+	req.Header.Set("X-User-Id", "42")
+	h.UpdateMetricsSettings(rr, req)
+	if rr.Code != http.StatusNoContent {
+		t.Fatalf("expected 204 no content, got %d", rr.Code)
+	}
+
+	// ensure persisted with owner_type=user and owner_id=42
+	var s storage.Setting
+	if err := db.Where("key = ? AND owner_type = ?", "metrics:global", "user").First(&s).Error; err != nil {
+		t.Fatalf("user-scoped setting not persisted: %v", err)
+	}
+	if s.OwnerID == nil || *s.OwnerID != 42 {
+		t.Fatalf("owner id mismatch: %v", s.OwnerID)
+	}
+	var parsed map[string]interface{}
+	if err := json.Unmarshal([]byte(s.ValueJSON), &parsed); err != nil {
+		t.Fatalf("invalid stored JSON: %v", err)
+	}
+	if parsed["previewScale"] != "fill" {
+		t.Fatalf("stored previewScale mismatch: %v", parsed["previewScale"])
 	}
 }

@@ -10,12 +10,15 @@ export const useSettingsStore = defineStore('settings', () => {
     disk: 'kib', // options: 'kib', 'mib'
     network: 'mb', // options: 'kb','mb'
   })
+  // Preview scaling: 'fit' keeps original behavior, 'fill' scales framebuffer to fill preview card
+  const previewScale = ref<'fit'|'fill'>('fit')
 
   function setDiskAlpha(v: number) { diskSmoothAlpha.value = Math.max(0, Math.min(1, v)) }
   function setNetAlpha(v: number) { netSmoothAlpha.value = Math.max(0, Math.min(1, v)) }
   function setCpuAlpha(v: number) { cpuSmoothAlpha.value = Math.max(0, Math.min(1, v)) }
   function setCpuDefault(v: 'host'|'guest'|'raw') { cpuDisplayDefault.value = v }
   function setUnits(metric: 'disk'|'network', u: string) { units.value[metric] = u }
+  function setPreviewScale(s: 'fit'|'fill') { previewScale.value = s }
 
   return {
     diskSmoothAlpha,
@@ -23,10 +26,12 @@ export const useSettingsStore = defineStore('settings', () => {
   cpuSmoothAlpha,
     cpuDisplayDefault,
     units,
+  previewScale,
     setDiskAlpha,
     setNetAlpha,
   setCpuAlpha,
     setCpuDefault,
     setUnits,
+  setPreviewScale,
   }
 })

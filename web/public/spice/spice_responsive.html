@@ -345,6 +345,30 @@
             window.addEventListener('beforeunload', function() {
                 disconnect();
             });
+
+            // Listen for parent messages to toggle 'fill' scaling
+            window.addEventListener('message', function(e) {
+                try {
+                    if (e.data && e.data.type === 'spice-toggle-scale') {
+                        var mode = e.data.mode; // 'fit' or 'fill'
+                        var canvas = document.querySelector('.spice-screen canvas');
+                        if (canvas) {
+                            if (mode === 'fill') {
+                                canvas.style.transformOrigin = 'center center';
+                                // use CSS transform to scale up
+                                var scaleX = (document.getElementById('spice-screen').offsetWidth) / canvas.width;
+                                var scaleY = (document.getElementById('spice-screen').offsetHeight) / canvas.height;
+                                var scale = Math.max(scaleX, scaleY);
+                                canvas.style.transform = 'scale(' + scale + ')';
+                            } else {
+                                canvas.style.transform = '';
+                            }
+                        }
+                    }
+                } catch (err) {
+                    console.error('Error handling spice-toggle-scale message', err);
+                }
+            });
         </script>
     </head>
 

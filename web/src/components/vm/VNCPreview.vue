@@ -21,6 +21,7 @@
 import { ref, onMounted, onUnmounted, watch } from 'vue';
 // @ts-ignore
 import RFB from '@novnc/novnc/lib/rfb';
+import { useSettingsStore } from '@/stores/settingsStore';
 
 interface Props {
   hostId: string;
@@ -38,6 +39,8 @@ const screen = ref<HTMLDivElement | null>(null);
 const rfb = ref<RFB | null>(null);
 const connectionStatus = ref<'Connecting' | 'Connected' | 'Error'>('Connecting');
 const statusMessage = ref<string>('Connecting...');
+
+const settings = useSettingsStore();
 
 // Watch for prop changes to reconnect
 watch(() => [props.hostId, props.vmName], () => {
@@ -103,6 +106,20 @@ const onConnect = (): void => {
       canvas.style.maxWidth = '100%';
       canvas.style.maxHeight = '100%';
       canvas.style.objectFit = 'contain';
+        // If previewScale is fill, scale canvas to fill the preview container
+        if (settings.previewScale === 'fill') {
+          // compute required scale
+          const containerRect = screen.value!.getBoundingClientRect();
+          const scaleX = containerRect.width / canvas.width;
+          const scaleY = containerRect.height / canvas.height;
+          const scale = Math.max(scaleX, scaleY);
+          canvas.style.transformOrigin = 'center center';
+          canvas.style.transform = `scale(${scale})`;
+          canvas.style.maxWidth = 'none';
+          canvas.style.maxHeight = 'none';
+        } else {
+          canvas.style.transform = '';
+        }
     }
   }
 };

@@ -771,6 +771,16 @@ const consolePreviewSrc = computed(() => {
 // Console preview handlers
 const onConsolePreviewLoad = () => {
   consoleConnected.value = true;
+  // If we have a spice iframe and user prefers 'fill', tell iframe to scale
+  try {
+    const iframe = consolePreviewIframe.value;
+    const settings = useSettingsStore();
+    if (iframe && iframe.contentWindow) {
+      iframe.contentWindow.postMessage({ type: 'spice-toggle-scale', mode: settings.previewScale }, '*');
+    }
+  } catch (err) {
+    console.debug('Failed to post scale message to spice iframe', err);
+  }
 };
 
 // ...existing code...
