@@ -265,6 +265,8 @@ interface BackendVMResponse {
   memory: number;
   cpu_time: number;
   uptime: number;
+  disk_size_gb?: number;
+  network_interface?: string;
 }
 
 // Transform backend VM response to frontend VirtualMachine interface
@@ -285,8 +287,8 @@ function transformBackendVMToFrontend(backendVM: BackendVMResponse, hostId: stri
     memoryMB: Math.round(backendVM.memory_bytes / (1024 * 1024)), // Convert bytes to MB
     osType: backendVM.os_type,
     bootDevice: '', // Not provided by backend, set default
-    diskSizeGB: 0, // Not provided by backend, set default  
-    networkInterface: '', // Not provided by backend, set default
+    diskSizeGB: backendVM.disk_size_gb || 0,
+    networkInterface: backendVM.network_interface || '',
     syncStatus: backendVM.sync_status as any,
     graphics: backendVM.graphics,
     createdAt: '', // Not provided by backend, set default

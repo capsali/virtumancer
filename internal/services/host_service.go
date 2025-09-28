@@ -49,6 +49,10 @@ type VMView struct {
 	Memory  uint64 `json:"memory"`
 	CpuTime uint64 `json:"cpu_time"`
 	Uptime  int64  `json:"uptime"`
+	
+	// Computed fields for frontend display
+	DiskSizeGB       float64 `json:"disk_size_gb,omitempty"`
+	NetworkInterface string  `json:"network_interface,omitempty"`
 }
 
 // ProcessedVMStats holds frontend-friendly VM statistics with calculated metrics
@@ -826,6 +830,10 @@ func (s *HostService) GetVMsForHostFromDB(hostID string) ([]VMView, error) {
 			}
 		*/
 
+		// Calculate disk size and get primary network interface
+		diskSizeGB := s.calculateVMDiskSize(dbVM.UUID)
+		networkInterface := s.getPrimaryNetworkInterface(dbVM.UUID)
+		
 		vmViews = append(vmViews, VMView{
 			Name:            dbVM.Name,
 			UUID:            dbVM.UUID,
@@ -846,9 +854,56 @@ func (s *HostService) GetVMsForHostFromDB(hostID string) ([]VMView, error) {
 			NeedsRebuild:    dbVM.NeedsRebuild,
 			// Live data
 			Uptime: liveData.Uptime,
+			// Computed fields
+			DiskSizeGB:       diskSizeGB,
+			NetworkInterface: networkInterface,
 		})
 	}
 	return vmViews, nil
+}
+
+// calculateVMDiskSize calculates the total disk size in GB for a VM based on volume attachments
+func (s *HostService) calculateVMDiskSize(vmUUID string) float64 {
+	var totalSizeBytes uint64 = 0
+	
+	var volumeAttachments []storage.VolumeAttachment
+	if err := s.db.Preload("Volume").Where("vm_uuid = ?", vmUUID).Find(&volumeAttachments).Error; err != nil {
+		log.Verbosef("Failed to get volume attachments for VM %s: %v", vmUUID, err)
+		return 0
+	}
+	
+	for _, attachment := range volumeAttachments {
+		totalSizeBytes += attachment.Volume.CapacityBytes
+	}
+	
+	// Convert bytes to GB
+	return float64(totalSizeBytes) / (1024 * 1024 * 1024)
+}
+
+// getPrimaryNetworkInterface gets the primary network interface/bridge name for a VM
+func (s *HostService) getPrimaryNetworkInterface(vmUUID string) string {
+	var portAttachments []storage.PortAttachment
+	if err := s.db.Preload("Port").Where("vm_uuid = ?", vmUUID).Find(&portAttachments).Error; err != nil {
+		log.Verbosef("Failed to get port attachments for VM %s: %v", vmUUID, err)
+		return ""
+	}
+	
+	if len(portAttachments) == 0 {
+		return ""
+	}
+	
+	// Get the network for the first port attachment
+	var portBinding storage.PortBinding
+	if err := s.db.Preload("Network").Where("port_id = ?", portAttachments[0].PortID).First(&portBinding).Error; err != nil {
+		log.Verbosef("Failed to get port binding for VM %s: %v", vmUUID, err)
+		return ""
+	}
+	
+	if portBinding.Network.BridgeName != "" {
+		return portBinding.Network.BridgeName
+	}
+	
+	return portBinding.Network.Name
 }
 
 func (s *HostService) getVMHardwareFromDB(hostID, vmName string) (*libvirt.HardwareInfo, error) {
@@ -1357,10 +1412,27 @@ func (s *HostService) ingestVMFromLibvirt(hostID, vmName string) (bool, error) {
 					tx.Rollback()
 					return false, fmt.Errorf("failed to sync hardware for restored VM during ingestion: %w", err)
 				}
-				// Update OS type on the restored VM record
+				
+				// Update hardware details on the restored VM record
+				updates := make(map[string]interface{})
+				
+				// Update OS type
 				if hw.OSType != "" {
-					if err := tx.Model(&softVM).Update("os_type", hw.OSType).Error; err != nil {
-						log.Verbosef("Warning: failed to update OS type for restored VM %s: %v", vmName, err)
+					updates["os_type"] = hw.OSType
+				}
+				
+				// Update CPU model from hardware info
+				if hw.CPUInfo != nil && hw.CPUInfo.Model != "" {
+					updates["cpu_model"] = hw.CPUInfo.Model
+				} else if hw.CPUInfo != nil && hw.CPUInfo.Mode != "" {
+					// If no specific model, use the mode (e.g., "host-passthrough")
+					updates["cpu_model"] = hw.CPUInfo.Mode
+				}
+				
+				// Apply updates if any
+				if len(updates) > 0 {
+					if err := tx.Model(&softVM).Updates(updates).Error; err != nil {
+						log.Verbosef("Warning: failed to update hardware details for restored VM %s: %v", vmName, err)
 					}
 				}
 			}
@@ -1421,11 +1493,30 @@ func (s *HostService) ingestVMFromLibvirt(hostID, vmName string) (bool, error) {
 			tx.Rollback()
 			return false, fmt.Errorf("failed to sync hardware during ingestion: %w", err)
 		}
-		// Update OS type on the VM record
+		
+		// Update VM record with hardware details
+		updates := make(map[string]interface{})
+		
+		// Update OS type
 		if hw.OSType != "" {
 			newVM.OSType = hw.OSType
-			if err := tx.Model(&newVM).Update("os_type", hw.OSType).Error; err != nil {
-				log.Verbosef("Warning: failed to update OS type for VM %s: %v", vmName, err)
+			updates["os_type"] = hw.OSType
+		}
+		
+		// Update CPU model from hardware info
+		if hw.CPUInfo != nil && hw.CPUInfo.Model != "" {
+			newVM.CPUModel = hw.CPUInfo.Model
+			updates["cpu_model"] = hw.CPUInfo.Model
+		} else if hw.CPUInfo != nil && hw.CPUInfo.Mode != "" {
+			// If no specific model, use the mode (e.g., "host-passthrough")
+			newVM.CPUModel = hw.CPUInfo.Mode
+			updates["cpu_model"] = hw.CPUInfo.Mode
+		}
+		
+		// Apply updates if any
+		if len(updates) > 0 {
+			if err := tx.Model(&newVM).Updates(updates).Error; err != nil {
+				log.Verbosef("Warning: failed to update hardware details for VM %s: %v", vmName, err)
 			}
 		}
 	}
@@ -3316,8 +3407,17 @@ func (s *HostService) SyncVMFromLibvirt(hostID, vmName string) error {
 		"DriftDetails": "",
 		"NeedsRebuild": false,
 	}
-	if hardwareInfo != nil && hardwareInfo.OSType != "" {
-		updates["OSType"] = hardwareInfo.OSType
+	if hardwareInfo != nil {
+		if hardwareInfo.OSType != "" {
+			updates["OSType"] = hardwareInfo.OSType
+		}
+		// Update CPU model from hardware info
+		if hardwareInfo.CPUInfo != nil && hardwareInfo.CPUInfo.Model != "" {
+			updates["CPUModel"] = hardwareInfo.CPUInfo.Model
+		} else if hardwareInfo.CPUInfo != nil && hardwareInfo.CPUInfo.Mode != "" {
+			// If no specific model, use the mode (e.g., "host-passthrough")
+			updates["CPUModel"] = hardwareInfo.CPUInfo.Mode
+		}
 	}
 	if err := tx.Model(&vmToUpdate).Updates(updates).Error; err != nil {
 		tx.Rollback()
