@@ -49,7 +49,7 @@
             class="px-3 py-2"
             title="Start VM"
           >
-            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
               <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" />
             </svg>
           </FButton>
@@ -64,7 +64,7 @@
               class="px-3 py-2"
               title="Shutdown VM"
             >
-              <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                 <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clip-rule="evenodd" />
               </svg>
             </FButton>
@@ -77,10 +77,38 @@
               class="px-3 py-2"
               title="Reboot VM"
             >
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
               </svg>
             </FButton>
+            
+            <FButton
+              variant="ghost"
+              size="sm"
+              @click="handleVMAction('forceOff')"
+              :disabled="!!vm.taskState"
+              class="px-3 py-2 text-orange-400 hover:bg-orange-500/10"
+              title="Force Off VM"
+            >
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+              </svg>
+            </FButton>
+            
+            <FButton
+              variant="ghost"
+              size="sm"
+              @click="handleVMAction('forceReset')"
+              :disabled="!!vm.taskState"
+              class="px-3 py-2 text-red-400 hover:bg-red-500/10"
+              title="Force Reset VM"
+            >
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+              </svg>
+            </FButton>
+            
+            <div class="w-px h-6 bg-slate-600 mx-1"></div>
             
             <FButton
               variant="accent"
@@ -89,32 +117,19 @@
               class="px-3 py-2"
               title="Open Console"
             >
-              <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                 <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm0 4a1 1 0 011-1h12a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1V8zm8 2a1 1 0 100 2h2a1 1 0 100-2h-2z" clip-rule="evenodd" />
               </svg>
             </FButton>
           </div>
         </div>
-        
-        <!-- Settings/Hardware Config Button -->
-        <FButton
-          variant="ghost"
-          size="sm"
-          @click="showExtendedHardwareModal = true"
-          class="p-3"
-          title="Hardware Configuration"
-        >
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
-          </svg>
-        </FButton>
       </div>
     </div>
 
 
 
     <!-- VM Information - Wide Card -->
-    <FCard v-if="vm" class="card-glow">
+    <FCard v-if="vm" class="card-glow cursor-pointer hover:shadow-lg transition-shadow duration-200" @click="showVMDetailModal = true">
       <div class="p-6">
         <div class="flex items-center gap-4 mb-6">
           <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-purple-500 to-violet-500 flex items-center justify-center shadow-lg">
@@ -252,11 +267,10 @@
       <div class="flex items-center justify-between">
         <h3 class="text-xl font-bold text-white">Performance Metrics</h3>
         <div class="flex items-center gap-3">
-          <FButton variant="outline" size="sm" @click="showMetricSettings = true">
-            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <FButton variant="outline" size="sm" @click="showMetricSettings = true" title="Metrics Settings">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
             </svg>
-            Metrics
           </FButton>
           <FButton
             variant="ghost"
@@ -420,21 +434,23 @@
         <div class="bg-slate-900/50 rounded-lg border border-slate-700/50 overflow-hidden">
           <!-- Active Console Preview -->
           <div v-if="vm.state === 'ACTIVE' && getConsoleType(vm)" class="relative">
-            <div class="aspect-video bg-black rounded-lg overflow-hidden relative group">
+            <div class="aspect-[4/3] bg-black rounded-lg overflow-hidden relative group">
               <!-- Console Preview iframe (scaled down) -->
-              <div class="absolute inset-0 transform scale-50 origin-top-left w-[200%] h-[200%] pointer-events-none">
+              <div class="absolute inset-0 transform scale-[0.35] origin-top-left w-[285%] h-[285%] pointer-events-none">
                 <iframe
+                  ref="consolePreviewIframe"
                   v-if="consolePreviewSrc"
                   :src="consolePreviewSrc"
                   class="w-full h-full border-0"
                   :title="`${vm.name} Console Preview`"
                   scrolling="no"
                   frameborder="0"
+                  @load="onConsolePreviewLoad"
                 />
                 <div v-else class="w-full h-full bg-slate-800 flex items-center justify-center">
                   <div class="text-center text-slate-400">
-                    <div class="w-8 h-8 border-2 border-slate-500 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
-                    <p class="text-sm">Loading console...</p>
+                    <div class="w-6 h-6 border-2 border-slate-500 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                    <p class="text-xs">Connecting to console...</p>
                   </div>
                 </div>
               </div>
@@ -442,24 +458,37 @@
               <!-- Overlay with click to expand -->
               <div class="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center cursor-pointer"
                    @click="openConsole">
-                <div class="bg-white/10 backdrop-blur-sm rounded-lg px-4 py-2 text-white font-medium">
-                  <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div class="bg-white/10 backdrop-blur-sm rounded-lg px-3 py-1.5 text-white font-medium text-sm">
+                  <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-2M14 4h6m0 0v6m0-6L10 14"/>
                   </svg>
-                  Click to expand
+                  Expand
                 </div>
               </div>
             </div>
             
             <!-- Console Info -->
-            <div class="p-4 bg-slate-800/30">
+            <div class="p-3 bg-slate-800/30">
               <div class="flex items-center justify-between">
-                <div class="flex items-center gap-3">
-                  <div class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                  <span class="text-sm text-slate-300 font-medium">{{ getConsoleDisplayName(vm)?.toUpperCase() }} Console Active</span>
+                <div class="flex items-center gap-2">
+                  <div :class="[
+                    'w-2 h-2 rounded-full',
+                    consoleConnected ? 'bg-green-400 animate-pulse' : 'bg-yellow-400'
+                  ]"></div>
+                  <span class="text-xs text-slate-300 font-medium">
+                    {{ getConsoleDisplayName(vm)?.toUpperCase() }} {{ consoleConnected ? 'Connected' : 'Connecting...' }}
+                  </span>
                 </div>
-                <div class="text-xs text-slate-500">
-                  Click preview to open full console
+                <div class="flex items-center gap-1">
+                  <button
+                    @click="refreshConsolePreview"
+                    class="text-xs text-slate-500 hover:text-slate-300 transition-colors p-1"
+                    title="Refresh console"
+                  >
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                    </svg>
+                  </button>
                 </div>
               </div>
             </div>
@@ -502,58 +531,7 @@
       </div>
     </FCard>
 
-    <!-- Advanced Actions -->
-    <FCard v-if="vm" class="p-6 card-glow">
-      <h3 class="text-lg font-semibold text-white mb-4">Advanced Actions</h3>
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <FButton
-          variant="ghost"
-          @click="handleVMAction('sync')"
-          :disabled="!!vm.taskState"
-          class="flex items-center gap-2"
-        >
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-          </svg>
-          Sync from Libvirt
-        </FButton>
-        <FButton
-          variant="ghost"
-          @click="handleVMAction('rebuild')"
-          :disabled="!!vm.taskState"
-          class="flex items-center gap-2"
-        >
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-          </svg>
-          Rebuild from DB
-        </FButton>
-        <FButton
-          v-if="vm.state === 'ACTIVE'"
-          variant="ghost"
-          @click="handleVMAction('forceOff')"
-          :disabled="!!vm.taskState"
-          class="text-orange-400 hover:bg-orange-500/10 flex items-center gap-2"
-        >
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
-          </svg>
-          Force Off
-        </FButton>
-        <FButton
-          v-if="vm.state === 'ACTIVE'"
-          variant="ghost"
-          @click="handleVMAction('forceReset')"
-          :disabled="!!vm.taskState"
-          class="text-red-400 hover:bg-red-500/10 flex items-center gap-2"
-        >
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
-          </svg>
-          Force Reset
-        </FButton>
-      </div>
-    </FCard>
+
 
     <!-- Loading State -->
     <div v-if="!vm" class="flex items-center justify-center py-12">
@@ -585,11 +563,20 @@
       @close="showMetricSettings = false"
       @applied="refreshStats"
     />
+
+    <!-- VM Detail Modal -->
+    <VMDetailModal
+      v-if="vm"
+      :show="showVMDetailModal"
+      :vm="vm"
+      @close="showVMDetailModal = false"
+      @edit-hardware="() => { showVMDetailModal = false; showExtendedHardwareModal = true; }"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useVMStore } from '@/stores/vmStore';
 import { useUIStore } from '@/stores/uiStore';
@@ -600,6 +587,7 @@ import FBreadcrumbs from '@/components/ui/FBreadcrumbs.vue';
 import FBackButton from '@/components/ui/FBackButton.vue';
 import VMHardwareConfigModalExtended from '@/components/modals/VMHardwareConfigModalExtended.vue';
 import MetricSettingsModal from '@/components/modals/MetricSettingsModal.vue';
+import VMDetailModal from '@/components/modals/VMDetailModal.vue';
 import type { VirtualMachine, VMStats } from '@/types';
 import { wsManager } from '@/services/api';
 import { getConsoleRoute, getConsoleType, getConsoleDisplayName } from '@/utils/console';
@@ -624,28 +612,81 @@ const loadingStats = ref(false);
 const showExtendedHardwareModal = ref(false);
 // simplified CPU display: show smoothed host-normalized `cpu_percent`
 const showMetricSettings = ref(false);
+const showVMDetailModal = ref(false);
 
-// Console preview
+// Console preview state
+const consolePreviewIframe = ref<HTMLIFrameElement | null>(null);
+const consoleConnected = ref(false);
+const consoleRefreshKey = ref(0);
+
+// Console preview source
 const consolePreviewSrc = computed(() => {
   if (!vm.value || vm.value.state !== 'ACTIVE' || !getConsoleType(vm.value)) {
     return null;
   }
 
+  const consoleType = getConsoleType(vm.value);
   const host = window.location.hostname;
   const port = window.location.port || (window.location.protocol === 'https:' ? '443' : '80');
-  const path = `api/v1/hosts/${props.hostId}/vms/${props.vmName}/spice`;
   
-  const params = new URLSearchParams({
-    host,
-    port,
-    path,
-    autoconnect: '1',
-    resize: 'scale',
-    show_control: '0'
-  });
-
-  return `/spice/spice_responsive.html?${params.toString()}`;
+  if (consoleType === 'spice') {
+    const path = `api/v1/hosts/${props.hostId}/vms/${props.vmName}/spice`;
+    const params = new URLSearchParams({
+      host,
+      port,
+      path,
+      autoconnect: '1',
+      resize: 'scale',
+      show_control: '0',
+      _refresh: consoleRefreshKey.value.toString()
+    });
+    return `/spice/spice_responsive.html?${params.toString()}`;
+  } else if (consoleType === 'vnc') {
+    const path = `api/v1/hosts/${props.hostId}/vms/${props.vmName}/vnc`;
+    const params = new URLSearchParams({
+      host,
+      port,
+      path,
+      autoconnect: 'true',
+      resize: 'scale',
+      _refresh: consoleRefreshKey.value.toString()
+    });
+    return `/vnc/vnc.html?${params.toString()}`;
+  }
+  
+  return null;
 });
+
+// Console preview handlers
+const onConsolePreviewLoad = () => {
+  consoleConnected.value = true;
+};
+
+const refreshConsolePreview = () => {
+  consoleConnected.value = false;
+  consoleRefreshKey.value++;
+};
+
+// Auto-refresh console preview every 30 seconds when active
+let consoleRefreshInterval: number | null = null;
+
+const startConsoleRefresh = () => {
+  if (consoleRefreshInterval) {
+    clearInterval(consoleRefreshInterval);
+  }
+  consoleRefreshInterval = setInterval(() => {
+    if (vm.value?.state === 'ACTIVE' && getConsoleType(vm.value)) {
+      refreshConsolePreview();
+    }
+  }, 30000); // Refresh every 30 seconds
+};
+
+const stopConsoleRefresh = () => {
+  if (consoleRefreshInterval) {
+    clearInterval(consoleRefreshInterval);
+    consoleRefreshInterval = null;
+  }
+};
 
 // Console status text
 const getConsoleStatusText = (): string => {
@@ -737,6 +778,14 @@ const loadVM = async (): Promise<void> => {
     error.value = err instanceof Error ? err.message : 'Failed to load VM details';
   }
 };
+
+// Watch for route parameter changes to reload VM data
+watch(() => [props.hostId, props.vmName], () => {
+  loadVM().then(() => {
+    startStatsMonitoring();
+    startConsoleRefresh();
+  });
+}, { immediate: false });
 
 // Refresh performance stats
 const refreshStats = async (): Promise<void> => {
@@ -853,24 +902,50 @@ let isSubscribed = false;
 
 const startStatsMonitoring = (): void => {
   if (vm.value?.state === 'ACTIVE' && !isSubscribed) {
-    console.log(`Subscribing to VM stats: ${props.hostId}/${vm.value.name}`);
+    console.log(`Starting stats monitoring for VM: ${props.hostId}/${vm.value.name}`);
     
-    // Connect WebSocket if not connected
+    // Always do an initial fetch first
+    refreshStats();
+    
+    // Connect WebSocket for real-time updates
     wsManager.connect().then(() => {
-      // Subscribe to stats updates
-      wsManager.subscribeToVMStats(props.hostId, vm.value!.name);
-      isSubscribed = true;
-      
-      // Listen for stats updates
-      wsManager.on('vm-stats-updated', handleStatsUpdate);
-      
-      // Also do an initial fetch
-      refreshStats();
+      if (vm.value?.state === 'ACTIVE' && !isSubscribed) {
+        console.log(`Subscribing to VM stats WebSocket: ${props.hostId}/${vm.value.name}`);
+        wsManager.subscribeToVMStats(props.hostId, vm.value.name);
+        isSubscribed = true;
+        
+        // Listen for stats updates
+        wsManager.on('vm-stats-updated', handleStatsUpdate);
+      }
     }).catch(error => {
-      console.error('Failed to connect WebSocket:', error);
-      // Fallback to initial fetch only
-      refreshStats();
+      console.error('Failed to connect WebSocket for stats:', error);
+      // Continue with periodic fetch fallback
+      startStatsFallback();
     });
+  } else if (vm.value?.state === 'ACTIVE') {
+    // If already subscribed but VM might have changed state, refresh stats
+    refreshStats();
+  }
+};
+
+// Fallback to periodic polling if WebSocket fails
+let statsFallbackInterval: number | null = null;
+
+const startStatsFallback = (): void => {
+  if (statsFallbackInterval) {
+    clearInterval(statsFallbackInterval);
+  }
+  statsFallbackInterval = setInterval(() => {
+    if (vm.value?.state === 'ACTIVE') {
+      refreshStats();
+    }
+  }, 5000); // Poll every 5 seconds
+};
+
+const stopStatsFallback = (): void => {
+  if (statsFallbackInterval) {
+    clearInterval(statsFallbackInterval);
+    statsFallbackInterval = null;
   }
 };
 
@@ -881,6 +956,7 @@ const stopStatsMonitoring = (): void => {
     wsManager.off('vm-stats-updated', handleStatsUpdate);
     isSubscribed = false;
   }
+  stopStatsFallback();
 };
 
 // Handle incoming WebSocket stats updates
@@ -898,10 +974,12 @@ const handleStatsUpdate = (data: any): void => {
 onMounted(() => {
   loadVM().then(() => {
     startStatsMonitoring();
+    startConsoleRefresh();
   });
 });
 
 onUnmounted(() => {
   stopStatsMonitoring();
+  stopConsoleRefresh();
 });
 </script>

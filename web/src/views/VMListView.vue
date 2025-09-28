@@ -293,16 +293,16 @@
               
               <!-- Actions Column -->
               <td class="px-6 py-3">
-                <div class="flex items-center gap-1">
+                <div class="flex items-center gap-2">
                 <FButton
                   variant="ghost"
                   size="sm"
                   @click.stop="handleVMAction(vm, 'start')"
                   :disabled="vm.state === 'ACTIVE' || !!vm.taskState"
-                  class="text-xs p-1 xl:px-2"
+                  class="p-2"
                   title="Start VM"
                 >
-                  <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                  <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                     <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" />
                   </svg>
                 </FButton>
@@ -311,10 +311,10 @@
                   size="sm"
                   @click.stop="handleVMAction(vm, 'stop')"
                   :disabled="vm.state === 'STOPPED' || !!vm.taskState"
-                  class="text-xs p-1 xl:px-2"
+                  class="p-2"
                   title="Stop VM"
                 >
-                  <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                  <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                     <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clip-rule="evenodd" />
                   </svg>
                 </FButton>
@@ -323,11 +323,36 @@
                   size="sm"
                   @click.stop="openVMConsole(vm)"
                   :disabled="vm.state !== 'ACTIVE'"
-                  class="text-xs p-1 xl:px-2"
+                  class="p-2"
                   title="Open Console"
                 >
-                  <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                  <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                     <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm0 4a1 1 0 011-1h12a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1V8zm8 2a1 1 0 100 2h2a1 1 0 100-2h-2z" clip-rule="evenodd" />
+                  </svg>
+                </FButton>
+                <!-- View Details button - moved from dropdown -->
+                <FButton
+                  variant="ghost"
+                  size="sm"
+                  @click.stop="viewVMDetails(vm)"
+                  class="p-2 hidden lg:flex"
+                  title="View Details"
+                >
+                  <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M2 10a8 8 0 018-8v8h8a8 8 0 11-16 0z" />
+                    <path d="M12 2.252A8.014 8.014 0 0117.748 8H12V2.252z" />
+                  </svg>
+                </FButton>
+                <!-- Edit Settings button - moved from dropdown -->
+                <FButton
+                  variant="ghost"
+                  size="sm"
+                  @click.stop="editVM(vm)"
+                  class="p-2 hidden xl:flex"
+                  title="Edit Settings"
+                >
+                  <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
                   </svg>
                 </FButton>
                 <!-- Dropdown Menu -->
@@ -336,10 +361,10 @@
                     variant="ghost"
                     size="sm"
                     @click.stop="toggleDropdown(vm.uuid)"
-                    class="text-xs p-1 xl:px-2"
+                    class="p-2"
                     title="More Actions"
                   >
-                    <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                       <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
                     </svg>
                   </FButton>
@@ -348,9 +373,10 @@
                     class="absolute right-0 top-full mt-1 w-48 bg-slate-800 border border-slate-600/50 rounded-lg shadow-lg z-50 card-glow"
                   >
                     <div class="py-1">
+                      <!-- Show View Details only on smaller screens -->
                       <button
                         @click.stop="viewVMDetails(vm)"
-                        class="w-full px-4 py-2 text-left text-sm text-slate-300 hover:bg-slate-700/50 hover:text-white transition-colors flex items-center gap-3"
+                        class="w-full px-4 py-2 text-left text-sm text-slate-300 hover:bg-slate-700/50 hover:text-white transition-colors flex items-center gap-3 lg:hidden"
                       >
                         <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                           <path d="M2 10a8 8 0 018-8v8h8a8 8 0 11-16 0z" />
@@ -358,9 +384,10 @@
                         </svg>
                         View Details
                       </button>
+                      <!-- Show Edit Settings only on screens smaller than xl -->
                       <button
                         @click.stop="editVM(vm)"
-                        class="w-full px-4 py-2 text-left text-sm text-slate-300 hover:bg-slate-700/50 hover:text-white transition-colors flex items-center gap-3"
+                        class="w-full px-4 py-2 text-left text-sm text-slate-300 hover:bg-slate-700/50 hover:text-white transition-colors flex items-center gap-3 xl:hidden"
                       >
                         <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                           <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
