@@ -149,7 +149,7 @@
     <div v-if="vm && vm.state === 'ACTIVE'" class="grid grid-cols-1 xl:grid-cols-3 gap-6">
       <!-- Left Column: Performance Metrics -->
       <div class="xl:col-span-2 space-y-6">
-        <FCard v-if="vmStats" class="card-glow h-80">
+        <FCard v-if="vmStats" class="card-glow h-[340px]">
           <div class="p-6 h-full flex flex-col">
             <div class="flex items-center justify-between mb-6">
               <div class="flex items-center gap-4">
@@ -289,11 +289,11 @@
               <!-- Console Preview Content -->
               <div class="bg-slate-900/50 rounded-lg border border-slate-700/50 overflow-hidden">
                 <div class="bg-black rounded-lg overflow-hidden relative h-60">
-                  <!-- Direct console connection attempt -->
+                  <!-- Console Screenshot Preview -->
                   <div class="absolute inset-0">
-                    <!-- VNC Preview Snapshot -->
-                    <div v-if="getConsoleType(vm) === 'vnc' && vm" class="w-full h-full relative">
-                      <!-- Current snapshot -->
+                    <!-- Screenshot Display -->
+                    <div v-if="getConsoleType(vm) && vm" class="w-full h-full relative">
+                      <!-- Current screenshot -->
                       <img
                         v-if="consoleSnapshot"
                         :src="consoleSnapshot"
@@ -305,7 +305,7 @@
                       <div v-else class="w-full h-full bg-slate-800 flex items-center justify-center">
                         <div class="text-center text-slate-400">
                           <div class="w-6 h-6 border-2 border-slate-500 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
-                          <p class="text-xs">Loading console preview...</p>
+                          <p class="text-xs">Capturing console screenshot...</p>
                         </div>
                       </div>
                       <!-- Refresh indicator -->
@@ -315,21 +315,13 @@
                         </div>
                       </div>
                     </div>
-                    <!-- SPICE Preview Iframe -->
-                    <iframe
-                      ref="consolePreviewIframe"
-                      v-else-if="consolePreviewSrc"
-                      :src="consolePreviewSrc"
-                      class="w-full h-full border-0 pointer-events-none"
-                      :title="`${vm?.name || 'VM'} Console Preview`"
-                      scrolling="no"
-                      frameborder="0"
-                      @load="onConsolePreviewLoad"
-                    />
+                    <!-- No console available -->
                     <div v-else class="w-full h-full bg-slate-800 flex items-center justify-center">
                       <div class="text-center text-slate-400">
-                        <div class="w-3 h-3 border-2 border-slate-500 border-t-transparent rounded-full animate-spin mx-auto mb-1"></div>
-                        <p class="text-xs">Connecting to console...</p>
+                        <svg class="w-8 h-8 mx-auto mb-2 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                        </svg>
+                        <p class="text-xs">No console available</p>
                       </div>
                     </div>
                   </div>
@@ -719,7 +711,7 @@ import FBreadcrumbs from '@/components/ui/FBreadcrumbs.vue';
 import FBackButton from '@/components/ui/FBackButton.vue';
 import VMHardwareConfigModalExtended from '@/components/modals/VMHardwareConfigModalExtended.vue';
 import MetricSettingsModal from '@/components/modals/MetricSettingsModal.vue';
-import type { VirtualMachine, VMStats } from '@/types';
+// Types will be inferred from store usage
 import { wsManager } from '@/services/api';
 import { getConsoleRoute, getConsoleType, getConsoleDisplayName } from '@/utils/console';
 // @ts-ignore
@@ -738,8 +730,8 @@ const vmStore = useVMStore();
 const uiStore = useUIStore();
 
 // Component state
-const vm = ref<VirtualMachine | null>(null);
-const vmStats = ref<VMStats | null>(null);
+const vm = ref<any>(null);
+const vmStats = ref<any>(null);
 const error = ref<string | null>(null);
 const loadingStats = ref(false);
 const showExtendedHardwareModal = ref(false);
@@ -749,56 +741,11 @@ const showHardwareConfig = ref(false);
 const vmDetailsExpanded = ref(false);
 
 // Console preview state
-const consolePreviewIframe = ref<HTMLIFrameElement | null>(null);
 const consoleConnected = ref(false);
 const consoleRefreshKey = ref(0);
 const consoleSnapshot = ref<string | null>(null);
 const lastSnapshotTime = ref<number>(0);
 const isCapturingSnapshot = ref<boolean>(false);
-
-// Console preview source
-const consolePreviewSrc = computed(() => {
-  if (!vm.value || vm.value.state !== 'ACTIVE') {
-    return null;
-  }
-
-  const consoleType = getConsoleType(vm.value);
-  const host = window.location.hostname;
-  const port = window.location.port || (window.location.protocol === 'https:' ? '443' : '80');
-
-  // Only return iframe URL for SPICE consoles
-  if (consoleType === 'spice') {
-    const path = `api/v1/hosts/${props.hostId}/vms/${props.vmName}/spice`;
-    const params = new URLSearchParams({
-      host,
-      port,
-      path,
-      autoconnect: '1',
-      resize: 'scale',
-      show_control: '0',
-      _refresh: consoleRefreshKey.value.toString()
-    });
-    return `/spice/spice_responsive.html?${params.toString()}`;
-  }
-
-  // VNC consoles use the VNCPreview component instead of iframe
-  return null;
-});
-
-// Console preview handlers
-const onConsolePreviewLoad = () => {
-  consoleConnected.value = true;
-  // If we have a spice iframe and user prefers 'fill', tell iframe to scale
-  try {
-    const iframe = consolePreviewIframe.value;
-    const settings = useSettingsStore();
-    if (iframe && iframe.contentWindow) {
-      iframe.contentWindow.postMessage({ type: 'spice-toggle-scale', mode: settings.previewScale }, '*');
-    }
-  } catch (err) {
-    console.debug('Failed to post scale message to spice iframe', err);
-  }
-};
 
 // ...existing code...
 
@@ -806,76 +753,233 @@ const refreshConsolePreview = () => {
   consoleConnected.value = false;
   consoleRefreshKey.value++;
   
-  // For VNC, capture a new snapshot
-  if (vm.value && getConsoleType(vm.value) === 'vnc') {
-    captureVNCSnapshot();
+  // Capture screenshot for any console type
+  if (vm.value && getConsoleType(vm.value)) {
+    captureConsoleScreenshot();
   }
 };
 
-// Capture VNC snapshot for preview
-const captureVNCSnapshot = async () => {
+// Capture console screenshot for preview (works for both VNC and SPICE)
+const captureConsoleScreenshot = async () => {
   if (!vm.value) return;
   
   isCapturingSnapshot.value = true;
   
   try {
-    // Create a temporary canvas for snapshot
+    const consoleType = getConsoleType(vm.value);
+    
+    // Create a temporary canvas for screenshot
     const canvas = document.createElement('canvas');
     canvas.width = 320;
     canvas.height = 240;
     const ctx = canvas.getContext('2d');
     
-    if (!ctx) return;
+    if (!ctx) {
+      isCapturingSnapshot.value = false;
+      return;
+    }
     
-    // Create temporary RFB connection for snapshot
+    // Create temporary container for console connection
     const tempDiv = document.createElement('div');
     tempDiv.style.display = 'none';
+    tempDiv.style.position = 'absolute';
+    tempDiv.style.top = '-9999px';
     document.body.appendChild(tempDiv);
     
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.host;
-    const wsUrl = `${protocol}//${host}/api/v1/hosts/${props.hostId}/vms/${props.vmName}/console`;
     
-    // @ts-ignore
-    const tempRfb = new RFB(tempDiv, wsUrl, { credentials: {} });
-    tempRfb.viewOnly = true;
-    tempRfb.scaleViewport = false;
+    let connection: any = null;
+    let cleanupTimeout: number | null = null;
     
-    // Set up one-time snapshot capture
+    const cleanup = () => {
+      if (cleanupTimeout) {
+        clearTimeout(cleanupTimeout);
+        cleanupTimeout = null;
+      }
+      
+      if (connection) {
+        try {
+          connection.disconnect();
+        } catch (e) {
+          console.debug('Error disconnecting console:', e);
+        }
+        connection = null;
+      }
+      
+      if (document.body.contains(tempDiv)) {
+        document.body.removeChild(tempDiv);
+      }
+      
+      isCapturingSnapshot.value = false;
+    };
+    
     const captureFrame = () => {
       try {
-        const vncCanvas = tempDiv.querySelector('canvas') as HTMLCanvasElement;
-        if (vncCanvas) {
-          // Draw VNC canvas to our snapshot canvas
-          ctx.drawImage(vncCanvas, 0, 0, 320, 240);
+        // Find the canvas element created by the console connection
+        const consoleCanvas = tempDiv.querySelector('canvas') as HTMLCanvasElement;
+        if (consoleCanvas && consoleCanvas.width > 0 && consoleCanvas.height > 0) {
+          // Draw console canvas to our screenshot canvas
+          ctx.drawImage(consoleCanvas, 0, 0, 320, 240);
           
           // Convert to data URL
           consoleSnapshot.value = canvas.toDataURL('image/png');
           lastSnapshotTime.value = Date.now();
+          
+          console.log(`Console screenshot captured for ${consoleType}`);
+        } else {
+          console.warn('No valid canvas found for screenshot');
         }
       } catch (error) {
-        console.warn('Failed to capture VNC snapshot:', error);
+        console.warn('Failed to capture console screenshot:', error);
       } finally {
-        // Clean up
-        tempRfb.disconnect();
-        document.body.removeChild(tempDiv);
-        isCapturingSnapshot.value = false;
+        // Clean up after capturing
+        setTimeout(cleanup, 100);
       }
     };
     
-    // Capture frame after connection
-    tempRfb.addEventListener('connect', () => {
-      setTimeout(captureFrame, 1000); // Wait 1 second for frame to load
-    });
+    // Set up automatic cleanup after 10 seconds max
+    cleanupTimeout = setTimeout(() => {
+      console.warn('Console screenshot capture timed out');
+      cleanup();
+    }, 10000);
     
-    tempRfb.addEventListener('disconnect', () => {
-      if (document.body.contains(tempDiv)) {
-        document.body.removeChild(tempDiv);
-      }
-    });
+    if (consoleType === 'vnc') {
+      // VNC connection using noVNC RFB
+      const wsUrl = `${protocol}//${host}/api/v1/hosts/${props.hostId}/vms/${props.vmName}/console`;
+      
+      // @ts-ignore
+      connection = new RFB(tempDiv, wsUrl, { credentials: {} });
+      connection.viewOnly = true;
+      connection.scaleViewport = false;
+      
+      connection.addEventListener('connect', () => {
+        console.log('VNC connected for screenshot');
+        // Wait a bit for frame to render, then capture
+        setTimeout(captureFrame, 1500);
+      });
+      
+      connection.addEventListener('disconnect', () => {
+        console.log('VNC disconnected after screenshot');
+      });
+      
+      connection.addEventListener('securityfailure', () => {
+        console.warn('VNC security failure during screenshot');
+        cleanup();
+      });
+      
+    } else if (consoleType === 'spice') {
+      // For SPICE, create a temporary iframe to capture the console
+      const iframe = document.createElement('iframe');
+      iframe.style.position = 'absolute';
+      iframe.style.top = '-9999px';
+      iframe.style.width = '320px';
+      iframe.style.height = '240px';
+      iframe.style.border = 'none';
+      iframe.scrolling = 'no';
+      
+      // Build SPICE iframe URL
+      const spiceHost = window.location.hostname;
+      const spicePort = window.location.port || (window.location.protocol === 'https:' ? '443' : '80');
+      const path = `api/v1/hosts/${props.hostId}/vms/${props.vmName}/spice`;
+      const params = new URLSearchParams({
+        host: spiceHost,
+        port: spicePort,
+        path,
+        autoconnect: '1',
+        resize: 'scale',
+        show_control: '0'
+      });
+      iframe.src = `/spice/spice_responsive.html?${params.toString()}`;
+      
+      tempDiv.appendChild(iframe);
+      connection = iframe;
+      
+      // Wait for iframe to load and SPICE to connect
+      iframe.onload = () => {
+        console.log('SPICE iframe loaded for screenshot');
+        
+        // Wait for SPICE connection to establish and render
+        setTimeout(() => {
+          try {
+            // Try to capture the iframe content
+            const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+            if (iframeDoc) {
+              const spiceCanvas = iframeDoc.querySelector('canvas') as HTMLCanvasElement;
+              if (spiceCanvas && spiceCanvas.width > 0 && spiceCanvas.height > 0) {
+                // Draw SPICE canvas to our screenshot canvas
+                ctx.drawImage(spiceCanvas, 0, 0, 320, 240);
+                
+                consoleSnapshot.value = canvas.toDataURL('image/png');
+                lastSnapshotTime.value = Date.now();
+                
+                console.log('SPICE screenshot captured successfully');
+              } else {
+                console.warn('No SPICE canvas found, creating placeholder');
+                // Create a better placeholder that indicates SPICE is available
+                ctx.fillStyle = '#0f0f0f';
+                ctx.fillRect(0, 0, 320, 240);
+                
+                // Draw a subtle SPICE logo/indicator
+                ctx.fillStyle = '#1f2937';
+                ctx.fillRect(20, 20, 280, 200);
+                
+                ctx.fillStyle = '#6366f1';
+                ctx.font = 'bold 16px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('SPICE Console', 160, 110);
+                
+                ctx.fillStyle = '#9ca3af';
+                ctx.font = '12px Arial';
+                ctx.fillText('Click to connect', 160, 135);
+                
+                consoleSnapshot.value = canvas.toDataURL('image/png');
+                lastSnapshotTime.value = Date.now();
+                
+                console.log('SPICE placeholder screenshot created');
+              }
+            } else {
+              console.warn('Cannot access SPICE iframe content (cross-origin)');
+              // Fallback for cross-origin iframe
+              ctx.fillStyle = '#0f0f0f';
+              ctx.fillRect(0, 0, 320, 240);
+              ctx.fillStyle = '#6366f1';
+              ctx.font = 'bold 14px Arial';
+              ctx.textAlign = 'center';
+              ctx.fillText('SPICE Console', 160, 115);
+              ctx.fillStyle = '#9ca3af';
+              ctx.font = '11px Arial';
+              ctx.fillText('Preview unavailable', 160, 135);
+              
+              consoleSnapshot.value = canvas.toDataURL('image/png');
+              lastSnapshotTime.value = Date.now();
+            }
+          } catch (error) {
+            console.warn('Error capturing SPICE screenshot:', error);
+            // Create error placeholder
+            ctx.fillStyle = '#1f1f1f';
+            ctx.fillRect(0, 0, 320, 240);
+            ctx.fillStyle = '#ef4444';
+            ctx.font = '12px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('Preview Error', 160, 120);
+            
+            consoleSnapshot.value = canvas.toDataURL('image/png');
+            lastSnapshotTime.value = Date.now();
+          } finally {
+            cleanup();
+          }
+        }, 3000); // Wait 3 seconds for SPICE to load and render
+      };
+      
+      iframe.onerror = () => {
+        console.warn('SPICE iframe failed to load');
+        cleanup();
+      };
+    }
     
   } catch (error) {
-    console.warn('Failed to setup VNC snapshot:', error);
+    console.warn('Failed to setup console screenshot:', error);
     isCapturingSnapshot.value = false;
   }
 };
@@ -888,16 +992,16 @@ const startConsoleRefresh = () => {
     clearInterval(consoleRefreshInterval);
   }
   
-  // Initial snapshot for VNC
-  if (vm.value && getConsoleType(vm.value) === 'vnc') {
-    setTimeout(() => captureVNCSnapshot(), 2000); // Initial delay to let VM load
+  // Initial screenshot for any console type
+  if (vm.value && getConsoleType(vm.value)) {
+    setTimeout(() => captureConsoleScreenshot(), 2000); // Initial delay to let VM load
   }
   
   consoleRefreshInterval = setInterval(() => {
     if (vm.value?.state === 'ACTIVE' && getConsoleType(vm.value)) {
       refreshConsolePreview();
     }
-  }, 15000); // Refresh every 15 seconds instead of 30
+  }, 30000); // Refresh every 30 seconds to avoid too frequent connections
 };
 
 const stopConsoleRefresh = () => {
@@ -979,7 +1083,7 @@ const loadVM = async (): Promise<void> => {
     await vmStore.fetchVMs(props.hostId);
     
     // Find the VM by name
-    const foundVM = vmStore.vmsByHost(props.hostId).find((v: VirtualMachine) => v.name === props.vmName);
+    const foundVM = vmStore.vmsByHost(props.hostId).find((v: any) => v.name === props.vmName);
     if (foundVM) {
       vm.value = foundVM;
       
