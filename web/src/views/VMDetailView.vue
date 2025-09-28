@@ -16,98 +16,102 @@
       </div>
       
       <div v-if="vm" class="flex items-center gap-3">
-        <div :class="[
-          'w-3 h-3 rounded-full',
-          getVMStatusColor(vm.state)
-        ]"></div>
-        <span :class="[
-          'px-3 py-1 rounded-full text-sm font-medium',
-          getVMStateBadgeClass(vm.state)
-        ]">
-          {{ (vm.state || 'UNKNOWN').toLowerCase() }}
-        </span>
-      </div>
-    </div>
-
-    <!-- VM Control Panel -->
-    <FCard v-if="vm" class="p-6 card-glow">
-      <div class="flex items-center justify-between mb-4">
-        <h2 class="text-lg font-semibold text-white">VM Controls</h2>
+        <!-- Status Badge -->
+        <div class="flex items-center gap-2">
+          <div :class="[
+            'w-3 h-3 rounded-full',
+            getVMStatusColor(vm.state)
+          ]"></div>
+          <span :class="[
+            'px-3 py-1 rounded-full text-sm font-medium',
+            getVMStateBadgeClass(vm.state)
+          ]">
+            {{ (vm.state || 'UNKNOWN').toLowerCase() }}
+          </span>
+        </div>
+        
+        <!-- Task State Indicator -->
         <div v-if="vm.taskState" class="animate-pulse">
           <span class="px-2 py-1 rounded-full text-xs font-medium bg-yellow-500/20 text-yellow-400">
             {{ vm.taskState }}
           </span>
         </div>
-      </div>
-      
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+        
         <!-- Power Controls -->
-        <FButton
-          v-if="vm.state === 'STOPPED'"
-          variant="primary"
-          @click="handleVMAction('start')"
-          :disabled="!!vm.taskState"
-          class="flex items-center gap-2"
-        >
-          <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" />
-          </svg>
-          Start
-        </FButton>
+        <div class="flex items-center gap-2">
+          <!-- Start Button -->
+          <FButton
+            v-if="vm.state === 'STOPPED'"
+            variant="primary"
+            size="sm"
+            @click="handleVMAction('start')"
+            :disabled="!!vm.taskState"
+            class="px-3 py-2"
+            title="Start VM"
+          >
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" />
+            </svg>
+          </FButton>
+          
+          <!-- Active VM Controls -->
+          <div v-if="vm.state === 'ACTIVE'" class="flex items-center gap-1">
+            <FButton
+              variant="ghost"
+              size="sm"
+              @click="handleVMAction('shutdown')"
+              :disabled="!!vm.taskState"
+              class="px-3 py-2"
+              title="Shutdown VM"
+            >
+              <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clip-rule="evenodd" />
+              </svg>
+            </FButton>
+            
+            <FButton
+              variant="ghost"
+              size="sm"
+              @click="handleVMAction('reboot')"
+              :disabled="!!vm.taskState"
+              class="px-3 py-2"
+              title="Reboot VM"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+              </svg>
+            </FButton>
+            
+            <FButton
+              variant="accent"
+              size="sm"
+              @click="openConsole"
+              class="px-3 py-2"
+              title="Open Console"
+            >
+              <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm0 4a1 1 0 011-1h12a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1V8zm8 2a1 1 0 100 2h2a1 1 0 100-2h-2z" clip-rule="evenodd" />
+              </svg>
+            </FButton>
+          </div>
+        </div>
         
+        <!-- Settings/Hardware Config Button -->
         <FButton
-          v-if="vm.state === 'ACTIVE'"
           variant="ghost"
-          @click="handleVMAction('shutdown')"
-          :disabled="!!vm.taskState"
-          class="flex items-center gap-2"
-        >
-          <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clip-rule="evenodd" />
-          </svg>
-          Shutdown
-        </FButton>
-        
-        <FButton
-          v-if="vm.state === 'ACTIVE'"
-          variant="ghost"
-          @click="handleVMAction('reboot')"
-          :disabled="!!vm.taskState"
-          class="flex items-center gap-2"
-        >
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-          </svg>
-          Reboot
-        </FButton>
-        
-        <FButton
-          v-if="vm.state === 'ACTIVE'"
-          variant="ghost"
-          @click="openConsole"
-          class="flex items-center gap-2"
-        >
-          <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-            <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm0 4a1 1 0 011-1h12a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1V8zm8 2a1 1 0 100 2h2a1 1 0 100-2h-2z" clip-rule="evenodd" />
-          </svg>
-          Console
-        </FButton>
-      </div>
-
-      <!-- Hardware Configuration Button -->
-      <div class="mt-4 pt-4 border-t border-gray-700">
-        <FButton
-          variant="outline"
+          size="sm"
           @click="showExtendedHardwareModal = true"
-          class="flex items-center gap-2"
+          class="p-3"
+          title="Hardware Configuration"
         >
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
           </svg>
-          Extended Hardware Configuration
         </FButton>
       </div>
-    </FCard>
+    </div>
+
+
 
     <!-- VM Information - Wide Card -->
     <FCard v-if="vm" class="card-glow">
@@ -381,6 +385,123 @@
       </div>
     </div>
 
+    <!-- Console Preview Card -->
+    <FCard v-if="vm" class="card-glow">
+      <div class="p-6">
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center gap-4">
+            <div class="w-12 h-12 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center">
+              <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm0 4a1 1 0 011-1h12a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1V8zm8 2a1 1 0 100 2h2a1 1 0 100-2h-2z" clip-rule="evenodd" />
+              </svg>
+            </div>
+            <div>
+              <h3 class="text-xl font-bold text-white">Console Preview</h3>
+              <p class="text-slate-400">{{ getConsoleStatusText() }}</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-3">
+            <FButton
+              v-if="vm.state === 'ACTIVE' && getConsoleType(vm)"
+              variant="accent"
+              size="sm"
+              @click="openConsole"
+              class="flex items-center gap-2"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-2M14 4h6m0 0v6m0-6L10 14"/>
+              </svg>
+              Open Full Console
+            </FButton>
+          </div>
+        </div>
+        
+        <!-- Console Preview Content -->
+        <div class="bg-slate-900/50 rounded-lg border border-slate-700/50 overflow-hidden">
+          <!-- Active Console Preview -->
+          <div v-if="vm.state === 'ACTIVE' && getConsoleType(vm)" class="relative">
+            <div class="aspect-video bg-black rounded-lg overflow-hidden relative group">
+              <!-- Console Preview iframe (scaled down) -->
+              <div class="absolute inset-0 transform scale-50 origin-top-left w-[200%] h-[200%] pointer-events-none">
+                <iframe
+                  v-if="consolePreviewSrc"
+                  :src="consolePreviewSrc"
+                  class="w-full h-full border-0"
+                  :title="`${vm.name} Console Preview`"
+                  scrolling="no"
+                  frameborder="0"
+                />
+                <div v-else class="w-full h-full bg-slate-800 flex items-center justify-center">
+                  <div class="text-center text-slate-400">
+                    <div class="w-8 h-8 border-2 border-slate-500 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                    <p class="text-sm">Loading console...</p>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Overlay with click to expand -->
+              <div class="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center cursor-pointer"
+                   @click="openConsole">
+                <div class="bg-white/10 backdrop-blur-sm rounded-lg px-4 py-2 text-white font-medium">
+                  <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-2M14 4h6m0 0v6m0-6L10 14"/>
+                  </svg>
+                  Click to expand
+                </div>
+              </div>
+            </div>
+            
+            <!-- Console Info -->
+            <div class="p-4 bg-slate-800/30">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                  <div class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                  <span class="text-sm text-slate-300 font-medium">{{ getConsoleDisplayName(vm)?.toUpperCase() }} Console Active</span>
+                </div>
+                <div class="text-xs text-slate-500">
+                  Click preview to open full console
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- VM Stopped State -->
+          <div v-else-if="vm.state === 'STOPPED'" class="aspect-video bg-slate-800 flex items-center justify-center">
+            <div class="text-center text-slate-400">
+              <svg class="w-16 h-16 mx-auto mb-4 opacity-50" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm0 4a1 1 0 011-1h12a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1V8zm8 2a1 1 0 100 2h2a1 1 0 100-2h-2z" clip-rule="evenodd" />
+              </svg>
+              <h4 class="text-lg font-semibold text-white mb-2">Console Unavailable</h4>
+              <p class="text-sm text-slate-400 mb-4">Start the VM to access the console</p>
+              <FButton
+                variant="primary"
+                size="sm"
+                @click="handleVMAction('start')"
+                :disabled="!!vm.taskState"
+                class="flex items-center gap-2"
+              >
+                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" />
+                </svg>
+                Start VM
+              </FButton>
+            </div>
+          </div>
+          
+          <!-- No Console Available -->
+          <div v-else class="aspect-video bg-slate-800 flex items-center justify-center">
+            <div class="text-center text-slate-400">
+              <svg class="w-16 h-16 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636m12.728 12.728L18.364 5.636 5.636 18.364"/>
+              </svg>
+              <h4 class="text-lg font-semibold text-white mb-2">No Console Available</h4>
+              <p class="text-sm text-slate-400">This VM does not have graphics console configured</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </FCard>
+
     <!-- Advanced Actions -->
     <FCard v-if="vm" class="p-6 card-glow">
       <h3 class="text-lg font-semibold text-white mb-4">Advanced Actions</h3>
@@ -481,7 +602,7 @@ import VMHardwareConfigModalExtended from '@/components/modals/VMHardwareConfigM
 import MetricSettingsModal from '@/components/modals/MetricSettingsModal.vue';
 import type { VirtualMachine, VMStats } from '@/types';
 import { wsManager } from '@/services/api';
-import { getConsoleRoute } from '@/utils/console';
+import { getConsoleRoute, getConsoleType, getConsoleDisplayName } from '@/utils/console';
 
 interface Props {
   hostId: string;
@@ -503,6 +624,44 @@ const loadingStats = ref(false);
 const showExtendedHardwareModal = ref(false);
 // simplified CPU display: show smoothed host-normalized `cpu_percent`
 const showMetricSettings = ref(false);
+
+// Console preview
+const consolePreviewSrc = computed(() => {
+  if (!vm.value || vm.value.state !== 'ACTIVE' || !getConsoleType(vm.value)) {
+    return null;
+  }
+
+  const host = window.location.hostname;
+  const port = window.location.port || (window.location.protocol === 'https:' ? '443' : '80');
+  const path = `api/v1/hosts/${props.hostId}/vms/${props.vmName}/spice`;
+  
+  const params = new URLSearchParams({
+    host,
+    port,
+    path,
+    autoconnect: '1',
+    resize: 'scale',
+    show_control: '0'
+  });
+
+  return `/spice/spice_responsive.html?${params.toString()}`;
+});
+
+// Console status text
+const getConsoleStatusText = (): string => {
+  if (!vm.value) return 'Loading...';
+  
+  if (vm.value.state !== 'ACTIVE') {
+    return 'Start VM to access console';
+  }
+  
+  const consoleType = getConsoleType(vm.value);
+  if (!consoleType) {
+    return 'No graphics console available';
+  }
+  
+  return `${getConsoleDisplayName(vm.value)} console ready`;
+};
 
 // Context actions for the back button
 const vmContextActions = computed(() => [
