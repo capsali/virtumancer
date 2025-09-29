@@ -28,18 +28,55 @@ type GraphicsInfo struct {
 
 // VMInfo holds basic information about a virtual machine.
 type VMInfo struct {
-	ID         uint32              `json:"id"`
-	UUID       string              `json:"uuid"`
-	Name       string              `json:"name"`
-	State      libvirt.DomainState `json:"state"`
-	MaxMem     uint64              `json:"max_mem"`
-	Memory     uint64              `json:"memory"`
-	Vcpu       uint                `json:"vcpu"`
-	CpuTime    uint64              `json:"cpu_time"`
-	Uptime     int64               `json:"uptime"`
-	Persistent bool                `json:"persistent"`
-	Autostart  bool                `json:"autostart"`
-	Graphics   GraphicsInfo        `json:"graphics"`
+	ID                uint32              `json:"id"`
+	UUID              string              `json:"uuid"`
+	Name              string              `json:"name"`
+	State             libvirt.DomainState `json:"state"`
+	MaxMem            uint64              `json:"max_mem"`
+	Memory            uint64              `json:"memory"`
+	Vcpu              uint                `json:"vcpu"`
+	CpuTime           uint64              `json:"cpu_time"`
+	Uptime            int64               `json:"uptime"`
+	Persistent        bool                `json:"persistent"`
+	Autostart         bool                `json:"autostart"`
+	Graphics          GraphicsInfo        `json:"graphics"`
+	// Enhanced API-based data
+	VcpuDetails       []VcpuDetail        `json:"vcpu_details,omitempty"`
+	NetworkInterfaces []NetworkInterface  `json:"network_interfaces,omitempty"`
+	GuestInfo         map[string]interface{} `json:"guest_info,omitempty"`
+}
+
+// VcpuDetail holds detailed information about a single VCPU
+type VcpuDetail struct {
+	Number  uint32 `json:"number"`
+	State   int32  `json:"state"`
+	CPUTime uint64 `json:"cpu_time"`
+	CPU     int32  `json:"cpu"`
+}
+
+// NetworkInterface holds detailed network interface information
+type NetworkInterface struct {
+	Name   string   `json:"name"`
+	Hwaddr string   `json:"hwaddr"`
+	Addrs  []string `json:"addrs"`
+}
+
+// EnhancedVMStats holds comprehensive performance statistics
+type EnhancedVMStats struct {
+	InterfaceStats map[string]InterfaceStats `json:"interface_stats"`
+	CPUStats       map[string]interface{}    `json:"cpu_stats"`
+}
+
+// InterfaceStats holds detailed network interface statistics
+type InterfaceStats struct {
+	RxBytes   int64 `json:"rx_bytes"`
+	RxPackets int64 `json:"rx_packets"`
+	RxErrs    int64 `json:"rx_errs"`
+	RxDrop    int64 `json:"rx_drop"`
+	TxBytes   int64 `json:"tx_bytes"`
+	TxPackets int64 `json:"tx_packets"`
+	TxErrs    int64 `json:"tx_errs"`
+	TxDrop    int64 `json:"tx_drop"`
 }
 
 // StoragePoolInfo holds basic information about a storage pool.
@@ -1197,6 +1234,7 @@ func (c *Connector) GetDomainInfo(hostID, vmName string) (*VMInfo, error) {
 }
 
 // domainToVMInfo is a helper to convert a libvirt.Domain object to our VMInfo struct.
+// Now uses libvirt APIs primarily with XML fallback for configuration-only data.
 func (c *Connector) domainToVMInfo(l *libvirt.Libvirt, domain libvirt.Domain) (*VMInfo, error) {
 	stateInt, _, err := l.DomainGetState(domain, 0)
 	if err != nil {
@@ -1204,6 +1242,7 @@ func (c *Connector) domainToVMInfo(l *libvirt.Libvirt, domain libvirt.Domain) (*
 	}
 	state := libvirt.DomainState(stateInt)
 
+	// Use DomainGetInfo API for real-time values
 	_, maxMem, memory, nrVirtCPU, cpuTime, err := l.DomainGetInfo(domain)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get domain info for %s: %w", domain.Name, err)
@@ -1245,7 +1284,8 @@ func (c *Connector) domainToVMInfo(l *libvirt.Libvirt, domain libvirt.Domain) (*
 		uuidStr = parsedUUID.String()
 	}
 
-	return &VMInfo{
+	// Enhanced VMInfo with API-based data
+	vmInfo := &VMInfo{
 		ID:         uint32(domain.ID),
 		UUID:       uuidStr,
 		Name:       domain.Name,
@@ -1258,7 +1298,57 @@ func (c *Connector) domainToVMInfo(l *libvirt.Libvirt, domain libvirt.Domain) (*
 		Persistent: persistent == 1,
 		Autostart:  autostart == 1,
 		Graphics:   graphics,
-	}, nil
+	}
+
+	// Enhance with additional API-based data
+	c.enhanceVMInfoWithAPIs(l, domain, vmInfo)
+
+	return vmInfo, nil
+}
+
+// enhanceVMInfoWithAPIs adds additional data from libvirt APIs to VMInfo
+func (c *Connector) enhanceVMInfoWithAPIs(l *libvirt.Libvirt, domain libvirt.Domain, vmInfo *VMInfo) {
+	// Get enhanced VCPU information
+	if vcpuInfo, _, err := l.DomainGetVcpus(domain, int32(vmInfo.Vcpu), 0); err == nil {
+		vmInfo.VcpuDetails = make([]VcpuDetail, len(vcpuInfo))
+		for i, vcpu := range vcpuInfo {
+			vmInfo.VcpuDetails[i] = VcpuDetail{
+				Number:  vcpu.Number,
+				State:   vcpu.State,
+				CPUTime: vcpu.CPUTime,
+				CPU:     vcpu.CPU,
+			}
+		}
+	}
+
+	// Get enhanced network interface information with IP addresses
+	// Source: 0 = lease, 1 = agent, 2 = arp
+	if interfaces, err := l.DomainInterfaceAddresses(domain, 1, 0); err == nil {
+		vmInfo.NetworkInterfaces = make([]NetworkInterface, len(interfaces))
+		for i, iface := range interfaces {
+			hwaddr := ""
+			if len(iface.Hwaddr) > 0 {
+				hwaddr = iface.Hwaddr[0]
+			}
+			vmInfo.NetworkInterfaces[i] = NetworkInterface{
+				Name:   iface.Name,
+				Hwaddr: hwaddr,
+				Addrs:  make([]string, len(iface.Addrs)),
+			}
+			for j, addr := range iface.Addrs {
+				vmInfo.NetworkInterfaces[i].Addrs[j] = addr.Addr
+			}
+		}
+	}
+
+	// Get guest information if guest agent is available
+	if guestInfo, err := l.DomainGetGuestInfo(domain, 0, 0); err == nil {
+		vmInfo.GuestInfo = make(map[string]interface{})
+		for _, param := range guestInfo {
+			// Use the discriminated union properly
+			vmInfo.GuestInfo[param.Field] = param.Value.I
+		}
+	}
 }
 
 // storagePoolToInfo converts a libvirt.StoragePool object to our StoragePoolInfo struct.
@@ -1674,6 +1764,129 @@ func (c *Connector) GetDiskSize(hostID, diskPath string) (uint64, error) {
 
 	log.Verbosef("Could not determine disk size for %s using any libvirt method", diskPath)
 	return 0, fmt.Errorf("unable to determine disk size for %s", diskPath)
+}
+
+// GetDomainNetworkInfo retrieves enhanced network information for a domain using APIs
+func (c *Connector) GetDomainNetworkInfo(hostID, vmName string) ([]NetworkInterface, error) {
+	l, domain, err := c.getDomainByName(hostID, vmName)
+	if err != nil {
+		return nil, err
+	}
+
+	var networkInterfaces []NetworkInterface
+
+	// Try multiple sources for network information
+	// Source 0 = lease, 1 = agent, 2 = arp  
+	for _, source := range []uint32{1, 0, 2} {
+		if interfaces, err := l.DomainInterfaceAddresses(domain, source, 0); err == nil && len(interfaces) > 0 {
+			networkInterfaces = make([]NetworkInterface, len(interfaces))
+			for i, iface := range interfaces {
+				hwaddr := ""
+				if len(iface.Hwaddr) > 0 {
+					hwaddr = iface.Hwaddr[0]
+				}
+				networkInterfaces[i] = NetworkInterface{
+					Name:   iface.Name,
+					Hwaddr: hwaddr,
+					Addrs:  make([]string, len(iface.Addrs)),
+				}
+				for j, addr := range iface.Addrs {
+					networkInterfaces[i].Addrs[j] = addr.Addr
+				}
+			}
+			break // Use first successful source
+		}
+	}
+
+	return networkInterfaces, nil
+}
+
+// GetDomainVcpuInfo retrieves detailed VCPU information for a domain
+func (c *Connector) GetDomainVcpuInfo(hostID, vmName string) ([]VcpuDetail, error) {
+	l, domain, err := c.getDomainByName(hostID, vmName)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get basic domain info for VCPU count
+	_, _, _, nrVirtCPU, _, err := l.DomainGetInfo(domain)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get domain info for VCPU count: %w", err)
+	}
+
+	// Get detailed VCPU information
+	vcpuInfo, _, err := l.DomainGetVcpus(domain, int32(nrVirtCPU), 0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get VCPU details: %w", err)
+	}
+
+	vcpuDetails := make([]VcpuDetail, len(vcpuInfo))
+	for i, vcpu := range vcpuInfo {
+		vcpuDetails[i] = VcpuDetail{
+			Number:  vcpu.Number,
+			State:   vcpu.State,
+			CPUTime: vcpu.CPUTime,
+			CPU:     vcpu.CPU,
+		}
+	}
+
+	return vcpuDetails, nil
+}
+
+// GetDomainPerformanceStats retrieves comprehensive performance statistics
+func (c *Connector) GetDomainPerformanceStats(hostID, vmName string) (*EnhancedVMStats, error) {
+	l, domain, err := c.getDomainByName(hostID, vmName)
+	if err != nil {
+		return nil, err
+	}
+
+	stats := &EnhancedVMStats{
+		InterfaceStats: make(map[string]InterfaceStats),
+		CPUStats:       make(map[string]interface{}),
+	}
+
+	// Get interface statistics
+	xmlDesc, err := l.DomainGetXMLDesc(domain, 0)
+	if err == nil {
+		// Parse XML to get interface device names
+		var def struct {
+			Devices struct {
+				Interfaces []struct {
+					Target struct {
+						Dev string `xml:"dev,attr"`
+					} `xml:"target"`
+				} `xml:"interface"`
+			} `xml:"devices"`
+		}
+		if xml.Unmarshal([]byte(xmlDesc), &def) == nil {
+			for _, iface := range def.Devices.Interfaces {
+				if iface.Target.Dev != "" {
+					rxBytes, rxPackets, rxErrs, rxDrop, txBytes, txPackets, txErrs, txDrop, err := l.DomainInterfaceStats(domain, iface.Target.Dev)
+					if err == nil {
+						stats.InterfaceStats[iface.Target.Dev] = InterfaceStats{
+							RxBytes:   rxBytes,
+							RxPackets: rxPackets,
+							RxErrs:    rxErrs,
+							RxDrop:    rxDrop,
+							TxBytes:   txBytes,
+							TxPackets: txPackets,
+							TxErrs:    txErrs,
+							TxDrop:    txDrop,
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Get CPU statistics
+	if cpuStats, _, err := l.DomainGetCPUStats(domain, 1, -1, 1, 0); err == nil {
+		for _, param := range cpuStats {
+			stats.CPUStats[param.Field] = param.Value.I
+		}
+	}
+
+	return stats, nil
 }
 
 // getDiskSizeFromStorageVolume attempts to get disk size by treating path as a volume name

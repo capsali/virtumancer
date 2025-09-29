@@ -1716,185 +1716,864 @@ func (s *HostService) detectDriftOrIngestVM(hostID, vmName string, isInitialSync
 }
 
 // syncVMHardware intelligently syncs hardware state, only performing writes when necessary.
-func (s *HostService) syncVMHardware(tx *gorm.DB, vmUUID string, hostID string, hardware *libvirt.HardwareInfo, graphics *libvirt.GraphicsInfo) (bool, error) {
-	var changed bool = false
-	if hardware != nil {
-		log.Debugf("syncVMHardware: vm=%s host=%s start devices: disks=%d networks=%d", vmUUID, hostID, len(hardware.Disks), len(hardware.Networks))
-	} else {
-		log.Debugf("syncVMHardware: vm=%s host=%s start (no hardware)", vmUUID, hostID)
-	}
-	defer log.Debugf("syncVMHardware: vm=%s host=%s finished", vmUUID, hostID)
-
-	// --- Sync Networks / Ports ---
-	// Fetch existing attachments for this VM (if any) and map by MAC
-	var existingPortAttachments []storage.PortAttachment
-	if err := tx.Preload("Port").Where("vm_uuid = ?", vmUUID).Find(&existingPortAttachments).Error; err != nil {
-		return false, err
-	}
-	existingByMAC := make(map[string]storage.PortAttachment)
-	existingByDev := make(map[string]storage.PortAttachment)
-	for _, a := range existingPortAttachments {
-		if a.MACAddress != "" {
-			existingByMAC[a.MACAddress] = a
+// syncVMSecurityLabels handles security label configuration synchronization for a VM
+func (s *HostService) syncVMSecurityLabels(tx *gorm.DB, vmUUID string, securityLabels []libvirt.SecurityLabelInfo) (bool, error) {
+	changed := false
+	
+	for _, label := range securityLabels {
+		relabel := false
+		if label.Relabel == "yes" {
+			relabel = true
 		}
-		if a.DeviceName != "" {
-			existingByDev[a.DeviceName] = a
+		secLabel := storage.SecurityLabel{
+			VMUUID:  vmUUID,
+			Type:    label.Type,
+			Label:   label.Label,
+			Relabel: relabel,
 		}
-	}
-
-	for _, net := range hardware.Networks {
-		// Prefer matching by device name (vm-scoped unique). If not present, fall back to MAC address.
-		att, exists := existingByDev[net.Target.Dev]
-		if !exists && net.Mac.Address != "" {
-			att, exists = existingByMAC[net.Mac.Address]
-		}
-
-		updates := make(map[string]interface{})
-		if !exists {
-			// Create or find network
-			var network storage.Network
-			networkUUID := uuid.NewSHA1(uuid.Nil, []byte(fmt.Sprintf("%s:%s", hostID, net.Source.Bridge)))
-			tx.FirstOrCreate(&network, storage.Network{UUID: networkUUID.String()}, storage.Network{
-				HostID: hostID, Name: net.Source.Bridge, BridgeName: net.Source.Bridge, Mode: "bridged", UUID: networkUUID.String(),
-			})
-
-			// Create the port resource (unattached) and then attach it to the VM
-			newPort := storage.Port{
-				MACAddress: net.Mac.Address,
-				ModelName:  net.Model.Type,
-				HostID:     hostID,
-				PortGroup:  net.Source.PortGroup,
-			}
-			if err := tx.Create(&newPort).Error; err != nil {
+		var existingLabels []storage.SecurityLabel
+		tx.Where("vm_uuid = ? AND type = ?", vmUUID, label.Type).Limit(1).Find(&existingLabels)
+		if len(existingLabels) == 0 {
+			if err := tx.Create(&secLabel).Error; err != nil {
 				return false, err
 			}
-
-			if network.ID != 0 && newPort.ID != 0 {
-				binding := storage.PortBinding{PortID: newPort.ID, NetworkID: network.ID}
-				tx.Create(&binding)
+			changed = true
+		} else {
+			if err := tx.Model(&existingLabels[0]).Updates(map[string]interface{}{
+				"label":   secLabel.Label,
+				"relabel": secLabel.Relabel,
+			}).Error; err != nil {
+				return false, err
 			}
+			changed = true
+		}
+	}
 
-			// Create or reuse an attachment row linking the port to the VM.
-			var existingAtts []storage.PortAttachment
-			tx.Where("vm_uuid = ? AND device_name = ?", vmUUID, net.Target.Dev).Limit(1).Find(&existingAtts)
-			var existingAtt storage.PortAttachment
-			if len(existingAtts) > 0 {
-				existingAtt = existingAtts[0]
-				// Attachment exists; ensure it references the correct port and metadata
-				updates := make(map[string]interface{})
-				if existingAtt.PortID != newPort.ID {
-					updates["port_id"] = newPort.ID
+	return changed, nil
+}
+
+// syncVMLaunchSecurity handles launch security configuration synchronization for a VM
+func (s *HostService) syncVMLaunchSecurity(tx *gorm.DB, vmUUID string, launchSecurity *libvirt.LaunchSecurityInfo) (bool, error) {
+	changed := false
+	
+	if launchSecurity != nil {
+		launchSec := storage.LaunchSecurity{
+			VMUUID: vmUUID,
+			Type:   launchSecurity.Type,
+		}
+		// Convert string fields to appropriate types
+		if cbitpos, err := strconv.ParseUint(launchSecurity.CBitPos, 10, 32); err == nil {
+			launchSec.CBitPos = uint(cbitpos)
+		}
+		if reducedBits, err := strconv.ParseUint(launchSecurity.ReducedPhysBits, 10, 32); err == nil {
+			launchSec.ReducedPhysBits = uint(reducedBits)
+		}
+		if policy, err := strconv.ParseUint(launchSecurity.Policy, 10, 64); err == nil {
+			launchSec.Policy = policy
+		}
+		launchSec.DHCert = launchSecurity.DHCert
+		launchSec.Session = launchSecurity.Session
+
+		var existingLaunch []storage.LaunchSecurity
+		tx.Where("vm_uuid = ?", vmUUID).Limit(1).Find(&existingLaunch)
+		if len(existingLaunch) == 0 {
+			if err := tx.Create(&launchSec).Error; err != nil {
+				return false, err
+			}
+			changed = true
+		} else {
+			if err := tx.Model(&existingLaunch[0]).Updates(map[string]interface{}{
+				"type":              launchSec.Type,
+				"cbitpos":           launchSec.CBitPos,
+				"reduced_phys_bits": launchSec.ReducedPhysBits,
+				"policy":            launchSec.Policy,
+				"dh_cert":           launchSec.DHCert,
+				"session":           launchSec.Session,
+			}).Error; err != nil {
+				return false, err
+			}
+			changed = true
+		}
+	}
+
+	return changed, nil
+}
+
+// syncVMHypervisorFeatures handles hypervisor feature configuration synchronization for a VM
+func (s *HostService) syncVMHypervisorFeatures(tx *gorm.DB, vmUUID string, hypervisorFeatures []libvirt.HypervisorFeatureInfo) (bool, error) {
+	changed := false
+	
+	for _, feature := range hypervisorFeatures {
+		hvFeature := storage.HypervisorFeature{
+			VMUUID: vmUUID,
+			Name:   feature.Name,
+			State:  feature.State,
+		}
+		var existingHV []storage.HypervisorFeature
+		tx.Where("vm_uuid = ? AND name = ?", vmUUID, feature.Name).Limit(1).Find(&existingHV)
+		if len(existingHV) == 0 {
+			if err := tx.Create(&hvFeature).Error; err != nil {
+				return false, err
+			}
+			changed = true
+		} else {
+			if err := tx.Model(&existingHV[0]).Update("state", hvFeature.State).Error; err != nil {
+				return false, err
+			}
+			changed = true
+		}
+	}
+
+	return changed, nil
+}
+
+// syncVMLifecycleActions handles lifecycle action configuration synchronization for a VM
+func (s *HostService) syncVMLifecycleActions(tx *gorm.DB, vmUUID string, lifecycleActions *libvirt.LifecycleActionInfo) (bool, error) {
+	changed := false
+	
+	if lifecycleActions != nil {
+		lifecycle := storage.LifecycleAction{
+			VMUUID:        vmUUID,
+			OnPoweroff:    lifecycleActions.OnPoweroff,
+			OnReboot:      lifecycleActions.OnReboot,
+			OnCrash:       lifecycleActions.OnCrash,
+			OnLockfailure: lifecycleActions.OnLockFailure,
+		}
+
+		var existingLifecycle []storage.LifecycleAction
+		tx.Where("vm_uuid = ?", vmUUID).Limit(1).Find(&existingLifecycle)
+		if len(existingLifecycle) == 0 {
+			if err := tx.Create(&lifecycle).Error; err != nil {
+				return false, err
+			}
+			changed = true
+		} else {
+			if err := tx.Model(&existingLifecycle[0]).Updates(map[string]interface{}{
+				"on_poweroff":    lifecycle.OnPoweroff,
+				"on_reboot":      lifecycle.OnReboot,
+				"on_crash":       lifecycle.OnCrash,
+				"on_lockfailure": lifecycle.OnLockfailure,
+			}).Error; err != nil {
+				return false, err
+			}
+			changed = true
+		}
+	}
+
+	return changed, nil
+}
+
+// syncVMClockConfig handles clock configuration synchronization for a VM
+func (s *HostService) syncVMClockConfig(tx *gorm.DB, vmUUID string, clockConfig *libvirt.ClockInfo) (bool, error) {
+	changed := false
+	
+	if clockConfig != nil {
+		clock := storage.Clock{
+			VMUUID: vmUUID,
+			Offset: clockConfig.Offset,
+		}
+		if len(clockConfig.Timers) > 0 {
+			timersJSON, _ := json.Marshal(clockConfig.Timers)
+			clock.ConfigJSON = string(timersJSON)
+		}
+
+		var existingClock []storage.Clock
+		tx.Where("vm_uuid = ?", vmUUID).Limit(1).Find(&existingClock)
+		if len(existingClock) == 0 {
+			if err := tx.Create(&clock).Error; err != nil {
+				return false, err
+			}
+			changed = true
+		} else {
+			if err := tx.Model(&existingClock[0]).Updates(map[string]interface{}{
+				"offset":      clock.Offset,
+				"config_json": clock.ConfigJSON,
+			}).Error; err != nil {
+				return false, err
+			}
+			changed = true
+		}
+	}
+
+	return changed, nil
+}
+
+// syncVMPerfEvents handles performance event configuration synchronization for a VM
+func (s *HostService) syncVMPerfEvents(tx *gorm.DB, vmUUID string, perfEvents []libvirt.PerfEventInfo) (bool, error) {
+	changed := false
+	
+	for _, event := range perfEvents {
+		perfEvent := storage.PerfEvent{
+			VMUUID: vmUUID,
+			Name:   event.Name,
+			State:  event.Event, // Event field contains the state ('on'/'off')
+		}
+
+		var existingPerf []storage.PerfEvent
+		tx.Where("vm_uuid = ? AND name = ?", vmUUID, event.Name).Limit(1).Find(&existingPerf)
+		if len(existingPerf) == 0 {
+			if err := tx.Create(&perfEvent).Error; err != nil {
+				return false, err
+			}
+			changed = true
+		} else {
+			if err := tx.Model(&existingPerf[0]).Update("state", perfEvent.State).Error; err != nil {
+				return false, err
+			}
+			changed = true
+		}
+	}
+
+	return changed, nil
+}
+
+// syncVMOSConfig handles operating system configuration synchronization for a VM
+func (s *HostService) syncVMOSConfig(tx *gorm.DB, vmUUID string, osConfig *libvirt.OSConfigInfo) (bool, error) {
+	changed := false
+	
+	if osConfig != nil {
+		osConfigData := storage.OSConfig{
+			VMUUID:         vmUUID,
+			LoaderPath:     osConfig.Init, // This might need adjustment based on actual XML structure
+			LoaderType:     osConfig.Arch,
+			BootMenuEnable: osConfig.BootMenu != nil && osConfig.BootMenu.Enable == "yes",
+		}
+		if osConfig.BootMenu != nil {
+			if timeout, err := strconv.Atoi(osConfig.BootMenu.Timeout); err == nil {
+				osConfigData.BootMenuTimeout = uint(timeout)
+			}
+		}
+		if osConfig.Type != "" {
+			osConfigData.Firmware = osConfig.Type
+		}
+
+		var existingOS []storage.OSConfig
+		tx.Where("vm_uuid = ?", vmUUID).Limit(1).Find(&existingOS)
+		if len(existingOS) == 0 {
+			if err := tx.Create(&osConfigData).Error; err != nil {
+				return false, err
+			}
+			changed = true
+		} else {
+			// Update existing
+			if err := tx.Model(&existingOS[0]).Updates(map[string]interface{}{
+				"loader_path":       osConfigData.LoaderPath,
+				"loader_type":       osConfigData.LoaderType,
+				"boot_menu_enable":  osConfigData.BootMenuEnable,
+				"boot_menu_timeout": osConfigData.BootMenuTimeout,
+				"firmware":          osConfigData.Firmware,
+			}).Error; err != nil {
+				return false, err
+			}
+			changed = true
+		}
+	}
+
+	return changed, nil
+}
+
+// syncVMSMBIOS handles SMBIOS information synchronization for a VM
+func (s *HostService) syncVMSMBIOS(tx *gorm.DB, vmUUID string, smbiosInfo []libvirt.SMBIOSInfo) (bool, error) {
+	changed := false
+	
+	if len(smbiosInfo) > 0 {
+		for _, smbios := range smbiosInfo {
+			smbiosConfig := storage.SMBIOSSystemInfo{
+				VMUUID: vmUUID,
+				Type:   "smbios", // Default type
+			}
+			// Store mode in ConfigJSON for now
+			configJSON, _ := json.Marshal(map[string]string{"mode": smbios.Mode})
+			smbiosConfig.ConfigJSON = string(configJSON)
+
+			var existingSMBIOS []storage.SMBIOSSystemInfo
+			tx.Where("vm_uuid = ?", vmUUID).Limit(1).Find(&existingSMBIOS)
+			if len(existingSMBIOS) == 0 {
+				if err := tx.Create(&smbiosConfig).Error; err != nil {
+					return false, err
 				}
-				if net.Mac.Address != "" && existingAtt.MACAddress != net.Mac.Address {
-					updates["mac_address"] = net.Mac.Address
+				changed = true
+			} else {
+				if err := tx.Model(&existingSMBIOS[0]).Update("config_json", smbiosConfig.ConfigJSON).Error; err != nil {
+					return false, err
 				}
-				if net.Model.Type != "" && existingAtt.ModelName != net.Model.Type {
-					updates["model_name"] = net.Model.Type
-				}
-				if existingAtt.HostID == "" && hostID != "" {
-					updates["host_id"] = hostID
-				}
-				if len(updates) > 0 {
-					if err := tx.Model(&existingAtt).Updates(updates).Error; err != nil {
-						return false, err
-					}
-					// Refresh existingAtt.PortID if changed
-					if v, ok := updates["port_id"]; ok {
-						if id, ok2 := v.(uint); ok2 {
-							existingAtt.PortID = id
+				changed = true
+			}
+		}
+	}
+
+	return changed, nil
+}
+
+// syncVMCPUFeatures handles CPU feature flags synchronization for a VM
+func (s *HostService) syncVMCPUFeatures(tx *gorm.DB, vmUUID string, cpuFeatures []libvirt.CPUFeatureInfo) (bool, error) {
+	changed := false
+	
+	for _, feature := range cpuFeatures {
+		cpuFeature := storage.CPUFeature{
+			VMUUID: vmUUID,
+			Name:   feature.Name,
+			Policy: feature.Policy,
+		}
+		var existingFeatures []storage.CPUFeature
+		tx.Where("vm_uuid = ? AND name = ?", vmUUID, feature.Name).Limit(1).Find(&existingFeatures)
+		if len(existingFeatures) == 0 {
+			if err := tx.Create(&cpuFeature).Error; err != nil {
+				return false, err
+			}
+			changed = true
+		} else {
+			if err := tx.Model(&existingFeatures[0]).Update("policy", cpuFeature.Policy).Error; err != nil {
+				return false, err
+			}
+			changed = true
+		}
+	}
+
+	return changed, nil
+}
+
+// syncVMCPUTopology handles CPU topology configuration synchronization for a VM
+func (s *HostService) syncVMCPUTopology(tx *gorm.DB, vmUUID string, cpuInfo *libvirt.CPUConfigInfo) (bool, error) {
+	changed := false
+	
+	if cpuInfo != nil && cpuInfo.Topology != nil {
+		cpuTopology := storage.CPUTopology{
+			VMUUID:  vmUUID,
+			Sockets: uint(cpuInfo.Topology.Sockets),
+			Cores:   uint(cpuInfo.Topology.Cores),
+			Threads: uint(cpuInfo.Topology.Threads),
+		}
+		var existingTopology []storage.CPUTopology
+		tx.Where("vm_uuid = ?", vmUUID).Limit(1).Find(&existingTopology)
+		if len(existingTopology) == 0 {
+			if err := tx.Create(&cpuTopology).Error; err != nil {
+				return false, err
+			}
+			changed = true
+		} else {
+			if err := tx.Model(&existingTopology[0]).Updates(map[string]interface{}{
+				"sockets": cpuTopology.Sockets,
+				"cores":   cpuTopology.Cores,
+				"threads": cpuTopology.Threads,
+			}).Error; err != nil {
+				return false, err
+			}
+			changed = true
+		}
+	}
+
+	return changed, nil
+}
+
+// syncVMMemoryConfig handles memory configuration synchronization for a VM
+func (s *HostService) syncVMMemoryConfig(tx *gorm.DB, vmUUID string, memoryBacking *libvirt.MemoryBackingInfo) (bool, error) {
+	changed := false
+	
+	if memoryBacking != nil {
+		memConfig := storage.MemoryConfig{
+			VMUUID:       vmUUID,
+			ConfigType:   "backing",
+			SourceType:   memoryBacking.Source,
+			Nosharepages: memoryBacking.NoSharePages,
+			Locked:       memoryBacking.Locked,
+		}
+		if memoryBacking.HugePages != nil {
+			hugePagesJSON, _ := json.Marshal(memoryBacking.HugePages.Page)
+			memConfig.ConfigJSON = string(hugePagesJSON)
+		}
+
+		var existingMem []storage.MemoryConfig
+		tx.Where("vm_uuid = ? AND config_type = ?", vmUUID, "backing").Limit(1).Find(&existingMem)
+		if len(existingMem) == 0 {
+			if err := tx.Create(&memConfig).Error; err != nil {
+				return false, err
+			}
+			changed = true
+		} else {
+			if err := tx.Model(&existingMem[0]).Updates(map[string]interface{}{
+				"source_type":  memConfig.SourceType,
+				"nosharepages": memConfig.Nosharepages,
+				"locked":       memConfig.Locked,
+				"config_json":  memConfig.ConfigJSON,
+			}).Error; err != nil {
+				return false, err
+			}
+			changed = true
+		}
+	}
+
+	return changed, nil
+}
+
+// syncVMHostdevs handles host device (PCI/USB passthrough) synchronization for a VM
+func (s *HostService) syncVMHostdevs(tx *gorm.DB, vmUUID, hostID string, hostdevs []libvirt.HostdevInfo) (bool, error) {
+	changed := false
+	
+	for _, hd := range hostdevs {
+		addr := fmt.Sprintf("%s:%s:%s.%s", hd.Source.Address.Domain, hd.Source.Address.Bus, hd.Source.Address.Slot, hd.Source.Address.Function)
+		// find or create HostDevice by host and address
+		var hdResource storage.HostDevice
+		var hdList []storage.HostDevice
+		tx.Where("host_id = ? AND address = ?", hostID, addr).Limit(1).Find(&hdList)
+		if len(hdList) == 0 {
+			hdResource = storage.HostDevice{HostID: hostID, Type: hd.Type, Address: addr}
+			if err := tx.Create(&hdResource).Error; err != nil {
+				return false, err
+			}
+		} else {
+			hdResource = hdList[0]
+		}
+
+		// ensure attachment exists
+		var hda storage.HostDeviceAttachment
+		var hdaList []storage.HostDeviceAttachment
+		tx.Where("vm_uuid = ? AND host_device_id = ?", vmUUID, hdResource.ID).Limit(1).Find(&hdaList)
+		if len(hdaList) == 0 {
+			hda = storage.HostDeviceAttachment{VMUUID: vmUUID, HostDeviceID: hdResource.ID}
+			if err := tx.Create(&hda).Error; err != nil {
+				return false, err
+			}
+			// create attachment index idempotently
+			devID3 := hdResource.ID
+			alloc := storage.AttachmentIndex{VMUUID: vmUUID, DeviceType: "hostdevice", AttachmentID: hda.ID, DeviceID: &devID3}
+			var existingAllocs []storage.AttachmentIndex
+			tx.Where("device_type = ? AND attachment_id = ?", alloc.DeviceType, alloc.AttachmentID).Limit(1).Find(&existingAllocs)
+			if len(existingAllocs) == 0 {
+				var deviceAllocs3 []storage.AttachmentIndex
+				tx.Where("device_type = ? AND device_id = ?", alloc.DeviceType, alloc.DeviceID).Limit(1).Find(&deviceAllocs3)
+				if len(deviceAllocs3) == 0 {
+					// No live allocation — check for a soft-deleted allocation and restore it
+					var softAllocs []storage.AttachmentIndex
+					tx.Unscoped().Where("device_type = ? AND device_id = ?", alloc.DeviceType, alloc.DeviceID).Limit(1).Find(&softAllocs)
+					if len(softAllocs) > 0 {
+						softAlloc := softAllocs[0]
+						if softAlloc.DeletedAt.Valid {
+							if uerr2 := tx.Unscoped().Model(&softAlloc).Updates(map[string]interface{}{
+								"vm_uuid":       alloc.VMUUID,
+								"attachment_id": alloc.AttachmentID,
+								"deleted_at":    nil,
+							}).Error; uerr2 != nil {
+								return false, fmt.Errorf("failed to restore soft-deleted attachment_index for hostdevice device %v: %w", alloc.DeviceID, uerr2)
+							}
+						} else {
+							return false, fmt.Errorf("unexpected state: attachment_index exists but was not returned by query for device %v", alloc.DeviceID)
+						}
+					} else {
+						// No existing allocation at all; create one via helper
+						if err := s.ensureAttachmentIndex(tx, alloc); err != nil {
+							return false, err
 						}
 					}
 				}
-			} else {
-				// Create new attachment
-				newAttachment := storage.PortAttachment{VMUUID: vmUUID, PortID: newPort.ID, HostID: hostID, DeviceName: net.Target.Dev, MACAddress: net.Mac.Address, ModelName: net.Model.Type}
-				if err := tx.Create(&newAttachment).Error; err != nil {
+			}
+			changed = true
+		} else {
+			hda = hdaList[0]
+		}
+	}
+
+	return changed, nil
+}
+
+// syncVMBlockDevs handles QEMU blockdev nodes synchronization for a VM
+func (s *HostService) syncVMBlockDevs(tx *gorm.DB, blockdevs []libvirt.BlockDev) (bool, error) {
+	changed := false
+	
+	for _, bd := range blockdevs {
+		var b storage.BlockDev
+		var bList []storage.BlockDev
+		tx.Where("node_name = ?", bd.NodeName).Limit(1).Find(&bList)
+		if len(bList) == 0 {
+			b = storage.BlockDev{NodeName: bd.NodeName, Driver: bd.Driver.Name, Format: bd.Driver.Type}
+			if err := tx.Create(&b).Error; err != nil {
+				return false, err
+			}
+			changed = true
+		} else {
+			b = bList[0]
+			// could update fields if necessary in future
+		}
+	}
+
+	return changed, nil
+}
+
+// syncVMNUMANodes handles NUMA topology synchronization for a VM
+func (s *HostService) syncVMNUMANodes(tx *gorm.DB, vmUUID string, numaNodes []libvirt.NUMANodeInfo) (bool, error) {
+	changed := false
+	
+	var existingNUMA []storage.NUMANode
+	if err := tx.Where("vm_uuid = ?", vmUUID).Find(&existingNUMA).Error; err != nil {
+		return false, err
+	}
+	existingNUMAByID := make(map[int]storage.NUMANode)
+	for _, n := range existingNUMA {
+		existingNUMAByID[n.NodeID] = n
+	}
+	for _, nn := range numaNodes {
+		if existing, ok := existingNUMAByID[nn.ID]; ok {
+			updates := make(map[string]interface{})
+			if existing.MemoryKB != nn.MemoryKB {
+				updates["memory_kb"] = nn.MemoryKB
+			}
+			if existing.CPUsJSON != nn.CPUs {
+				updates["cpus_json"] = nn.CPUs
+			}
+			if len(updates) > 0 {
+				if err := tx.Model(&existing).Updates(updates).Error; err != nil {
 					return false, err
 				}
-				existingAtt = newAttachment
+				changed = true
 			}
+			delete(existingNUMAByID, nn.ID)
+		} else {
+			newN := storage.NUMANode{VMUUID: vmUUID, NodeID: nn.ID, MemoryKB: nn.MemoryKB, CPUsJSON: nn.CPUs}
+			if err := tx.Create(&newN).Error; err != nil {
+				return false, err
+			}
+			changed = true
+		}
+	}
+	if len(existingNUMAByID) > 0 {
+		var idsToDelete []uint
+		for _, d := range existingNUMAByID {
+			idsToDelete = append(idsToDelete, d.ID)
+		}
+		if err := tx.Where("id IN ?", idsToDelete).Delete(&storage.NUMANode{}).Error; err != nil {
+			return false, err
+		}
+		changed = true
+	}
 
-			// Ensure the AttachmentIndex references this attachment/device.
-			// Check for an existing index by (device_type, attachment_id) first to avoid
-			// violating the unique index on (device_type, attachment_id). If an index
-			// by attachment_id exists, ensure it matches this VM. Otherwise, check for
-			// an existing index by (device_type, device_id) which would indicate the
-			// device is already allocated to some attachment.
-			devID1 := existingAtt.PortID
-			alloc := storage.AttachmentIndex{VMUUID: vmUUID, DeviceType: "port", AttachmentID: existingAtt.ID, DeviceID: &devID1}
-			var existingAlloc storage.AttachmentIndex
-			// First, try to find by attachment_id (this is the unique index that failed earlier)
+	return changed, nil
+}
+
+// syncVMIOThreads handles I/O threads synchronization for a VM
+func (s *HostService) syncVMIOThreads(tx *gorm.DB, iothreads []libvirt.IOThread) (bool, error) {
+	changed := false
+	
+	for _, it := range iothreads {
+		var thr storage.IOThread
+		var thrList []storage.IOThread
+		tx.Where("name = ?", it.Name).Limit(1).Find(&thrList)
+		if len(thrList) == 0 {
+			thr = storage.IOThread{Name: it.Name}
+			if err := tx.Create(&thr).Error; err != nil {
+				return false, err
+			}
+			changed = true
+		} else {
+			thr = thrList[0]
+		}
+	}
+
+	return changed, nil
+}
+
+// syncVMMdevs handles mediated device synchronization for a VM
+func (s *HostService) syncVMMdevs(tx *gorm.DB, vmUUID string, mdevs []libvirt.MdevInfo) (bool, error) {
+	changed := false
+	
+	for _, m := range mdevs {
+		// create or find MediatedDevice by type+device id
+		var md storage.MediatedDevice
+		var mdList []storage.MediatedDevice
+		tx.Where("type_name = ? AND device_id = ?", m.Type, m.UUID).Limit(1).Find(&mdList)
+		if len(mdList) == 0 {
+			md = storage.MediatedDevice{TypeName: m.Type, DeviceID: m.UUID}
+			if err := tx.Create(&md).Error; err != nil {
+				return false, err
+			}
+			changed = true
+		} else {
+			md = mdList[0]
+		}
+		// ensure attachment exists
+		var mda storage.MediatedDeviceAttachment
+		var mdaList []storage.MediatedDeviceAttachment
+		tx.Where("vm_uuid = ? AND mdev_id = ?", vmUUID, md.ID).Limit(1).Find(&mdaList)
+		if len(mdaList) == 0 {
+			mda = storage.MediatedDeviceAttachment{VMUUID: vmUUID, MdevID: md.ID}
+			if err := tx.Create(&mda).Error; err != nil {
+				return false, err
+			}
+			devID4 := md.ID
+			alloc := storage.AttachmentIndex{VMUUID: vmUUID, DeviceType: "mdev", AttachmentID: mda.ID, DeviceID: &devID4}
 			var existingAllocs []storage.AttachmentIndex
 			tx.Where("device_type = ? AND attachment_id = ?", alloc.DeviceType, alloc.AttachmentID).Limit(1).Find(&existingAllocs)
 			if len(existingAllocs) > 0 {
-				existingAlloc = existingAllocs[0]
-				// An index already exists for this attachment. Ensure it belongs to the same VM.
+				existingAlloc := existingAllocs[0]
 				if existingAlloc.VMUUID != alloc.VMUUID {
 					return false, fmt.Errorf("attachment (id=%d) already indexed for VM %s (index id %d)", alloc.AttachmentID, existingAlloc.VMUUID, existingAlloc.ID)
 				}
-				// Already correctly indexed; nothing to do.
+				// already indexed correctly
 			} else {
-				// No index by attachment_id exists; ensure device_id isn't already allocated
-				var deviceAllocs []storage.AttachmentIndex
-				tx.Where("device_type = ? AND device_id = ?", alloc.DeviceType, alloc.DeviceID).Limit(1).Find(&deviceAllocs)
-				if len(deviceAllocs) > 0 {
-					existingAlloc = deviceAllocs[0]
-					// Device is already allocated to some attachment_id; conflict unless it's the same attachment
-					if existingAlloc.AttachmentID != alloc.AttachmentID || existingAlloc.VMUUID != alloc.VMUUID {
-						return false, fmt.Errorf("device (type=%s id=%d) already allocated to VM %s (attachment_index id %d)", alloc.DeviceType, alloc.DeviceID, existingAlloc.VMUUID, existingAlloc.ID)
-					}
-					// otherwise matches — nothing to do
-				} else {
-					// No live allocation — attempt to create or restore via helper
+				var deviceAllocs4 []storage.AttachmentIndex
+				tx.Where("device_type = ? AND device_id = ?", alloc.DeviceType, alloc.DeviceID).Limit(1).Find(&deviceAllocs4)
+				if len(deviceAllocs4) == 0 {
 					if err := s.ensureAttachmentIndex(tx, alloc); err != nil {
 						return false, err
 					}
 				}
 			}
+		} else {
+			mda = mdaList[0]
+		}
+		changed = true
+	}
 
+	return changed, nil
+}
+
+// syncVMBootConfig handles boot configuration synchronization for a VM
+func (s *HostService) syncVMBootConfig(tx *gorm.DB, vmUUID string, boot []libvirt.BootEntry) (bool, error) {
+	changed := false
+	
+	if len(boot) > 0 {
+		bootJSON, _ := json.Marshal(boot)
+		var bc storage.BootConfig
+		var bcList []storage.BootConfig
+		tx.Where("vm_uuid = ?", vmUUID).Limit(1).Find(&bcList)
+		if len(bcList) == 0 {
+			bc = storage.BootConfig{VMUUID: vmUUID, BootOrderJSON: string(bootJSON)}
+			if err := tx.Create(&bc).Error; err != nil {
+				return false, err
+			}
 			changed = true
 		} else {
-			// Attachment exists, check for updates on attachment-level and port-level
-			if att.DeviceName != net.Target.Dev {
-				updates["device_name"] = net.Target.Dev
-			}
-			modelType := att.ModelName
-			if modelType == "" {
-				modelType = att.Port.ModelName
-			}
-			if modelType != net.Model.Type {
-				updates["model_name"] = net.Model.Type
-			}
-
-			if len(updates) > 0 {
-				if err := tx.Model(&att).Updates(updates).Error; err != nil {
+			bc = bcList[0]
+			if bc.BootOrderJSON != string(bootJSON) {
+				if err := tx.Model(&bc).Updates(map[string]interface{}{"boot_order_json": string(bootJSON)}).Error; err != nil {
 					return false, err
 				}
 				changed = true
 			}
-			// Remove from map so it's not deleted later
-			delete(existingByMAC, net.Mac.Address)
 		}
 	}
 
-	// Any attachments left are stale and should be removed along with their ports
-	if len(existingByMAC) > 0 {
-		var portIDsToDelete []uint
-		var attachmentIDs []uint
-		for _, att := range existingByMAC {
-			portIDsToDelete = append(portIDsToDelete, att.PortID)
-			attachmentIDs = append(attachmentIDs, att.ID)
+	return changed, nil
+}
+
+// syncVMVideos handles video device synchronization for a VM
+func (s *HostService) syncVMVideos(tx *gorm.DB, vmUUID string, videos []libvirt.VideoInfo) (bool, error) {
+	changed := false
+	
+	var existingVideoAttachments []storage.VideoAttachment
+	if err := tx.Preload("VideoModel").Where("vm_uuid = ?", vmUUID).Find(&existingVideoAttachments).Error; err != nil {
+		return false, err
+	}
+	existingVideoByIndex := make(map[int]storage.VideoAttachment)
+	for _, va := range existingVideoAttachments {
+		existingVideoByIndex[va.MonitorIndex] = va
+	}
+	
+	for _, v := range videos {
+		modelType := v.Model.Type
+		// Ensure VideoModel resource exists
+		var vid storage.VideoModel
+		var vids []storage.VideoModel
+		tx.Where("model_name = ?", modelType).Limit(1).Find(&vids)
+		if len(vids) == 0 {
+			vid = storage.VideoModel{ModelName: modelType, VRAM: uint(v.Model.VRAM), Heads: v.Model.Heads}
+			if err := tx.Create(&vid).Error; err != nil {
+				return false, err
+			}
+		} else {
+			vid = vids[0]
 		}
-		// Remove binding rows, attachments, and port resources
-		tx.Where("port_id IN ?", portIDsToDelete).Delete(&storage.PortBinding{})
-		tx.Where("id IN ?", attachmentIDs).Delete(&storage.PortAttachment{})
-		tx.Where("id IN ?", portIDsToDelete).Delete(&storage.Port{})
-		// Also remove any attachment index entries for these attachments
-		tx.Where("device_type = ? AND attachment_id IN ?", "port", attachmentIDs).Delete(&storage.AttachmentIndex{})
+
+		// Use monitor index 0 as default if none provided
+		mi := 0
+		att, exists := existingVideoByIndex[mi]
+		if exists {
+			updates := make(map[string]interface{})
+			if att.VideoModelID != vid.ID {
+				updates["video_model_id"] = vid.ID
+			}
+			if !att.Primary {
+				updates["primary"] = true
+			}
+			if len(updates) > 0 {
+				if err := tx.Model(&att).Updates(updates).Error; err != nil {
+					return false, err
+				}
+			}
+			// ensure attachment index exists
+			// Videos represent logical models, not exclusive host devices.
+			// Treat them like volumes for indexing (DeviceID=nil) so many VMs
+			// can reference the same Video model without causing uniqueness conflicts.
+			var nilDevID *uint = nil
+			alloc := storage.AttachmentIndex{VMUUID: vmUUID, DeviceType: "video", AttachmentID: att.ID, DeviceID: nilDevID}
+			var existingAllocs []storage.AttachmentIndex
+			tx.Where("device_type = ? AND attachment_id = ?", alloc.DeviceType, alloc.AttachmentID).Limit(1).Find(&existingAllocs)
+			if len(existingAllocs) == 0 {
+				var deviceAllocs []storage.AttachmentIndex
+				tx.Where("device_type = ? AND device_id = ?", alloc.DeviceType, alloc.DeviceID).Limit(1).Find(&deviceAllocs)
+				if len(deviceAllocs) == 0 {
+					// No live allocation — create one via helper
+					if err := s.ensureAttachmentIndex(tx, alloc); err != nil {
+						return false, err
+					}
+				}
+			}
+			changed = true
+		} else {
+			// Before creating an attachment, ensure the video device isn't already
+			// allocated to another VM. If it is, log and skip attaching this device
+			// instead of failing the whole sync.
+			// Check whether any attachment_index already claims this device id (only meaningful for exclusive devices)
+			var existingAllocs []storage.AttachmentIndex
+			tx.Where("device_type = ? AND device_id = ?", "video", vid.ID).Limit(1).Find(&existingAllocs)
+			if len(existingAllocs) > 0 {
+				existingAlloc := existingAllocs[0]
+				if existingAlloc.VMUUID != vmUUID {
+					log.Verbosef("video device id=%d already allocated to VM %s (attachment_index id %d); skipping attach for VM %s", vid.ID, existingAlloc.VMUUID, existingAlloc.ID, vmUUID)
+					// don't attach, continue to next video
+					continue
+				}
+				// if it belongs to same VM, proceed to ensure attachment exists below
+			}
+
+			newAtt := storage.VideoAttachment{VMUUID: vmUUID, VideoModelID: vid.ID, MonitorIndex: mi, Primary: true}
+			if err := tx.Create(&newAtt).Error; err != nil {
+				return false, err
+			}
+			// Use DeviceID=nil for video model multi-attach semantics.
+			var nilDevID2 *uint = nil
+			alloc := storage.AttachmentIndex{VMUUID: vmUUID, DeviceType: "video", AttachmentID: newAtt.ID, DeviceID: nilDevID2}
+			var existingAllocs2 []storage.AttachmentIndex
+			tx.Where("device_type = ? AND attachment_id = ?", alloc.DeviceType, alloc.AttachmentID).Limit(1).Find(&existingAllocs2)
+			if len(existingAllocs2) > 0 {
+				existingAlloc2 := existingAllocs2[0]
+				if existingAlloc2.VMUUID != alloc.VMUUID {
+					return false, fmt.Errorf("attachment (id=%d) already indexed for VM %s (index id %d)", alloc.AttachmentID, existingAlloc2.VMUUID, existingAlloc2.ID)
+				}
+			} else {
+				var deviceAllocs2 []storage.AttachmentIndex
+				tx.Where("device_type = ? AND device_id = ?", alloc.DeviceType, alloc.DeviceID).Limit(1).Find(&deviceAllocs2)
+				if len(deviceAllocs2) == 0 {
+					// No live allocation — check for a soft-deleted allocation and restore it
+					var softAllocs []storage.AttachmentIndex
+					tx.Unscoped().Where("device_type = ? AND device_id = ?", alloc.DeviceType, alloc.DeviceID).Limit(1).Find(&softAllocs)
+					if len(softAllocs) > 0 {
+						softAlloc := softAllocs[0]
+						if softAlloc.DeletedAt.Valid {
+							if uerr2 := tx.Unscoped().Model(&softAlloc).Updates(map[string]interface{}{
+								"vm_uuid":       alloc.VMUUID,
+								"attachment_id": alloc.AttachmentID,
+								"deleted_at":    nil,
+							}).Error; uerr2 != nil {
+								return false, fmt.Errorf("failed to restore soft-deleted attachment_index for video device %v: %w", alloc.DeviceID, uerr2)
+							}
+						} else {
+							return false, fmt.Errorf("unexpected state: attachment_index exists but was not returned by query for device %v", alloc.DeviceID)
+						}
+					} else {
+						// No existing allocation at all; create one via helper
+						if err := s.ensureAttachmentIndex(tx, alloc); err != nil {
+							return false, err
+						}
+					}
+				} else if len(deviceAllocs2) > 0 {
+					existingAlloc2 := deviceAllocs2[0]
+					if existingAlloc2.AttachmentID != alloc.AttachmentID || existingAlloc2.VMUUID != alloc.VMUUID {
+						return false, fmt.Errorf("device (type=%s id=%d) already allocated to VM %s (attachment_index id %d)", alloc.DeviceType, alloc.DeviceID, existingAlloc2.VMUUID, existingAlloc2.ID)
+					}
+				}
+			}
+			changed = true
+		}
+	}
+
+	return changed, nil
+}
+
+// syncVMConsole handles graphics/console synchronization for a VM
+func (s *HostService) syncVMConsole(tx *gorm.DB, vmUUID, hostID string, graphics *libvirt.GraphicsInfo) (bool, error) {
+	changed := false
+	
+	var desiredGfxType string
+	if graphics.VNC {
+		desiredGfxType = "vnc"
+	} else if graphics.SPICE {
+		desiredGfxType = "spice"
+	}
+
+	if desiredGfxType == "" {
+		// No console desired: remove any Console rows + attachment index for this VM
+		if err := tx.Where("device_type = ? AND vm_uuid = ?", "console", vmUUID).Delete(&storage.AttachmentIndex{}).Error; err != nil {
+			return false, err
+		}
+		if err := tx.Where("vm_uuid = ? AND type = ?", vmUUID, desiredGfxType).Delete(&storage.Console{}).Error; err != nil {
+			return false, err
+		}
+		changed = true
+	} else {
+		// Create or reuse a Console instance for this VM+type
+		var console storage.Console
+		var consoles []storage.Console
+		tx.Where("vm_uuid = ? AND type = ?", vmUUID, desiredGfxType).Limit(1).Find(&consoles)
+		if len(consoles) == 0 {
+			console = storage.Console{VMUUID: vmUUID, HostID: hostID, Type: desiredGfxType, ModelName: desiredGfxType}
+			if err := tx.Create(&console).Error; err != nil {
+				return false, err
+			}
+		} else {
+			console = consoles[0]
+		}
+
+		// Ensure attachment index references the console instance
+		devID2 := console.ID
+		alloc := storage.AttachmentIndex{VMUUID: vmUUID, DeviceType: "console", AttachmentID: console.ID, DeviceID: &devID2}
+		var existingAlloc storage.AttachmentIndex
+		// First try to find a live allocation by device_id
+		var existingAllocs []storage.AttachmentIndex
+		tx.Where("device_type = ? AND device_id = ?", alloc.DeviceType, alloc.DeviceID).Limit(1).Find(&existingAllocs)
+		if len(existingAllocs) > 0 {
+			existingAlloc = existingAllocs[0]
+			if existingAlloc.AttachmentID != alloc.AttachmentID || existingAlloc.VMUUID != alloc.VMUUID {
+				return false, fmt.Errorf("console (id=%d) already allocated to VM %s (attachment_index id %d)", alloc.DeviceID, existingAlloc.VMUUID, existingAlloc.ID)
+			}
+			// allocation already present and matching
+		} else {
+			// No live allocation found — check for a soft-deleted one and restore it
+			var softAllocs []storage.AttachmentIndex
+			tx.Unscoped().Where("device_type = ? AND device_id = ?", alloc.DeviceType, alloc.DeviceID).Limit(1).Find(&softAllocs)
+			if len(softAllocs) > 0 {
+				softAlloc := softAllocs[0]
+				if softAlloc.DeletedAt.Valid {
+					// Restore and update to point at the current attachment and vm
+					if uerr2 := tx.Unscoped().Model(&softAlloc).Updates(map[string]interface{}{
+						"vm_uuid":       alloc.VMUUID,
+						"attachment_id": alloc.AttachmentID,
+						"deleted_at":    nil,
+					}).Error; uerr2 != nil {
+						return false, fmt.Errorf("failed to restore soft-deleted attachment_index for device %v: %w", alloc.DeviceID, uerr2)
+					}
+					// restored
+				} else {
+					// softAlloc exists but not deleted — unexpected since first query didn't find it
+					return false, fmt.Errorf("unexpected state: attachment_index exists but was not returned by query for device %v", alloc.DeviceID)
+				}
+			} else {
+				// No existing allocation at all; create one via helper
+				if err := s.ensureAttachmentIndex(tx, alloc); err != nil {
+					return false, err
+				}
+			}
+		}
 		changed = true
 	}
 
-	// --- Sync Disks (Intelligent Update) ---
+	return changed, nil
+}
+
+// syncVMDisks handles disk synchronization for a VM
+func (s *HostService) syncVMDisks(tx *gorm.DB, vmUUID, hostID string, disks []libvirt.DiskInfo) (bool, error) {
+	changed := false
+	
+	// Fetch existing disk attachments for this VM
 	var existingDiskAttachments []storage.DiskAttachment
 	tx.Preload("Disk").Where("vm_uuid = ?", vmUUID).Find(&existingDiskAttachments)
 	existingDiskAttachmentsMap := make(map[string]storage.DiskAttachment)
@@ -1902,7 +2581,7 @@ func (s *HostService) syncVMHardware(tx *gorm.DB, vmUUID string, hostID string, 
 		existingDiskAttachmentsMap[da.DeviceName] = da
 	}
 
-	for _, disk := range hardware.Disks {
+	for _, disk := range disks {
 		// First, handle Volume if it's pool-managed (has a pool path)
 		var volume *storage.Volume
 		if disk.Source.File != "" {
@@ -2061,6 +2740,7 @@ func (s *HostService) syncVMHardware(tx *gorm.DB, vmUUID string, hostID string, 
 		}
 	}
 
+	// Clean up any stale disk attachments
 	if len(existingDiskAttachmentsMap) > 0 {
 		var idsToDelete []uint
 		for _, attachment := range existingDiskAttachmentsMap {
@@ -2076,742 +2756,294 @@ func (s *HostService) syncVMHardware(tx *gorm.DB, vmUUID string, hostID string, 
 		changed = true
 	}
 
-	// --- Sync Graphics (Console model) ---
-	var desiredGfxType string
-	if graphics.VNC {
-		desiredGfxType = "vnc"
-	} else if graphics.SPICE {
-		desiredGfxType = "spice"
-	}
+	return changed, nil
+}
 
-	if desiredGfxType == "" {
-		// No console desired: remove any Console rows + attachment index for this VM
-		if err := tx.Where("device_type = ? AND vm_uuid = ?", "console", vmUUID).Delete(&storage.AttachmentIndex{}).Error; err != nil {
-			return false, err
-		}
-		if err := tx.Where("vm_uuid = ? AND type = ?", vmUUID, desiredGfxType).Delete(&storage.Console{}).Error; err != nil {
-			return false, err
-		}
-		changed = true
-	} else {
-		// Create or reuse a Console instance for this VM+type
-		var console storage.Console
-		var consoles []storage.Console
-		tx.Where("vm_uuid = ? AND type = ?", vmUUID, desiredGfxType).Limit(1).Find(&consoles)
-		if len(consoles) == 0 {
-			console = storage.Console{VMUUID: vmUUID, HostID: hostID, Type: desiredGfxType, ModelName: desiredGfxType}
-			if err := tx.Create(&console).Error; err != nil {
-				return false, err
-			}
-		} else {
-			console = consoles[0]
-		}
+// syncVMNetworks handles network/port synchronization for a VM
+func (s *HostService) syncVMNetworks(tx *gorm.DB, vmUUID string, hostID string, networks []libvirt.NetworkInfo) (bool, error) {
+	var changed bool = false
 
-		// Ensure attachment index references the console instance
-		devID2 := console.ID
-		alloc := storage.AttachmentIndex{VMUUID: vmUUID, DeviceType: "console", AttachmentID: console.ID, DeviceID: &devID2}
-		var existingAlloc storage.AttachmentIndex
-		// First try to find a live allocation by device_id
-		var existingAllocs []storage.AttachmentIndex
-		tx.Where("device_type = ? AND device_id = ?", alloc.DeviceType, alloc.DeviceID).Limit(1).Find(&existingAllocs)
-		if len(existingAllocs) > 0 {
-			existingAlloc = existingAllocs[0]
-			if existingAlloc.AttachmentID != alloc.AttachmentID || existingAlloc.VMUUID != alloc.VMUUID {
-				return false, fmt.Errorf("console (id=%d) already allocated to VM %s (attachment_index id %d)", alloc.DeviceID, existingAlloc.VMUUID, existingAlloc.ID)
-			}
-			// allocation already present and matching
-		} else {
-			// No live allocation found — check for a soft-deleted one and restore it
-			var softAllocs []storage.AttachmentIndex
-			tx.Unscoped().Where("device_type = ? AND device_id = ?", alloc.DeviceType, alloc.DeviceID).Limit(1).Find(&softAllocs)
-			if len(softAllocs) > 0 {
-				softAlloc := softAllocs[0]
-				if softAlloc.DeletedAt.Valid {
-					// Restore and update to point at the current attachment and vm
-					if uerr2 := tx.Unscoped().Model(&softAlloc).Updates(map[string]interface{}{
-						"vm_uuid":       alloc.VMUUID,
-						"attachment_id": alloc.AttachmentID,
-						"deleted_at":    nil,
-					}).Error; uerr2 != nil {
-						return false, fmt.Errorf("failed to restore soft-deleted attachment_index for device %v: %w", alloc.DeviceID, uerr2)
-					}
-					// restored
-				} else {
-					// softAlloc exists but not deleted — unexpected since first query didn't find it
-					return false, fmt.Errorf("unexpected state: attachment_index exists but was not returned by query for device %v", alloc.DeviceID)
-				}
-			} else {
-				// No existing allocation at all; create one via helper
-				if err := s.ensureAttachmentIndex(tx, alloc); err != nil {
-					return false, err
-				}
-			}
-		}
-		changed = true
-	}
-
-	// --- Sync Video devices ---
-	var existingVideoAttachments []storage.VideoAttachment
-	if err := tx.Preload("VideoModel").Where("vm_uuid = ?", vmUUID).Find(&existingVideoAttachments).Error; err != nil {
+	// Fetch existing attachments for this VM (if any) and map by MAC
+	var existingPortAttachments []storage.PortAttachment
+	if err := tx.Preload("Port").Where("vm_uuid = ?", vmUUID).Find(&existingPortAttachments).Error; err != nil {
 		return false, err
 	}
-	existingVideoByIndex := make(map[int]storage.VideoAttachment)
-	for _, va := range existingVideoAttachments {
-		existingVideoByIndex[va.MonitorIndex] = va
+	existingByMAC := make(map[string]storage.PortAttachment)
+	existingByDev := make(map[string]storage.PortAttachment)
+	for _, a := range existingPortAttachments {
+		if a.MACAddress != "" {
+			existingByMAC[a.MACAddress] = a
+		}
+		if a.DeviceName != "" {
+			existingByDev[a.DeviceName] = a
+		}
 	}
-	for _, v := range hardware.Videos {
-		modelType := v.Model.Type
-		// Ensure VideoModel resource exists
-		var vid storage.VideoModel
-		var vids []storage.VideoModel
-		tx.Where("model_name = ?", modelType).Limit(1).Find(&vids)
-		if len(vids) == 0 {
-			vid = storage.VideoModel{ModelName: modelType, VRAM: uint(v.Model.VRAM), Heads: v.Model.Heads}
-			if err := tx.Create(&vid).Error; err != nil {
-				return false, err
-			}
-		} else {
-			vid = vids[0]
+
+	for _, net := range networks {
+		// Prefer matching by device name (vm-scoped unique). If not present, fall back to MAC address.
+		att, exists := existingByDev[net.Target.Dev]
+		if !exists && net.Mac.Address != "" {
+			att, exists = existingByMAC[net.Mac.Address]
 		}
 
-		// Use monitor index 0 as default if none provided
-		mi := 0
-		att, exists := existingVideoByIndex[mi]
-		if exists {
-			updates := make(map[string]interface{})
-			if att.VideoModelID != vid.ID {
-				updates["video_model_id"] = vid.ID
+		updates := make(map[string]interface{})
+		if !exists {
+			// Create or find network
+			var network storage.Network
+			networkUUID := uuid.NewSHA1(uuid.Nil, []byte(fmt.Sprintf("%s:%s", hostID, net.Source.Bridge)))
+			tx.FirstOrCreate(&network, storage.Network{UUID: networkUUID.String()}, storage.Network{
+				HostID: hostID, Name: net.Source.Bridge, BridgeName: net.Source.Bridge, Mode: "bridged", UUID: networkUUID.String(),
+			})
+
+			// Create the port resource (unattached) and then attach it to the VM
+			newPort := storage.Port{
+				MACAddress: net.Mac.Address,
+				ModelName:  net.Model.Type,
+				HostID:     hostID,
+				PortGroup:  net.Source.PortGroup,
 			}
-			if !att.Primary {
-				updates["primary"] = true
+			if err := tx.Create(&newPort).Error; err != nil {
+				return false, err
 			}
+
+			if network.ID != 0 && newPort.ID != 0 {
+				binding := storage.PortBinding{PortID: newPort.ID, NetworkID: network.ID}
+				tx.Create(&binding)
+			}
+
+			// Create or reuse an attachment row linking the port to the VM.
+			var existingAtts []storage.PortAttachment
+			tx.Where("vm_uuid = ? AND device_name = ?", vmUUID, net.Target.Dev).Limit(1).Find(&existingAtts)
+			var existingAtt storage.PortAttachment
+			if len(existingAtts) > 0 {
+				existingAtt = existingAtts[0]
+				// Attachment exists; ensure it references the correct port and metadata
+				updates := make(map[string]interface{})
+				if existingAtt.PortID != newPort.ID {
+					updates["port_id"] = newPort.ID
+				}
+				if net.Mac.Address != "" && existingAtt.MACAddress != net.Mac.Address {
+					updates["mac_address"] = net.Mac.Address
+				}
+				if net.Model.Type != "" && existingAtt.ModelName != net.Model.Type {
+					updates["model_name"] = net.Model.Type
+				}
+				if existingAtt.HostID == "" && hostID != "" {
+					updates["host_id"] = hostID
+				}
+				if len(updates) > 0 {
+					if err := tx.Model(&existingAtt).Updates(updates).Error; err != nil {
+						return false, err
+					}
+					// Refresh existingAtt.PortID if changed
+					if v, ok := updates["port_id"]; ok {
+						if id, ok2 := v.(uint); ok2 {
+							existingAtt.PortID = id
+						}
+					}
+					changed = true
+				}
+			} else {
+				// Create new attachment
+				existingAtt = storage.PortAttachment{
+					VMUUID:      vmUUID,
+					PortID:      newPort.ID,
+					DeviceName:  net.Target.Dev,
+					MACAddress:  net.Mac.Address,
+					ModelName:   net.Model.Type,
+					HostID:      hostID,
+				}
+				if err := tx.Create(&existingAtt).Error; err != nil {
+					return false, err
+				}
+				changed = true
+			}
+
+			// Ensure attachment index
+			portID := existingAtt.PortID
+			alloc := storage.AttachmentIndex{VMUUID: vmUUID, DeviceType: "port", AttachmentID: existingAtt.ID, DeviceID: &portID}
+			if err := s.ensureAttachmentIndex(tx, alloc); err != nil {
+				return false, err
+			}
+			changed = true
+		} else {
+			// Attachment exists, check for updates on attachment-level and port-level
+			if att.DeviceName != net.Target.Dev {
+				updates["device_name"] = net.Target.Dev
+			}
+			modelType := att.ModelName
+			if modelType == "" {
+				modelType = att.Port.ModelName
+			}
+			if modelType != net.Model.Type {
+				updates["model_name"] = net.Model.Type
+			}
+
 			if len(updates) > 0 {
 				if err := tx.Model(&att).Updates(updates).Error; err != nil {
 					return false, err
 				}
-			}
-			// ensure attachment index exists
-			// Videos represent logical models, not exclusive host devices.
-			// Treat them like volumes for indexing (DeviceID=nil) so many VMs
-			// can reference the same Video model without causing uniqueness conflicts.
-			var nilDevID *uint = nil
-			alloc := storage.AttachmentIndex{VMUUID: vmUUID, DeviceType: "video", AttachmentID: att.ID, DeviceID: nilDevID}
-			var existingAllocs []storage.AttachmentIndex
-			tx.Where("device_type = ? AND attachment_id = ?", alloc.DeviceType, alloc.AttachmentID).Limit(1).Find(&existingAllocs)
-			if len(existingAllocs) == 0 {
-				var deviceAllocs []storage.AttachmentIndex
-				tx.Where("device_type = ? AND device_id = ?", alloc.DeviceType, alloc.DeviceID).Limit(1).Find(&deviceAllocs)
-				if len(deviceAllocs) == 0 {
-					// No live allocation — create one via helper
-					if err := s.ensureAttachmentIndex(tx, alloc); err != nil {
-						return false, err
-					}
-				}
-			}
-			changed = true
-		} else {
-			// Before creating an attachment, ensure the video device isn't already
-			// allocated to another VM. If it is, log and skip attaching this device
-			// instead of failing the whole sync.
-			// Check whether any attachment_index already claims this device id (only meaningful for exclusive devices)
-			var existingAllocs []storage.AttachmentIndex
-			tx.Where("device_type = ? AND device_id = ?", "video", vid.ID).Limit(1).Find(&existingAllocs)
-			if len(existingAllocs) > 0 {
-				existingAlloc := existingAllocs[0]
-				if existingAlloc.VMUUID != vmUUID {
-					log.Verbosef("video device id=%d already allocated to VM %s (attachment_index id %d); skipping attach for VM %s", vid.ID, existingAlloc.VMUUID, existingAlloc.ID, vmUUID)
-					// don't attach, continue to next video
-					continue
-				}
-				// if it belongs to same VM, proceed to ensure attachment exists below
-			}
-
-			newAtt := storage.VideoAttachment{VMUUID: vmUUID, VideoModelID: vid.ID, MonitorIndex: mi, Primary: true}
-			if err := tx.Create(&newAtt).Error; err != nil {
-				return false, err
-			}
-			// Use DeviceID=nil for video model multi-attach semantics.
-			var nilDevID2 *uint = nil
-			alloc := storage.AttachmentIndex{VMUUID: vmUUID, DeviceType: "video", AttachmentID: newAtt.ID, DeviceID: nilDevID2}
-			var existingAllocs2 []storage.AttachmentIndex
-			tx.Where("device_type = ? AND attachment_id = ?", alloc.DeviceType, alloc.AttachmentID).Limit(1).Find(&existingAllocs2)
-			if len(existingAllocs2) > 0 {
-				existingAlloc2 := existingAllocs2[0]
-				if existingAlloc2.VMUUID != alloc.VMUUID {
-					return false, fmt.Errorf("attachment (id=%d) already indexed for VM %s (index id %d)", alloc.AttachmentID, existingAlloc2.VMUUID, existingAlloc2.ID)
-				}
-			} else {
-				var deviceAllocs2 []storage.AttachmentIndex
-				tx.Where("device_type = ? AND device_id = ?", alloc.DeviceType, alloc.DeviceID).Limit(1).Find(&deviceAllocs2)
-				if len(deviceAllocs2) == 0 {
-					// No live allocation — check for a soft-deleted allocation and restore it
-					var softAllocs []storage.AttachmentIndex
-					tx.Unscoped().Where("device_type = ? AND device_id = ?", alloc.DeviceType, alloc.DeviceID).Limit(1).Find(&softAllocs)
-					if len(softAllocs) > 0 {
-						softAlloc := softAllocs[0]
-						if softAlloc.DeletedAt.Valid {
-							if uerr2 := tx.Unscoped().Model(&softAlloc).Updates(map[string]interface{}{
-								"vm_uuid":       alloc.VMUUID,
-								"attachment_id": alloc.AttachmentID,
-								"deleted_at":    nil,
-							}).Error; uerr2 != nil {
-								return false, fmt.Errorf("failed to restore soft-deleted attachment_index for video device %v: %w", alloc.DeviceID, uerr2)
-							}
-						} else {
-							return false, fmt.Errorf("unexpected state: attachment_index exists but was not returned by query for device %v", alloc.DeviceID)
-						}
-					} else {
-						// No existing allocation at all; create one via helper
-						if err := s.ensureAttachmentIndex(tx, alloc); err != nil {
-							return false, err
-						}
-					}
-				} else if len(deviceAllocs2) > 0 {
-					existingAlloc2 := deviceAllocs2[0]
-					if existingAlloc2.AttachmentID != alloc.AttachmentID || existingAlloc2.VMUUID != alloc.VMUUID {
-						return false, fmt.Errorf("device (type=%s id=%d) already allocated to VM %s (attachment_index id %d)", alloc.DeviceType, alloc.DeviceID, existingAlloc2.VMUUID, existingAlloc2.ID)
-					}
-				}
-			}
-			changed = true
-		}
-	}
-
-	// --- Sync BootConfig ---
-	if len(hardware.Boot) > 0 {
-		bootJSON, _ := json.Marshal(hardware.Boot)
-		var bc storage.BootConfig
-		var bcList []storage.BootConfig
-		tx.Where("vm_uuid = ?", vmUUID).Limit(1).Find(&bcList)
-		if len(bcList) == 0 {
-			bc = storage.BootConfig{VMUUID: vmUUID, BootOrderJSON: string(bootJSON)}
-			if err := tx.Create(&bc).Error; err != nil {
-				return false, err
-			}
-			changed = true
-		} else {
-			bc = bcList[0]
-			if bc.BootOrderJSON != string(bootJSON) {
-				if err := tx.Model(&bc).Updates(map[string]interface{}{"boot_order_json": string(bootJSON)}).Error; err != nil {
-					return false, err
-				}
 				changed = true
 			}
+			// Remove from map so it's not deleted later
+			delete(existingByMAC, net.Mac.Address)
 		}
 	}
 
-	// --- Sync Hostdev (PCI/USB passthrough) ---
-	for _, hd := range hardware.Hostdevs {
-		addr := fmt.Sprintf("%s:%s:%s.%s", hd.Source.Address.Domain, hd.Source.Address.Bus, hd.Source.Address.Slot, hd.Source.Address.Function)
-		// find or create HostDevice by host and address
-		var hdResource storage.HostDevice
-		var hdList []storage.HostDevice
-		tx.Where("host_id = ? AND address = ?", hostID, addr).Limit(1).Find(&hdList)
-		if len(hdList) == 0 {
-			hdResource = storage.HostDevice{HostID: hostID, Type: hd.Type, Address: addr}
-			if err := tx.Create(&hdResource).Error; err != nil {
-				return false, err
-			}
-		} else {
-			hdResource = hdList[0]
+	// Any attachments left are stale and should be removed along with their ports
+	if len(existingByMAC) > 0 {
+		var portIDsToDelete []uint
+		var attachmentIDs []uint
+		for _, att := range existingByMAC {
+			portIDsToDelete = append(portIDsToDelete, att.PortID)
+			attachmentIDs = append(attachmentIDs, att.ID)
 		}
-
-		// ensure attachment exists
-		var hda storage.HostDeviceAttachment
-		var hdaList []storage.HostDeviceAttachment
-		tx.Where("vm_uuid = ? AND host_device_id = ?", vmUUID, hdResource.ID).Limit(1).Find(&hdaList)
-		if len(hdaList) == 0 {
-			hda = storage.HostDeviceAttachment{VMUUID: vmUUID, HostDeviceID: hdResource.ID}
-			if err := tx.Create(&hda).Error; err != nil {
-				return false, err
-			}
-			// create attachment index idempotently
-			devID3 := hdResource.ID
-			alloc := storage.AttachmentIndex{VMUUID: vmUUID, DeviceType: "hostdevice", AttachmentID: hda.ID, DeviceID: &devID3}
-			var existingAllocs []storage.AttachmentIndex
-			tx.Where("device_type = ? AND attachment_id = ?", alloc.DeviceType, alloc.AttachmentID).Limit(1).Find(&existingAllocs)
-			if len(existingAllocs) == 0 {
-				var deviceAllocs3 []storage.AttachmentIndex
-				tx.Where("device_type = ? AND device_id = ?", alloc.DeviceType, alloc.DeviceID).Limit(1).Find(&deviceAllocs3)
-				if len(deviceAllocs3) == 0 {
-					// No live allocation — check for a soft-deleted allocation and restore it
-					var softAllocs []storage.AttachmentIndex
-					tx.Unscoped().Where("device_type = ? AND device_id = ?", alloc.DeviceType, alloc.DeviceID).Limit(1).Find(&softAllocs)
-					if len(softAllocs) > 0 {
-						softAlloc := softAllocs[0]
-						if softAlloc.DeletedAt.Valid {
-							if uerr2 := tx.Unscoped().Model(&softAlloc).Updates(map[string]interface{}{
-								"vm_uuid":       alloc.VMUUID,
-								"attachment_id": alloc.AttachmentID,
-								"deleted_at":    nil,
-							}).Error; uerr2 != nil {
-								return false, fmt.Errorf("failed to restore soft-deleted attachment_index for hostdevice device %v: %w", alloc.DeviceID, uerr2)
-							}
-						} else {
-							return false, fmt.Errorf("unexpected state: attachment_index exists but was not returned by query for device %v", alloc.DeviceID)
-						}
-					} else {
-						// No existing allocation at all; create one via helper
-						if err := s.ensureAttachmentIndex(tx, alloc); err != nil {
-							return false, err
-						}
-					}
-				}
-			}
-			changed = true
-		} else {
-			hda = hdaList[0]
-		}
+		// Remove binding rows, attachments, and port resources
+		tx.Where("port_id IN ?", portIDsToDelete).Delete(&storage.PortBinding{})
+		tx.Where("id IN ?", attachmentIDs).Delete(&storage.PortAttachment{})
+		tx.Where("id IN ?", portIDsToDelete).Delete(&storage.Port{})
+		// Also remove any attachment index entries for these attachments
+		tx.Where("device_type = ? AND attachment_id IN ?", "port", attachmentIDs).Delete(&storage.AttachmentIndex{})
+		changed = true
 	}
 
-	// --- Sync BlockDev (qemu blockdev nodes) ---
-	for _, bd := range hardware.BlockDevs {
-		var b storage.BlockDev
-		var bList []storage.BlockDev
-		tx.Where("node_name = ?", bd.NodeName).Limit(1).Find(&bList)
-		if len(bList) == 0 {
-			b = storage.BlockDev{NodeName: bd.NodeName, Driver: bd.Driver.Name, Format: bd.Driver.Type}
-			if err := tx.Create(&b).Error; err != nil {
-				return false, err
-			}
-			changed = true
-		} else {
-			b = bList[0]
-			// could update fields if necessary in future
-		}
-	}
+	return changed, nil
+}
 
-	// --- Sync NUMA Nodes ---
-	var existingNUMA []storage.NUMANode
-	if err := tx.Where("vm_uuid = ?", vmUUID).Find(&existingNUMA).Error; err != nil {
+func (s *HostService) syncVMHardware(tx *gorm.DB, vmUUID string, hostID string, hardware *libvirt.HardwareInfo, graphics *libvirt.GraphicsInfo) (bool, error) {
+	var changed bool = false
+	if hardware != nil {
+		log.Debugf("syncVMHardware: vm=%s host=%s start devices: disks=%d networks=%d", vmUUID, hostID, len(hardware.Disks), len(hardware.Networks))
+	} else {
+		log.Debugf("syncVMHardware: vm=%s host=%s start (no hardware)", vmUUID, hostID)
+	}
+	defer log.Debugf("syncVMHardware: vm=%s host=%s finished", vmUUID, hostID)
+
+	// --- Sync Networks / Ports ---
+	if netChanged, err := s.syncVMNetworks(tx, vmUUID, hostID, hardware.Networks); err != nil {
 		return false, err
-	}
-	existingNUMAByID := make(map[int]storage.NUMANode)
-	for _, n := range existingNUMA {
-		existingNUMAByID[n.NodeID] = n
-	}
-	for _, nn := range hardware.NUMANodes {
-		if existing, ok := existingNUMAByID[nn.ID]; ok {
-			updates := make(map[string]interface{})
-			if existing.MemoryKB != nn.MemoryKB {
-				updates["memory_kb"] = nn.MemoryKB
-			}
-			if existing.CPUsJSON != nn.CPUs {
-				updates["cpus_json"] = nn.CPUs
-			}
-			if len(updates) > 0 {
-				if err := tx.Model(&existing).Updates(updates).Error; err != nil {
-					return false, err
-				}
-				changed = true
-			}
-			delete(existingNUMAByID, nn.ID)
-		} else {
-			newN := storage.NUMANode{VMUUID: vmUUID, NodeID: nn.ID, MemoryKB: nn.MemoryKB, CPUsJSON: nn.CPUs}
-			if err := tx.Create(&newN).Error; err != nil {
-				return false, err
-			}
-			changed = true
-		}
-	}
-	if len(existingNUMAByID) > 0 {
-		var idsToDelete []uint
-		for _, d := range existingNUMAByID {
-			idsToDelete = append(idsToDelete, d.ID)
-		}
-		if err := tx.Where("id IN ?", idsToDelete).Delete(&storage.NUMANode{}).Error; err != nil {
-			return false, err
-		}
+	} else if netChanged {
 		changed = true
 	}
 
-	// --- Sync IOThreads (record only) ---
-	for _, it := range hardware.IOThreads {
-		var thr storage.IOThread
-		var thrList []storage.IOThread
-		tx.Where("name = ?", it.Name).Limit(1).Find(&thrList)
-		if len(thrList) == 0 {
-			thr = storage.IOThread{Name: it.Name}
-			if err := tx.Create(&thr).Error; err != nil {
-				return false, err
-			}
-			changed = true
-		} else {
-			thr = thrList[0]
-		}
-	}
-
-	// --- Sync Mediated Devices ---
-	for _, m := range hardware.Mdevs {
-		// create or find MediatedDevice by type+device id
-		var md storage.MediatedDevice
-		var mdList []storage.MediatedDevice
-		tx.Where("type_name = ? AND device_id = ?", m.Type, m.UUID).Limit(1).Find(&mdList)
-		if len(mdList) == 0 {
-			md = storage.MediatedDevice{TypeName: m.Type, DeviceID: m.UUID}
-			if err := tx.Create(&md).Error; err != nil {
-				return false, err
-			}
-			changed = true
-		} else {
-			md = mdList[0]
-		}
-		// ensure attachment exists
-		var mda storage.MediatedDeviceAttachment
-		var mdaList []storage.MediatedDeviceAttachment
-		tx.Where("vm_uuid = ? AND mdev_id = ?", vmUUID, md.ID).Limit(1).Find(&mdaList)
-		if len(mdaList) == 0 {
-			mda = storage.MediatedDeviceAttachment{VMUUID: vmUUID, MdevID: md.ID}
-			if err := tx.Create(&mda).Error; err != nil {
-				return false, err
-			}
-			devID4 := md.ID
-			alloc := storage.AttachmentIndex{VMUUID: vmUUID, DeviceType: "mdev", AttachmentID: mda.ID, DeviceID: &devID4}
-			var existingAllocs []storage.AttachmentIndex
-			tx.Where("device_type = ? AND attachment_id = ?", alloc.DeviceType, alloc.AttachmentID).Limit(1).Find(&existingAllocs)
-			if len(existingAllocs) > 0 {
-				existingAlloc := existingAllocs[0]
-				if existingAlloc.VMUUID != alloc.VMUUID {
-					return false, fmt.Errorf("attachment (id=%d) already indexed for VM %s (index id %d)", alloc.AttachmentID, existingAlloc.VMUUID, existingAlloc.ID)
-				}
-				// already indexed correctly
-			} else {
-				var deviceAllocs4 []storage.AttachmentIndex
-				tx.Where("device_type = ? AND device_id = ?", alloc.DeviceType, alloc.DeviceID).Limit(1).Find(&deviceAllocs4)
-				if len(deviceAllocs4) == 0 {
-					if err := s.ensureAttachmentIndex(tx, alloc); err != nil {
-						return false, err
-					}
-				}
-			}
-		} else {
-			mda = mdaList[0]
-		}
+	if diskChanged, err := s.syncVMDisks(tx, vmUUID, hostID, hardware.Disks); err != nil {
+		return false, err
+	} else if diskChanged {
 		changed = true
 	}
 
-	// --- Sync OS Configuration ---
-	if hardware.OSConfig != nil {
-		osConfig := storage.OSConfig{
-			VMUUID:         vmUUID,
-			LoaderPath:     hardware.OSConfig.Init, // This might need adjustment based on actual XML structure
-			LoaderType:     hardware.OSConfig.Arch,
-			BootMenuEnable: hardware.OSConfig.BootMenu != nil && hardware.OSConfig.BootMenu.Enable == "yes",
-		}
-		if hardware.OSConfig.BootMenu != nil {
-			if timeout, err := strconv.Atoi(hardware.OSConfig.BootMenu.Timeout); err == nil {
-				osConfig.BootMenuTimeout = uint(timeout)
-			}
-		}
-		if hardware.OSConfig.Type != "" {
-			osConfig.Firmware = hardware.OSConfig.Type
-		}
-
-		var existingOS []storage.OSConfig
-		tx.Where("vm_uuid = ?", vmUUID).Limit(1).Find(&existingOS)
-		if len(existingOS) == 0 {
-			if err := tx.Create(&osConfig).Error; err != nil {
-				return false, err
-			}
-			changed = true
-		} else {
-			// Update existing
-			if err := tx.Model(&existingOS[0]).Updates(map[string]interface{}{
-				"loader_path":       osConfig.LoaderPath,
-				"loader_type":       osConfig.LoaderType,
-				"boot_menu_enable":  osConfig.BootMenuEnable,
-				"boot_menu_timeout": osConfig.BootMenuTimeout,
-				"firmware":          osConfig.Firmware,
-			}).Error; err != nil {
-				return false, err
-			}
-			changed = true
-		}
+	if consoleChanged, err := s.syncVMConsole(tx, vmUUID, hostID, graphics); err != nil {
+		return false, err
+	} else if consoleChanged {
+		changed = true
 	}
 
-	// --- Sync SMBIOS Info ---
-	if len(hardware.SMBIOSInfo) > 0 {
-		for _, smbios := range hardware.SMBIOSInfo {
-			smbiosConfig := storage.SMBIOSSystemInfo{
-				VMUUID: vmUUID,
-				Type:   "smbios", // Default type
-			}
-			// Store mode in ConfigJSON for now
-			configJSON, _ := json.Marshal(map[string]string{"mode": smbios.Mode})
-			smbiosConfig.ConfigJSON = string(configJSON)
-
-			var existingSMBIOS []storage.SMBIOSSystemInfo
-			tx.Where("vm_uuid = ?", vmUUID).Limit(1).Find(&existingSMBIOS)
-			if len(existingSMBIOS) == 0 {
-				if err := tx.Create(&smbiosConfig).Error; err != nil {
-					return false, err
-				}
-				changed = true
-			} else {
-				if err := tx.Model(&existingSMBIOS[0]).Update("config_json", smbiosConfig.ConfigJSON).Error; err != nil {
-					return false, err
-				}
-				changed = true
-			}
-		}
+	if videoChanged, err := s.syncVMVideos(tx, vmUUID, hardware.Videos); err != nil {
+		return false, err
+	} else if videoChanged {
+		changed = true
 	}
 
-	// --- Sync CPU Features ---
-	for _, feature := range hardware.CPUFeatures {
-		cpuFeature := storage.CPUFeature{
-			VMUUID: vmUUID,
-			Name:   feature.Name,
-			Policy: feature.Policy,
-		}
-		var existingFeatures []storage.CPUFeature
-		tx.Where("vm_uuid = ? AND name = ?", vmUUID, feature.Name).Limit(1).Find(&existingFeatures)
-		if len(existingFeatures) == 0 {
-			if err := tx.Create(&cpuFeature).Error; err != nil {
-				return false, err
-			}
-			changed = true
-		} else {
-			if err := tx.Model(&existingFeatures[0]).Update("policy", cpuFeature.Policy).Error; err != nil {
-				return false, err
-			}
-			changed = true
-		}
+	if bootChanged, err := s.syncVMBootConfig(tx, vmUUID, hardware.Boot); err != nil {
+		return false, err
+	} else if bootChanged {
+		changed = true
 	}
 
-	// --- Sync CPU Topology ---
-	if hardware.CPUInfo != nil && hardware.CPUInfo.Topology != nil {
-		cpuTopology := storage.CPUTopology{
-			VMUUID:  vmUUID,
-			Sockets: uint(hardware.CPUInfo.Topology.Sockets),
-			Cores:   uint(hardware.CPUInfo.Topology.Cores),
-			Threads: uint(hardware.CPUInfo.Topology.Threads),
-		}
-		var existingTopology []storage.CPUTopology
-		tx.Where("vm_uuid = ?", vmUUID).Limit(1).Find(&existingTopology)
-		if len(existingTopology) == 0 {
-			if err := tx.Create(&cpuTopology).Error; err != nil {
-				return false, err
-			}
-			changed = true
-		} else {
-			if err := tx.Model(&existingTopology[0]).Updates(map[string]interface{}{
-				"sockets": cpuTopology.Sockets,
-				"cores":   cpuTopology.Cores,
-				"threads": cpuTopology.Threads,
-			}).Error; err != nil {
-				return false, err
-			}
-			changed = true
-		}
+	if hostdevChanged, err := s.syncVMHostdevs(tx, vmUUID, hostID, hardware.Hostdevs); err != nil {
+		return false, err
+	} else if hostdevChanged {
+		changed = true
 	}
 
-	// --- Sync Memory Configuration ---
-	if hardware.MemoryBacking != nil {
-		memConfig := storage.MemoryConfig{
-			VMUUID:       vmUUID,
-			ConfigType:   "backing",
-			SourceType:   hardware.MemoryBacking.Source,
-			Nosharepages: hardware.MemoryBacking.NoSharePages,
-			Locked:       hardware.MemoryBacking.Locked,
-		}
-		if hardware.MemoryBacking.HugePages != nil {
-			hugePagesJSON, _ := json.Marshal(hardware.MemoryBacking.HugePages.Page)
-			memConfig.ConfigJSON = string(hugePagesJSON)
-		}
-
-		var existingMem []storage.MemoryConfig
-		tx.Where("vm_uuid = ? AND config_type = ?", vmUUID, "backing").Limit(1).Find(&existingMem)
-		if len(existingMem) == 0 {
-			if err := tx.Create(&memConfig).Error; err != nil {
-				return false, err
-			}
-			changed = true
-		} else {
-			if err := tx.Model(&existingMem[0]).Updates(map[string]interface{}{
-				"source_type":  memConfig.SourceType,
-				"nosharepages": memConfig.Nosharepages,
-				"locked":       memConfig.Locked,
-				"config_json":  memConfig.ConfigJSON,
-			}).Error; err != nil {
-				return false, err
-			}
-			changed = true
-		}
+	if blockdevChanged, err := s.syncVMBlockDevs(tx, hardware.BlockDevs); err != nil {
+		return false, err
+	} else if blockdevChanged {
+		changed = true
 	}
 
-	// --- Sync Security Labels ---
-	for _, label := range hardware.SecurityLabels {
-		relabel := false
-		if label.Relabel == "yes" {
-			relabel = true
-		}
-		secLabel := storage.SecurityLabel{
-			VMUUID:  vmUUID,
-			Type:    label.Type,
-			Label:   label.Label,
-			Relabel: relabel,
-		}
-		var existingLabels []storage.SecurityLabel
-		tx.Where("vm_uuid = ? AND type = ?", vmUUID, label.Type).Limit(1).Find(&existingLabels)
-		if len(existingLabels) == 0 {
-			if err := tx.Create(&secLabel).Error; err != nil {
-				return false, err
-			}
-			changed = true
-		} else {
-			if err := tx.Model(&existingLabels[0]).Updates(map[string]interface{}{
-				"label":   secLabel.Label,
-				"relabel": secLabel.Relabel,
-			}).Error; err != nil {
-				return false, err
-			}
-			changed = true
-		}
+	if numaChanged, err := s.syncVMNUMANodes(tx, vmUUID, hardware.NUMANodes); err != nil {
+		return false, err
+	} else if numaChanged {
+		changed = true
 	}
 
-	// --- Sync Launch Security ---
-	if hardware.LaunchSecurity != nil {
-		launchSec := storage.LaunchSecurity{
-			VMUUID: vmUUID,
-			Type:   hardware.LaunchSecurity.Type,
-		}
-		// Convert string fields to appropriate types
-		if cbitpos, err := strconv.ParseUint(hardware.LaunchSecurity.CBitPos, 10, 32); err == nil {
-			launchSec.CBitPos = uint(cbitpos)
-		}
-		if reducedBits, err := strconv.ParseUint(hardware.LaunchSecurity.ReducedPhysBits, 10, 32); err == nil {
-			launchSec.ReducedPhysBits = uint(reducedBits)
-		}
-		if policy, err := strconv.ParseUint(hardware.LaunchSecurity.Policy, 10, 64); err == nil {
-			launchSec.Policy = policy
-		}
-		launchSec.DHCert = hardware.LaunchSecurity.DHCert
-		launchSec.Session = hardware.LaunchSecurity.Session
-
-		var existingLaunch []storage.LaunchSecurity
-		tx.Where("vm_uuid = ?", vmUUID).Limit(1).Find(&existingLaunch)
-		if len(existingLaunch) == 0 {
-			if err := tx.Create(&launchSec).Error; err != nil {
-				return false, err
-			}
-			changed = true
-		} else {
-			if err := tx.Model(&existingLaunch[0]).Updates(map[string]interface{}{
-				"type":              launchSec.Type,
-				"cbitpos":           launchSec.CBitPos,
-				"reduced_phys_bits": launchSec.ReducedPhysBits,
-				"policy":            launchSec.Policy,
-				"dh_cert":           launchSec.DHCert,
-				"session":           launchSec.Session,
-			}).Error; err != nil {
-				return false, err
-			}
-			changed = true
-		}
+	if iothreadChanged, err := s.syncVMIOThreads(tx, hardware.IOThreads); err != nil {
+		return false, err
+	} else if iothreadChanged {
+		changed = true
 	}
 
-	// --- Sync Hypervisor Features ---
-	for _, feature := range hardware.HypervisorFeatures {
-		hvFeature := storage.HypervisorFeature{
-			VMUUID: vmUUID,
-			Name:   feature.Name,
-			State:  feature.State,
-		}
-		var existingHV []storage.HypervisorFeature
-		tx.Where("vm_uuid = ? AND name = ?", vmUUID, feature.Name).Limit(1).Find(&existingHV)
-		if len(existingHV) == 0 {
-			if err := tx.Create(&hvFeature).Error; err != nil {
-				return false, err
-			}
-			changed = true
-		} else {
-			if err := tx.Model(&existingHV[0]).Update("state", hvFeature.State).Error; err != nil {
-				return false, err
-			}
-			changed = true
-		}
+	if mdevChanged, err := s.syncVMMdevs(tx, vmUUID, hardware.Mdevs); err != nil {
+		return false, err
+	} else if mdevChanged {
+		changed = true
 	}
 
-	// --- Sync Lifecycle Actions ---
-	if hardware.LifecycleActions != nil {
-		lifecycle := storage.LifecycleAction{
-			VMUUID:        vmUUID,
-			OnPoweroff:    hardware.LifecycleActions.OnPoweroff,
-			OnReboot:      hardware.LifecycleActions.OnReboot,
-			OnCrash:       hardware.LifecycleActions.OnCrash,
-			OnLockfailure: hardware.LifecycleActions.OnLockFailure,
-		}
-
-		var existingLifecycle []storage.LifecycleAction
-		tx.Where("vm_uuid = ?", vmUUID).Limit(1).Find(&existingLifecycle)
-		if len(existingLifecycle) == 0 {
-			if err := tx.Create(&lifecycle).Error; err != nil {
-				return false, err
-			}
-			changed = true
-		} else {
-			if err := tx.Model(&existingLifecycle[0]).Updates(map[string]interface{}{
-				"on_poweroff":    lifecycle.OnPoweroff,
-				"on_reboot":      lifecycle.OnReboot,
-				"on_crash":       lifecycle.OnCrash,
-				"on_lockfailure": lifecycle.OnLockfailure,
-			}).Error; err != nil {
-				return false, err
-			}
-			changed = true
-		}
+	if osConfigChanged, err := s.syncVMOSConfig(tx, vmUUID, hardware.OSConfig); err != nil {
+		return false, err
+	} else if osConfigChanged {
+		changed = true
 	}
 
-	// --- Sync Clock Configuration ---
-	if hardware.ClockConfig != nil {
-		clock := storage.Clock{
-			VMUUID: vmUUID,
-			Offset: hardware.ClockConfig.Offset,
-		}
-		if len(hardware.ClockConfig.Timers) > 0 {
-			timersJSON, _ := json.Marshal(hardware.ClockConfig.Timers)
-			clock.ConfigJSON = string(timersJSON)
-		}
-
-		var existingClock []storage.Clock
-		tx.Where("vm_uuid = ?", vmUUID).Limit(1).Find(&existingClock)
-		if len(existingClock) == 0 {
-			if err := tx.Create(&clock).Error; err != nil {
-				return false, err
-			}
-			changed = true
-		} else {
-			if err := tx.Model(&existingClock[0]).Updates(map[string]interface{}{
-				"offset":      clock.Offset,
-				"config_json": clock.ConfigJSON,
-			}).Error; err != nil {
-				return false, err
-			}
-			changed = true
-		}
+	if smbiosChanged, err := s.syncVMSMBIOS(tx, vmUUID, hardware.SMBIOSInfo); err != nil {
+		return false, err
+	} else if smbiosChanged {
+		changed = true
 	}
 
-	// --- Sync Performance Events ---
-	for _, event := range hardware.PerfEvents {
-		perfEvent := storage.PerfEvent{
-			VMUUID: vmUUID,
-			Name:   event.Name,
-			State:  event.Event, // Event field contains the state ('on'/'off')
-		}
+	if cpuFeaturesChanged, err := s.syncVMCPUFeatures(tx, vmUUID, hardware.CPUFeatures); err != nil {
+		return false, err
+	} else if cpuFeaturesChanged {
+		changed = true
+	}
 
-		var existingPerf []storage.PerfEvent
-		tx.Where("vm_uuid = ? AND name = ?", vmUUID, event.Name).Limit(1).Find(&existingPerf)
-		if len(existingPerf) == 0 {
-			if err := tx.Create(&perfEvent).Error; err != nil {
-				return false, err
-			}
-			changed = true
-		} else {
-			if err := tx.Model(&existingPerf[0]).Update("state", perfEvent.State).Error; err != nil {
-				return false, err
-			}
-			changed = true
-		}
+	if cpuTopologyChanged, err := s.syncVMCPUTopology(tx, vmUUID, hardware.CPUInfo); err != nil {
+		return false, err
+	} else if cpuTopologyChanged {
+		changed = true
+	}
+
+	if memoryChanged, err := s.syncVMMemoryConfig(tx, vmUUID, hardware.MemoryBacking); err != nil {
+		return false, err
+	} else if memoryChanged {
+		changed = true
+	}
+
+	if securityChanged, err := s.syncVMSecurityLabels(tx, vmUUID, hardware.SecurityLabels); err != nil {
+		return false, err
+	} else if securityChanged {
+		changed = true
+	}
+
+	if launchSecurityChanged, err := s.syncVMLaunchSecurity(tx, vmUUID, hardware.LaunchSecurity); err != nil {
+		return false, err
+	} else if launchSecurityChanged {
+		changed = true
+	}
+
+	if hypervisorFeaturesChanged, err := s.syncVMHypervisorFeatures(tx, vmUUID, hardware.HypervisorFeatures); err != nil {
+		return false, err
+	} else if hypervisorFeaturesChanged {
+		changed = true
+	}
+
+	if lifecycleChanged, err := s.syncVMLifecycleActions(tx, vmUUID, hardware.LifecycleActions); err != nil {
+		return false, err
+	} else if lifecycleChanged {
+		changed = true
+	}
+
+	if clockChanged, err := s.syncVMClockConfig(tx, vmUUID, hardware.ClockConfig); err != nil {
+		return false, err
+	} else if clockChanged {
+		changed = true
+	}
+
+	if perfEventsChanged, err := s.syncVMPerfEvents(tx, vmUUID, hardware.PerfEvents); err != nil {
+		return false, err
+	} else if perfEventsChanged {
+		changed = true
 	}
 
 	return changed, nil
