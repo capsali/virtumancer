@@ -182,9 +182,9 @@
 
     <!-- Add Host Modal -->
     <AddHostModal
-      :show="showAddHostModal"
+      :open="showAddHostModal"
       @close="showAddHostModal = false"
-      @added="onHostAdded"
+      @hostAdded="onHostAdded"
     />
   </div>
 </template>

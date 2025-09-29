@@ -91,7 +91,7 @@ const emit = defineEmits<{
   'update:open': [value: boolean];
   hostAdded: [host: Host];
   close: [];
-  submit: [hostData: Omit<Host, 'id' | 'state' | 'createdAt' | 'updatedAt'>];
+  submit: [hostData: Omit<Host, 'id'>];
 }>();
 
 // Store
