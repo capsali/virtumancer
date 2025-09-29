@@ -1544,6 +1544,7 @@ func (s *HostService) ingestVMFromLibvirt(hostID, vmName string) (bool, error) {
 }
 
 func (s *HostService) detectDriftOrIngestVM(hostID, vmName string, isInitialSync bool) (bool, error) {
+	_ = isInitialSync // Parameter reserved for future use to distinguish initial sync behavior
 	vmInfo, err := s.connector.GetDomainInfo(hostID, vmName)
 	if err != nil {
 		// If we can't get info from libvirt, first check whether the connector
@@ -1942,17 +1943,18 @@ func (s *HostService) syncVMHardware(tx *gorm.DB, vmUUID string, hostID string, 
 		// Extract capacity if available
 		if disk.Capacity.Value > 0 {
 			var capacityBytes uint64
-			if disk.Capacity.Unit == "bytes" {
+			switch disk.Capacity.Unit {
+			case "bytes":
 				capacityBytes = disk.Capacity.Value
-			} else if disk.Capacity.Unit == "KB" || disk.Capacity.Unit == "KiB" {
+			case "KB", "KiB":
 				capacityBytes = disk.Capacity.Value * 1024
-			} else if disk.Capacity.Unit == "MB" || disk.Capacity.Unit == "MiB" {
+			case "MB", "MiB":
 				capacityBytes = disk.Capacity.Value * 1024 * 1024
-			} else if disk.Capacity.Unit == "GB" || disk.Capacity.Unit == "GiB" {
+			case "GB", "GiB":
 				capacityBytes = disk.Capacity.Value * 1024 * 1024 * 1024
-			} else if disk.Capacity.Unit == "TB" || disk.Capacity.Unit == "TiB" {
+			case "TB", "TiB":
 				capacityBytes = disk.Capacity.Value * 1024 * 1024 * 1024 * 1024
-			} else {
+			default:
 				// Default to bytes if unit is not specified or unknown
 				capacityBytes = disk.Capacity.Value
 			}
@@ -3973,9 +3975,10 @@ func (s *HostService) GetDashboardStats() (*DashboardStats, error) {
 
 	// Count running and stopped VMs
 	for _, vm := range allVMs {
-		if vm.State == storage.StateActive {
+		switch vm.State {
+		case storage.StateActive:
 			stats.Infrastructure.RunningVMs++
-		} else if vm.State == storage.StateStopped {
+		case storage.StateStopped:
 			stats.Infrastructure.StoppedVMs++
 		}
 	}

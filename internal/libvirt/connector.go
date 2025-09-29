@@ -20,29 +20,6 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-// typedParamValueString returns a human-readable representation of a TypedParamValue
-// including the discriminator (D) and the concrete Go value held in I.
-func typedParamValueString(v libvirt.TypedParamValue) string {
-	switch val := v.I.(type) {
-	case int32:
-		return fmt.Sprintf("D=%d int32=%d", v.D, val)
-	case int64:
-		return fmt.Sprintf("D=%d int64=%d", v.D, val)
-	case uint32:
-		return fmt.Sprintf("D=%d uint32=%d", v.D, val)
-	case uint64:
-		return fmt.Sprintf("D=%d uint64=%d", v.D, val)
-	case float32:
-		return fmt.Sprintf("D=%d float32=%f", v.D, val)
-	case float64:
-		return fmt.Sprintf("D=%d float64=%f", v.D, val)
-	case string:
-		return fmt.Sprintf("D=%d string=%s", v.D, val)
-	default:
-		return fmt.Sprintf("D=%d unknown=%v", v.D, val)
-	}
-}
-
 // GraphicsInfo holds details about available graphics consoles.
 type GraphicsInfo struct {
 	VNC   bool `json:"vnc"`
@@ -699,17 +676,6 @@ func getMemoryUsageFromParams(params []libvirt.TypedParam, totalKiB uint64) (use
 	}
 
 	return 0, false
-}
-
-// paramsContainCached checks whether any of the params correspond to cached/buffers fields.
-func paramsContainCached(params []libvirt.TypedParam) bool {
-	for _, p := range params {
-		name := strings.ToLower(p.Field)
-		if name == "cached" || name == "cache" || name == "buffers" {
-			return true
-		}
-	}
-	return false
 }
 
 // nodeMemoryStatsToTypedParams converts NodeGetMemoryStats entries into TypedParam entries.

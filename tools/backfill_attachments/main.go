@@ -281,6 +281,11 @@ func createUniqueDeviceIndex(db *gorm.DB, dryRun bool) error {
 		return fmt.Errorf("duplicates still exist for (device_type, device_id); run dedupe with -fix before creating index")
 	}
 
+	if dryRun {
+		log.Verbosef("dry-run: would create unique index on (device_type, device_id)")
+		return nil
+	}
+
 	if err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS uniq_attachment_index_device ON attachment_indices(device_type, device_id) WHERE device_type != 'volume' AND device_id IS NOT NULL;`).Error; err != nil {
 		return err
 	}
