@@ -873,26 +873,15 @@ func (s *HostService) GetVMsForHostFromDB(hostID string) ([]VMView, error) {
 func (s *HostService) calculateVMDiskSize(vmUUID string) float64 {
 	var totalSizeBytes uint64 = 0
 
-	// Try disk attachments first (newer schema)
+	// Get disk attachments (current schema)
 	var diskAttachments []storage.DiskAttachment
-	if err := s.db.Preload("Disk").Where("vm_uuid = ?", vmUUID).Find(&diskAttachments).Error; err == nil {
-		for _, attachment := range diskAttachments {
-			totalSizeBytes += attachment.Disk.CapacityBytes
-		}
-		if totalSizeBytes > 0 {
-			return float64(totalSizeBytes) / (1024 * 1024 * 1024)
-		}
-	}
-
-	// Fallback to volume attachments (legacy schema)
-	var volumeAttachments []storage.VolumeAttachment
-	if err := s.db.Preload("Volume").Where("vm_uuid = ?", vmUUID).Find(&volumeAttachments).Error; err != nil {
-		log.Verbosef("Failed to get storage attachments for VM %s: %v", vmUUID, err)
+	if err := s.db.Preload("Disk").Where("vm_uuid = ?", vmUUID).Find(&diskAttachments).Error; err != nil {
+		log.Verbosef("Failed to get disk attachments for VM %s: %v", vmUUID, err)
 		return 0
 	}
 
-	for _, attachment := range volumeAttachments {
-		totalSizeBytes += attachment.Volume.CapacityBytes
+	for _, attachment := range diskAttachments {
+		totalSizeBytes += attachment.Disk.CapacityBytes
 	}
 
 	// Convert bytes to GB

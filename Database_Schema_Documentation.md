@@ -51,9 +51,9 @@ Represents storage volumes (virtual disks, ISOs).
 | type | TEXT |  | The type of volume, e.g., DISK, ISO. |
 | format | TEXT |  | The disk format, e.g., qcow2, raw. |
 
-### **volume\_attachments** (Legacy)
+### **volume\_attachments** (Removed)
 
-A join table linking virtual\_machines to volumes. This table is maintained for backward compatibility with older data.
+A join table that previously linked virtual\_machines to volumes. This table has been removed as part of the disk schema migration. All VM disk attachments now use the disk\_attachments table.
 
 | Column | Type | Constraints | Description |
 | :---- | :---- | :---- | :---- |
@@ -62,6 +62,8 @@ A join table linking virtual\_machines to volumes. This table is maintained for 
 | volume\_id | INTEGER |  | Foreign key to volumes. |
 | device\_name | TEXT |  | The device name inside the guest, e.g., vda. |
 | bus\_type | TEXT |  | The bus type, e.g., virtio, sata. |
+
+*Note: This table was dropped after successful migration to disk_attachments.*
 
 ### **disk\_attachments** (Current)
 
@@ -78,7 +80,7 @@ The current table for linking virtual machines to disk storage with enhanced met
 | created\_at | DATETIME |  | Timestamp when the attachment was created. |
 | updated\_at | DATETIME |  | Timestamp when the attachment was last updated. |
 
-*Note: The system supports dual-table disk size calculation, checking both disk\_attachments and volume\_attachments for comprehensive size reporting.*
+*Note: Disk size calculation now uses only the disk_attachments table with Disk.CapacityBytes.*
 
 ### **networks**
 

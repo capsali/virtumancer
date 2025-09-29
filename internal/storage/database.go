@@ -135,17 +135,6 @@ type Volume struct {
 	AllocationBytes uint64
 }
 
-// VolumeAttachment links a Volume to a VirtualMachine.
-type VolumeAttachment struct {
-	gorm.Model
-	VMUUID     string `gorm:"index"`
-	VolumeID   uint
-	Volume     Volume
-	DeviceName string // e.g., "vda", "hdb"
-	BusType    string // e.g., "virtio", "sata", "ide"
-	IsReadOnly bool
-}
-
 // --- Network Management ---
 
 // Network represents a virtual network or bridge on a host.
@@ -1075,7 +1064,6 @@ func InitDB(dataSourceName string) (*gorm.DB, error) {
 		&VirtualMachine{},
 		&StoragePool{},
 		&Volume{},
-		&VolumeAttachment{},
 		&Network{},
 		&Port{},
 		&PortBinding{},
