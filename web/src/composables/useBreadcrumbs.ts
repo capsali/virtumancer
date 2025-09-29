@@ -37,7 +37,7 @@ export function useBreadcrumbs() {
         
         // If we have more segments, it's a specific VM
         if (pathSegments.length > 1) {
-          const vmName = (route.params.vmName as string) || pathSegments[pathSegments.length - 1]
+          const vmName = (route.params.vmName as string) || pathSegments[pathSegments.length - 1] || 'Unknown VM'
           items.push({
             label: vmName,
             isActive: true

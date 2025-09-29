@@ -267,9 +267,10 @@ const handlePreviewScaleChange = async () => {
     await settingsApi.updateMetrics({ previewScale: settingsStore.previewScale })
     const uiStore = useUIStore()
     uiStore.addToast('Preview scaling preference saved', 'success', 3000)
-  } catch (e) {
+  } catch (error) {
     const uiStore = useUIStore()
     uiStore.addToast('Failed to save preview scaling preference', 'error', 5000)
+    console.error('Settings save error:', error)
   }
 }
 

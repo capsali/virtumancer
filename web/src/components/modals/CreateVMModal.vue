@@ -233,7 +233,7 @@ import { ref, reactive, computed, watch } from 'vue';
 import FCard from '@/components/ui/FCard.vue';
 import FButton from '@/components/ui/FButton.vue';
 import { useVMStore } from '@/stores/vmStore';
-import type { VirtualMachine } from '@/types';
+import type { VirtualMachine, CreateVMData } from '@/types';
 
 interface Props {
   open: boolean;
@@ -317,21 +317,23 @@ const handleSubmit = async (): Promise<void> => {
       throw new Error('VM name can only contain letters, numbers, underscores, and hyphens');
     }
     
-    const vmData: Omit<VirtualMachine, 'uuid' | 'createdAt' | 'updatedAt'> = {
+    // Note: backend/frontend types use snake_case for persisted VM fields.
+    // Use CreateVMData (snake_case) to send to the API and avoid object-literal mismatch errors.
+    const vmData: CreateVMData = {
       name: formData.name.trim(),
       description: formData.description.trim() || 'No description',
-      osType: formData.osType,
-      vcpuCount: formData.vcpuCount,
-      memoryMB: formData.memoryMB,
-      diskSizeGB: formData.diskSizeGB,
-      networkInterface: formData.networkInterface,
-      bootDevice: formData.bootDevice,
-      cpuModel: 'host',
+      os_type: formData.osType,
+      vcpu_count: formData.vcpuCount,
+      memory_bytes: formData.memoryMB * 1024 * 1024,
+      disk_size_gb: formData.diskSizeGB,
+      network_interface: formData.networkInterface,
+      boot_device: formData.bootDevice,
+      cpu_model: 'host',
       source: 'managed',
-      syncStatus: 'SYNCED',
+      sync_status: 'SYNCED',
       libvirtState: 'STOPPED',
       hostId: props.hostId,
-      domainUuid: '',
+      domain_uuid: '',
       title: formData.name.trim(),
       state: 'STOPPED'
     };

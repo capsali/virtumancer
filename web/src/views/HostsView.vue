@@ -224,7 +224,7 @@ const getHostStatusColor = (host: any) => {
 const extractHostname = (uri: string) => {
   try {
     // Extract hostname from URI like qemu+ssh://user@hostname/system
-    const match = uri.match(/@([^\/]+)/) || uri.match(/\/\/([^\/]+)/)
+    const match = uri.match(/@([^/]+)/) || uri.match(/\/\/([^/]+)/)
     return match ? match[1] : uri
   } catch {
     return uri

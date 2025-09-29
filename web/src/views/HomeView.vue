@@ -124,7 +124,7 @@
             </div>
             <div class="flex items-center justify-between">
               <span class="text-sm text-slate-400">Network Interfaces</span>
-              <span class="text-lg font-bold text-white">{{ dashboardStats.infrastructure.totalVMs * 1.5 | 0 }}</span>
+              <span class="text-lg font-bold text-white">{{ Math.floor(dashboardStats.infrastructure.totalVMs * 1.5) }}</span>
             </div>
           </div>
           

@@ -6,7 +6,10 @@ import type {
   VMStats, 
   VMHardware,
   ApiResponse,
-  PaginatedResponse 
+  PaginatedResponse,
+  CreateVMData,
+  VMTaskState,
+  SyncStatus
 } from '@/types';
 
 // Import error recovery service for automatic error handling
@@ -272,16 +275,27 @@ interface BackendVMResponse {
 // Transform backend VM response to frontend VirtualMachine interface
 function transformBackendVMToFrontend(backendVM: BackendVMResponse, hostId: string): VirtualMachine {
   return {
+    // Core identifiers
     uuid: backendVM.uuid,
-    hostId: hostId,
     name: backendVM.name,
+
+    // Backend (snake_case)
+    domain_uuid: backendVM.domain_uuid,
+    vcpu_count: backendVM.vcpu_count,
+    memory_bytes: backendVM.memory_bytes,
+    os_type: backendVM.os_type,
+    disk_size_gb: backendVM.disk_size_gb,
+    network_interface: backendVM.network_interface,
+
+    // Frontend-friendly aliases (camelCase)
+    hostId: hostId,
     domainUuid: backendVM.domain_uuid,
     source: 'managed' as const, // VMs from this endpoint are managed (imported)
     title: backendVM.name, // Use name as title for now
     description: backendVM.description,
     state: backendVM.state as any,
     libvirtState: backendVM.libvirtState as any,
-    taskState: backendVM.task_state as any,
+  taskState: backendVM.task_state as VMTaskState,
     vcpuCount: backendVM.vcpu_count,
     cpuModel: backendVM.cpu_model,
     memoryMB: Math.round(backendVM.memory_bytes / (1024 * 1024)), // Convert bytes to MB
@@ -290,7 +304,16 @@ function transformBackendVMToFrontend(backendVM: BackendVMResponse, hostId: stri
     diskSizeGB: backendVM.disk_size_gb || 0,
     networkInterface: backendVM.network_interface || '',
     syncStatus: backendVM.sync_status as any,
+  // snake_case sync_status required by VirtualMachine
+  sync_status: backendVM.sync_status as SyncStatus,
     graphics: backendVM.graphics,
+    // Backend-required fields with defaults if missing
+    is_template: backendVM.is_template ?? false,
+    cpu_model: backendVM.cpu_model ?? 'host',
+    cpu_topology_json: backendVM.cpu_topology_json ?? '{}',
+  task_state: (backendVM.task_state as unknown as VMTaskState) ?? null,
+    drift_details: backendVM.drift_details ?? '',
+    needs_rebuild: backendVM.needs_rebuild ?? false,
     createdAt: '', // Not provided by backend, set default
     updatedAt: '', // Not provided by backend, set default
   };
@@ -308,7 +331,7 @@ export const vmApi = {
     return backendVMs.map(vm => transformBackendVMToFrontend(vm, hostId));
   },
 
-  async create(vmData: Omit<VirtualMachine, 'uuid' | 'createdAt' | 'updatedAt'>): Promise<VirtualMachine> {
+  async create(vmData: CreateVMData): Promise<VirtualMachine> {
     return apiClient.post<VirtualMachine>(`/hosts/${vmData.hostId}/vms`, vmData);
   },
 

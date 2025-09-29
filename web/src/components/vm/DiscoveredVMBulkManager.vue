@@ -124,7 +124,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, withDefaults } from 'vue';
 import FButton from '@/components/ui/FButton.vue';
 import DiscoveredVMCard from '@/components/vm/DiscoveredVMCard.vue';
 import type { DiscoveredVM } from '@/types';
@@ -136,7 +136,10 @@ interface Props {
   deleting?: boolean;
 }
 
-const props = defineProps<Props>();
+const props = withDefaults(defineProps<Props>(), {
+  importing: false,
+  deleting: false
+});
 
 const emit = defineEmits<{
   'bulk-import': [vmUUIDs: string[]];
@@ -193,11 +196,13 @@ const filteredAndSortedVMs = computed(() => {
 });
 
 // Selection methods
-const isVMSelected = (uuid: string): boolean => {
+const isVMSelected = (uuid?: string): boolean => {
+  if (!uuid) return false;
   return selectedVMUUIDs.value.has(uuid);
 };
 
-const toggleVMSelection = (uuid: string): void => {
+const toggleVMSelection = (uuid?: string): void => {
+  if (!uuid) return;
   if (selectedVMUUIDs.value.has(uuid)) {
     selectedVMUUIDs.value.delete(uuid);
   } else {
@@ -211,7 +216,7 @@ const toggleSelectAll = (): void => {
   } else {
     selectedVMUUIDs.value = new Set(filteredAndSortedVMs.value
       .filter(vm => vm && vm.domain_uuid)
-      .map(vm => vm.domain_uuid));
+      .map(vm => vm.domain_uuid as string));
   }
 };
 

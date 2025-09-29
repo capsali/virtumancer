@@ -34,6 +34,21 @@ export interface VirtualMachine {
   uptime?: number;
   disk_size_gb?: number;
   network_interface?: string;
+
+  // Optional camelCase aliases used across the frontend for convenience
+  hostId?: string;
+  domainUuid?: string;
+  vcpuCount?: number;
+  memoryMB?: number;
+  cpuModel?: string;
+  osType?: string;
+  taskState?: VMTaskState;
+  syncStatus?: SyncStatus;
+  source?: string;
+  title?: string;
+  bootDevice?: string;
+  diskSizeGB?: number;
+  networkInterface?: string;
 }
 
 export interface DiscoveredVM {
@@ -42,6 +57,13 @@ export interface DiscoveredVM {
   host_id: string;
   last_seen_at: string;
   imported: boolean;
+  // Optional properties for UI compatibility when displaying in VM lists
+  uuid?: string;
+  state?: VMState;
+  vcpuCount?: number;
+  memoryMB?: number;
+  osType?: string;
+  isActive?: boolean;
 }
 
 export interface VMStats {
@@ -69,40 +91,28 @@ export interface VMHardware {
   uuid: string;
   title: string;
   description: string;
-  memory: {
-    value: number;
-    unit: string;
+  vcpus: number;
+  cpu_model: string;
+  cpu_topology: {
+    sockets: number;
+    cores: number;
+    threads: number;
   };
-  currentMemory: {
-    value: number;
-    unit: string;
+  cpu_features: any[];
+  memory_bytes: number;
+  current_memory: number;
+  memory_mb?: number; // Fallback property
+  memory_backing: any;
+  disks: HardwareDiskInfo[];
+  networks: HardwareNetworkInfo[];
+  video_devices: any[];
+  controllers: any[];
+  host_devices: any[];
+  tpm: {
+    enabled: boolean;
+    version: string;
+    backend: string;
   };
-  vcpu: number;
-  cpu: {
-    mode: string;
-    model: {
-      name: string;
-      fallback: string;
-    };
-    topology: {
-      sockets: number;
-      cores: number;
-      threads: number;
-    };
-  };
-  os: {
-    type: string;
-    loader?: {
-      path: string;
-      type: string;
-      readonly: string;
-      secure: string;
-    };
-  };
-  disks: DiskInfo[];
-  networks: NetworkInfo[];
-  graphics: GraphicsInfo[];
-  consoles: ConsoleInfo[];
 }
 
 export interface DiskInfo {
@@ -125,6 +135,20 @@ export interface DiskInfo {
   };
 }
 
+export interface HardwareDiskInfo {
+  id?: string;
+  deviceName: string;
+  device?: string; // Fallback property
+  target?: string; // Fallback property
+  busType: string;
+  type?: string; // Fallback property
+  capacityGB: number;
+  size_gb?: number; // Fallback property
+  format: string;
+  readOnly: boolean;
+  shareable: boolean;
+}
+
 export interface NetworkInfo {
   type: string;
   mac: {
@@ -141,6 +165,18 @@ export interface NetworkInfo {
   target: {
     dev: string;
   };
+}
+
+export interface HardwareNetworkInfo {
+  id?: string;
+  macAddress: string;
+  mac?: string; // Fallback property
+  modelName: string;
+  model?: string; // Fallback property
+  sourceType: string;
+  type?: string; // Fallback property
+  sourceRef: string;
+  source?: string; // Fallback property
 }
 
 export interface GraphicsInfo {
@@ -204,7 +240,17 @@ export interface AppError {
 }
 
 export interface LoadingStates {
-  [key: string]: boolean;
+  hosts: boolean;
+  vms: boolean;
+  addHost: boolean;
+  vmAction: boolean | null;
+  vmHardware: boolean;
+  vmReconcile: boolean | null;
+  vmImport: boolean | null;
+  hostImportAll: string | null;
+  connectHost: Record<string, boolean>;
+  hostStats: Record<string, boolean>;
+  [key: string]: boolean | null | string | Record<string, boolean>;
 }
 
 export interface ApiResponse<T = any> {
@@ -274,6 +320,21 @@ export interface VMFormData {
   os_type?: string;
 }
 
+// Data shape used when creating a VM from the UI. Uses snake_case to match backend.
+export interface CreateVMData extends VMFormData {
+  hostId: string;
+  disk_size_gb?: number;
+  network_interface?: string;
+  boot_device?: string;
+  cpu_model?: string;
+  source?: string;
+  sync_status?: string;
+  libvirtState?: string;
+  domain_uuid?: string;
+  title?: string;
+  state?: string;
+}
+
 // UI-specific types
 export interface BreadcrumbItem {
   label: string;
@@ -294,4 +355,21 @@ export interface ModalConfig {
   title?: string;
   size?: 'sm' | 'md' | 'lg' | 'xl' | 'full';
   persistent?: boolean;
+}
+
+export interface UIPreferences {
+  sidebarCollapsed: boolean;
+  theme: 'light' | 'dark' | 'auto';
+  colorScheme: string;
+  reducedMotion: boolean;
+  particleEffects: boolean;
+  glowEffects: boolean;
+}
+
+export interface ViewState {
+  currentView: string;
+  breadcrumbs: string[];
+  filters: Record<string, any>;
+  sortBy: string;
+  sortOrder: 'asc' | 'desc';
 }

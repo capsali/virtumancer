@@ -95,7 +95,7 @@ onMounted(async () => {
     console.error('Failed to initialize application:', error);
     // Use error recovery service for initialization errors
     errorRecoveryService.addError(
-      error as Error, 
+      error instanceof Error ? error : new Error(String(error)), 
       'application_initialization',
       { stage: 'startup' }
     );

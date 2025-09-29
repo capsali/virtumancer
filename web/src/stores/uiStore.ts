@@ -4,7 +4,7 @@ import type { UIPreferences, ViewState, ToastMessage } from '@/types';
 
 // Toast management
 let nextToastId = 1;
-const toastTimers: Record<number, ReturnType<typeof setTimeout>> = {};
+const toastTimers: Record<string, ReturnType<typeof setTimeout>> = {};
 
 export const useUIStore = defineStore('ui', () => {
   // State
@@ -141,9 +141,9 @@ export const useUIStore = defineStore('ui', () => {
     message: string, 
     type: 'success' | 'error' | 'warning' | 'info' = 'success', 
     timeout: number = type === 'error' ? 15000 : type === 'warning' ? 12000 : 8000
-  ): number => {
-    const id = nextToastId++;
-    const toast: ToastMessage = { id, message, type, timeout };
+  ): string => {
+    const id = (nextToastId++).toString();
+    const toast: ToastMessage = { id, message, type, duration: timeout };
     
     toasts.value.push(toast);
     
@@ -156,7 +156,7 @@ export const useUIStore = defineStore('ui', () => {
     return id;
   };
 
-  const removeToast = (id: number): void => {
+  const removeToast = (id: string): void => {
     if (toastTimers[id]) {
       clearTimeout(toastTimers[id]);
       delete toastTimers[id];
@@ -167,7 +167,7 @@ export const useUIStore = defineStore('ui', () => {
   const clearAllToasts = (): void => {
     // Clear all timers
     Object.values(toastTimers).forEach(timer => clearTimeout(timer));
-    Object.keys(toastTimers).forEach(key => delete toastTimers[Number(key)]);
+    Object.keys(toastTimers).forEach(key => delete toastTimers[key]);
     
     toasts.value = [];
   };
@@ -233,12 +233,13 @@ export const useUIStore = defineStore('ui', () => {
 
     if (isCmd) {
       switch (key) {
-        case 'k':
+        case 'k': {
           // Focus search
           handled = true;
           const searchInput = document.querySelector('input[placeholder*="Search"]') as HTMLInputElement;
           searchInput?.focus();
           break;
+        }
           
         case 'b':
           // Toggle sidebar

@@ -217,7 +217,7 @@
               </div>
               <div class="text-right">
                 <div class="text-xs text-slate-400">{{ vm.vcpuCount }}c</div>
-                <div class="text-xs text-slate-400">{{ formatBytes(vm.memoryMB * 1024 * 1024) }}</div>
+                <div class="text-xs text-slate-400">{{ formatBytes((vm.memoryMB ?? 0) * 1024 * 1024) }}</div>
               </div>
             </div>
           </FCard>

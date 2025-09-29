@@ -755,7 +755,7 @@ const loadHardwareData = async () => {
       storage: {
         disks: (hardware.disks || []).map(disk => ({
           id: disk.id,
-          deviceName: disk.deviceName || disk.device || disk.target,
+          deviceName: disk.deviceName || disk.device || disk.target || 'vda',
           busType: disk.busType || disk.type || 'virtio',
           capacityGB: disk.capacityGB || disk.size_gb || 20,
           format: disk.format || 'qcow2',

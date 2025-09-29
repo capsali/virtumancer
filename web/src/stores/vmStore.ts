@@ -7,6 +7,7 @@ import type {
   AppError,
   VMTaskState 
 } from '@/types';
+import type { CreateVMData } from '@/types';
 import { vmApi, wsManager, ApiError } from '@/services/api';
 import { errorRecoveryService } from '@/services/errorRecovery';
 
@@ -112,7 +113,7 @@ export const useVMStore = defineStore('virtualMachines', () => {
     }
   };
 
-  const createVM = async (vmData: Omit<VirtualMachine, 'uuid' | 'createdAt' | 'updatedAt'>): Promise<VirtualMachine> => {
+  const createVM = async (vmData: CreateVMData): Promise<VirtualMachine> => {
     clearError('createVM');
     
     try {
@@ -394,7 +395,7 @@ export const useVMStore = defineStore('virtualMachines', () => {
       ? vms.value.filter(vm => vm.hostId === hostId && vm.state === 'ACTIVE')
       : vms.value.filter(vm => vm.state === 'ACTIVE');
     
-    const promises = activeVMList.map(vm => fetchVMStats(vm.hostId, vm.name));
+  const promises = activeVMList.map(vm => fetchVMStats(vm.hostId!, vm.name!));
     await Promise.allSettled(promises);
   };
 
@@ -403,7 +404,7 @@ export const useVMStore = defineStore('virtualMachines', () => {
       ? vms.value.filter(vm => vm.hostId === hostId && vm.state === 'ACTIVE')
       : vms.value.filter(vm => vm.state === 'ACTIVE');
     
-    const promises = targetVMs.map(vm => stopVM(vm.hostId, vm.name));
+  const promises = targetVMs.map(vm => stopVM(vm.hostId!, vm.name!));
     await Promise.allSettled(promises);
   };
 
