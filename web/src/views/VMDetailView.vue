@@ -54,7 +54,7 @@
             class="px-3 py-2"
             title="Start VM"
           >
-            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+            <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
               <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" />
             </svg>
           </FButton>
@@ -69,7 +69,7 @@
               class="px-3 py-2"
               title="Shutdown VM"
             >
-              <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+              <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
                 <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clip-rule="evenodd" />
               </svg>
             </FButton>
@@ -82,7 +82,7 @@
               class="px-3 py-2"
               title="Reboot VM"
             >
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
               </svg>
             </FButton>
@@ -90,26 +90,26 @@
             <FButton
               variant="ghost"
               size="sm"
-              @click="handleVMAction('forceOff')"
+              @click="showPowerConfirmation('forceOff')"
               :disabled="!!vm.taskState"
               class="px-3 py-2 text-orange-400 hover:bg-orange-500/10"
               title="Force Off VM"
             >
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636m12.728 12.728L18 12M6 6l12 12"/>
               </svg>
             </FButton>
             
             <FButton
               variant="ghost"
               size="sm"
-              @click="handleVMAction('forceReset')"
+              @click="showPowerConfirmation('forceReset')"
               :disabled="!!vm.taskState"
               class="px-3 py-2 text-red-400 hover:bg-red-500/10"
               title="Force Reset VM"
             >
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
               </svg>
             </FButton>
             
@@ -122,14 +122,12 @@
               class="px-3 py-2"
               title="Open Console"
             >
-              <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+              <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
                 <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm0 4a1 1 0 011-1h12a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1V8zm8 2a1 1 0 100 2h2a1 1 0 100-2h-2z" clip-rule="evenodd" />
               </svg>
             </FButton>
             
             <div class="w-px h-6 bg-slate-600 mx-1"></div>
-            
-
             
             <FButton
               variant="ghost"
@@ -138,8 +136,8 @@
               class="px-3 py-2"
               title="VM Settings"
             >
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.50 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
               </svg>
             </FButton>
           </div>
@@ -155,13 +153,13 @@
           <div class="p-6 h-full flex flex-col">
             <div class="flex items-center justify-between mb-6">
               <div class="flex items-center gap-4">
-                <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center shadow-xl ring-2 ring-blue-500/20">
-                  <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center shadow-xl ring-2 ring-blue-500/20">
+                  <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
                   </svg>
                 </div>
                 <div>
-                  <h3 class="text-2xl font-bold text-white">Performance Metrics</h3>
+                  <h3 class="text-lg font-bold text-white">Performance Metrics</h3>
                   <p class="text-sm text-slate-400">Real-time system resource usage</p>
                 </div>
               </div>
@@ -254,13 +252,13 @@
             <div class="p-4">
               <div class="flex items-center justify-between mb-4">
                 <div class="flex items-center gap-3">
-                  <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center shadow-xl ring-2 ring-emerald-500/20">
-                    <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
+                  <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center shadow-xl ring-2 ring-emerald-500/20">
+                    <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
                       <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm0 4a1 1 0 011-1h12a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1V8zm8 2a1 1 0 100 2h2a1 1 0 100-2h-2z" clip-rule="evenodd" />
                     </svg>
                   </div>
                   <div>
-                    <h4 class="text-xl font-bold text-white">Console Preview</h4>
+                    <h4 class="text-lg font-bold text-white">Console Preview</h4>
                     <p class="text-sm text-slate-400">{{ getConsoleStatusText() }}</p>
                   </div>
                 </div>
@@ -342,13 +340,13 @@
       <div class="p-6">
         <div class="flex items-center justify-between mb-6">
           <div class="flex items-center gap-4">
-            <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-purple-500 to-violet-500 flex items-center justify-center shadow-xl ring-2 ring-purple-500/20">
-              <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-violet-500 flex items-center justify-center shadow-xl ring-2 ring-purple-500/20">
+              <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
               </svg>
             </div>
             <div>
-              <h3 class="text-2xl font-bold text-white">Virtual Machine Details</h3>
+              <h3 class="text-lg font-bold text-white">Virtual Machine Details</h3>
               <p class="text-slate-400">Hardware configuration and system information</p>
             </div>
           </div>
@@ -767,6 +765,73 @@
       </FCard>
     </FModal>
 
+    <!-- Power Action Confirmation Modal -->
+    <FModal 
+      :show="showPowerConfirmationModal" 
+      @close="showPowerConfirmationModal = false"
+      size="sm"
+    >
+      <FCard class="bg-slate-800 border-slate-700">
+        <!-- Header -->
+        <div class="p-6 border-b border-slate-700/50">
+          <div class="flex items-center gap-4">
+            <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-red-500 to-orange-500 flex items-center justify-center shadow-xl">
+              <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/>
+              </svg>
+            </div>
+            <div>
+              <h3 class="text-xl font-bold text-white">
+                Confirm {{ pendingPowerAction === 'forceOff' ? 'Force Off' : 'Force Reset' }}
+              </h3>
+              <p class="text-sm text-slate-400">This action cannot be undone</p>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Content -->
+        <div class="p-6">
+          <div class="space-y-4">
+            <p class="text-slate-300">
+              Are you sure you want to {{ pendingPowerAction === 'forceOff' ? 'force off' : 'force reset' }} this virtual machine?
+              <span class="text-orange-400 font-medium">This may cause data loss.</span>
+            </p>
+            <div class="p-4 bg-orange-500/10 border border-orange-500/20 rounded-lg">
+              <div class="flex items-start gap-3">
+                <svg class="w-5 h-5 text-orange-400 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/>
+                </svg>
+                <div class="text-sm text-orange-300">
+                  <p class="font-medium mb-1">Warning:</p>
+                  <p>{{ pendingPowerAction === 'forceOff' ? 'Forcing off will immediately terminate the VM without graceful shutdown.' : 'Force reset will immediately restart the VM without graceful shutdown.' }}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Actions -->
+        <div class="flex justify-end gap-3 p-6 border-t border-slate-700/50">
+          <FButton
+            variant="ghost"
+            @click="showPowerConfirmationModal = false"
+          >
+            Cancel
+          </FButton>
+          <FButton
+            variant="danger"
+            @click="confirmPowerAction"
+            :disabled="!!vm?.taskState"
+          >
+            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/>
+            </svg>
+            {{ pendingPowerAction === 'forceOff' ? 'Force Off' : 'Force Reset' }}
+          </FButton>
+        </div>
+      </FCard>
+    </FModal>
+
   </div>
 </template>
 
@@ -812,6 +877,8 @@ const showMetricSettings = ref(false);
 const showHardwareConfig = ref(false);
 const vmDetailsExpanded = ref(false);
 const showSyncConfirmModal = ref(false);
+const showPowerConfirmationModal = ref(false);
+const pendingPowerAction = ref<string>('');
 
 // Console preview state
 const consoleConnected = ref(false);
@@ -1231,6 +1298,21 @@ const handleVMAction = async (action: string): Promise<void> => {
   } catch (err) {
     error.value = err instanceof Error ? err.message : `Failed to ${action} VM`;
   }
+};
+
+// Show power confirmation for destructive actions
+const showPowerConfirmation = (action: string): void => {
+  pendingPowerAction.value = action;
+  showPowerConfirmationModal.value = true;
+};
+
+// Confirm power action
+const confirmPowerAction = async (): Promise<void> => {
+  if (!pendingPowerAction.value) return;
+  
+  showPowerConfirmationModal.value = false;
+  await handleVMAction(pendingPowerAction.value);
+  pendingPowerAction.value = '';
 };
 
 // Open console

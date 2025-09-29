@@ -264,6 +264,14 @@ const navigationItems = ref<NavigationItem[]>([
     icon: 'M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0',
     active: false,
     path: '/network'
+  },
+  {
+    id: 'storage',
+    label: 'Storage',
+    description: 'Storage pools and volumes',
+    icon: 'M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4',
+    active: false,
+    path: '/storage'
   }
 ]);
 
@@ -271,8 +279,8 @@ const navigationItems = ref<NavigationItem[]>([
 const updateActiveState = () => {
   navigationItems.value.forEach(item => {
     if (item.id === 'hosts') {
-      // Hosts page and host-specific dashboards
-      item.active = route.path === '/hosts' || route.path.startsWith('/hosts/');
+      // Hosts page and host-specific dashboards (but NOT VM detail pages)
+      item.active = route.path === '/hosts' || (route.path.startsWith('/hosts/') && !route.path.includes('/vms/'));
     } else if (item.id === 'vms') {
       // VM list and VM detail pages
       item.active = route.path === '/vms' || route.path.includes('/vms/');
