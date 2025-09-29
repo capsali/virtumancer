@@ -156,11 +156,17 @@ export interface ConsoleInfo {
 }
 
 export interface HostStats {
-  totalMemoryGB: number;
-  usedMemoryGB: number;
-  memoryUtilization: number;
-  totalCPUs: number;
-  allocatedCPUs: number;
+  cpu_percent: number;
+  memory_total: number;
+  memory_available: number;
+  disk_total: number;
+  disk_free: number;
+  uptime: number;
+  vm_count: number;
+  host_info: any;
+  vm_counts: Record<string, number>;
+  total_vms: number;
+  resources: any;
 }
 
 export type VMState = 

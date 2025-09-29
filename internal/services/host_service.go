@@ -1074,6 +1074,12 @@ func (s *HostService) SyncVMsForHost(hostID string) {
 		log.Verbosef("Error during background VM sync for host %s: %v", hostID, err)
 		return
 	}
+
+	_, err = s.syncHostStoragePools(hostID)
+	if err != nil {
+		log.Verbosef("Error during background storage pool sync for host %s: %v", hostID, err)
+		return
+	}
 	// Note: syncHostVMs already broadcasts vms-changed and discovered-vms-changed if changed
 }
 
@@ -2899,6 +2905,80 @@ func (s *HostService) syncHostVMs(hostID string) (bool, error) {
 	if overallChanged {
 		s.broadcastVMsChanged(hostID)
 		s.broadcastDiscoveredVMsChanged(hostID)
+	}
+
+	return overallChanged, nil
+}
+
+// syncHostStoragePools synchronizes storage pools from libvirt to the database.
+func (s *HostService) syncHostStoragePools(hostID string) (bool, error) {
+	livePools, err := s.connector.ListAllStoragePools(hostID)
+	if err != nil {
+		return false, fmt.Errorf("service failed to list storage pools for host %s: %w", hostID, err)
+	}
+
+	var overallChanged bool
+
+	// Create a map of live storage pool UUIDs
+	livePoolUUIDs := make(map[string]struct{})
+	for _, poolInfo := range livePools {
+		livePoolUUIDs[poolInfo.UUID] = struct{}{}
+
+		// Check if storage pool is already in the database
+		var existing []storage.StoragePool
+		s.db.Where("host_id = ? AND uuid = ?", hostID, poolInfo.UUID).Limit(1).Find(&existing)
+		if len(existing) == 0 {
+			// Create new storage pool
+			newPool := storage.StoragePool{
+				HostID:          hostID,
+				Name:            poolInfo.Name,
+				UUID:            poolInfo.UUID,
+				Type:            "unknown", // TODO: get from libvirt
+				Path:            "",        // TODO: get from libvirt
+				CapacityBytes:   poolInfo.CapacityBytes,
+				AllocationBytes: poolInfo.AllocationBytes,
+			}
+			if err := s.db.Create(&newPool).Error; err != nil {
+				log.Verbosef("Error creating storage pool %s: %v", poolInfo.Name, err)
+			} else {
+				log.Verbosef("Created storage pool %s", poolInfo.Name)
+				overallChanged = true
+			}
+		} else {
+			// Update existing storage pool
+			updates := make(map[string]interface{})
+			if existing[0].CapacityBytes != poolInfo.CapacityBytes {
+				updates["capacity_bytes"] = poolInfo.CapacityBytes
+			}
+			if existing[0].AllocationBytes != poolInfo.AllocationBytes {
+				updates["allocation_bytes"] = poolInfo.AllocationBytes
+			}
+			if len(updates) > 0 {
+				if err := s.db.Model(&existing[0]).Updates(updates).Error; err != nil {
+					log.Verbosef("Error updating storage pool %s: %v", poolInfo.Name, err)
+				} else {
+					log.Verbosef("Updated storage pool %s", poolInfo.Name)
+					overallChanged = true
+				}
+			}
+		}
+	}
+
+	// Prune storage pools that are no longer in libvirt
+	var dbPools []storage.StoragePool
+	if err := s.db.Where("host_id = ?", hostID).Find(&dbPools).Error; err != nil {
+		return false, fmt.Errorf("could not get storage pool records for pruning check: %w", err)
+	}
+
+	for _, dbPool := range dbPools {
+		if _, exists := livePoolUUIDs[dbPool.UUID]; !exists {
+			log.Verbosef("Pruning storage pool %s (UUID: %s) from database as it's no longer in libvirt.", dbPool.Name, dbPool.UUID)
+			if err := s.db.Delete(&dbPool).Error; err != nil {
+				log.Verbosef("Warning: failed to prune storage pool %s: %v", dbPool.Name, err)
+			} else {
+				overallChanged = true
+			}
+		}
 	}
 
 	return overallChanged, nil

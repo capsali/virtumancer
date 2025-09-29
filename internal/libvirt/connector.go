@@ -65,6 +65,16 @@ type VMInfo struct {
 	Graphics   GraphicsInfo        `json:"graphics"`
 }
 
+// StoragePoolInfo holds basic information about a storage pool.
+type StoragePoolInfo struct {
+	Name            string `json:"name"`
+	UUID            string `json:"uuid"`
+	State           int    `json:"state"`
+	CapacityBytes   uint64 `json:"capacity_bytes"`
+	AllocationBytes uint64 `json:"allocation_bytes"`
+	AvailableBytes  uint64 `json:"available_bytes"`
+}
+
 // DomainDiskStats holds I/O statistics for a single disk device.
 type DomainDiskStats struct {
 	Device     string `json:"device"`
@@ -1186,6 +1196,31 @@ func (c *Connector) ListAllDomains(hostID string) ([]VMInfo, error) {
 	return vms, nil
 }
 
+// ListAllStoragePools retrieves information about all storage pools on a host.
+func (c *Connector) ListAllStoragePools(hostID string) ([]StoragePoolInfo, error) {
+	l, err := c.GetConnection(hostID)
+	if err != nil {
+		return nil, err
+	}
+
+	pools, err := l.StoragePools(libvirt.ConnectListAllStoragePoolsFlags(0))
+	if err != nil {
+		return nil, fmt.Errorf("failed to list storage pools: %w", err)
+	}
+
+	var poolInfos []StoragePoolInfo
+	for _, pool := range pools {
+		poolInfo, err := c.storagePoolToInfo(l, pool)
+		if err != nil {
+			log.Debugf("Warning: could not get info for storage pool %s on host %s: %v", pool.Name, hostID, err)
+			continue
+		}
+		poolInfos = append(poolInfos, *poolInfo)
+	}
+
+	return poolInfos, nil
+}
+
 // GetDomainInfo retrieves information for a single domain.
 func (c *Connector) GetDomainInfo(hostID, vmName string) (*VMInfo, error) {
 	l, domain, err := c.getDomainByName(hostID, vmName)
@@ -1257,6 +1292,34 @@ func (c *Connector) domainToVMInfo(l *libvirt.Libvirt, domain libvirt.Domain) (*
 		Persistent: persistent == 1,
 		Autostart:  autostart == 1,
 		Graphics:   graphics,
+	}, nil
+}
+
+// storagePoolToInfo converts a libvirt.StoragePool object to our StoragePoolInfo struct.
+func (c *Connector) storagePoolToInfo(l *libvirt.Libvirt, pool libvirt.StoragePool) (*StoragePoolInfo, error) {
+	// Get storage pool info
+	state, capacity, allocation, available, err := l.StoragePoolGetInfo(pool)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get storage pool info for %s: %w", pool.Name, err)
+	}
+
+	// Parse UUID
+	var uuidStr string
+	parsedUUID, err := uuid.FromBytes(pool.UUID[:])
+	if err != nil {
+		log.Debugf("Warning: could not parse storage pool UUID for %s: %v. Using raw hex.", pool.Name, err)
+		uuidStr = fmt.Sprintf("%x", pool.UUID)
+	} else {
+		uuidStr = parsedUUID.String()
+	}
+
+	return &StoragePoolInfo{
+		Name:            pool.Name,
+		UUID:            uuidStr,
+		State:           int(state),
+		CapacityBytes:   capacity,
+		AllocationBytes: allocation,
+		AvailableBytes:  available,
 	}, nil
 }
 

@@ -241,6 +241,16 @@
               </div>
             </div>
             
+            <div v-if="selectedHost.stats && selectedHost.stats.disk_total > 0" class="space-y-2">
+              <span class="text-xs text-slate-500 uppercase tracking-wide font-medium">Total Storage</span>
+              <div class="bg-slate-800/50 rounded-lg p-3 border border-slate-700/50">
+                <div class="flex items-center gap-2">
+                  <div class="w-2 h-2 bg-orange-400 rounded-full"></div>
+                  <span class="text-orange-400 text-lg font-bold">{{ formatBytes(selectedHost.stats.disk_total) }}</span>
+                </div>
+              </div>
+            </div>
+            
             <div v-if="selectedHost.stats && selectedHost.stats.uptime !== undefined" class="space-y-2">
               <span class="text-xs text-slate-500 uppercase tracking-wide font-medium">Uptime</span>
               <div class="bg-slate-800/50 rounded-lg p-3 border border-slate-700/50">

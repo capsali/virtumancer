@@ -736,13 +736,26 @@ func (h *APIHandler) GetHostStats(w http.ResponseWriter, r *http.Request) {
 		vmCounts[string(vm.State)]++
 	}
 
+	// Calculate disk totals from storage pools
+	var totalDiskBytes uint64 = 0
+	var freeDiskBytes uint64 = 0
+	var storagePools []storage.StoragePool
+	if err := h.DB.Where("host_id = ?", hostID).Find(&storagePools).Error; err != nil {
+		log.Printf("Warning: failed to get storage pools for host %s: %v", hostID, err)
+	} else {
+		for _, pool := range storagePools {
+			totalDiskBytes += pool.CapacityBytes
+			freeDiskBytes += pool.CapacityBytes - pool.AllocationBytes
+		}
+	}
+
 	// Build response with real-time stats and VM statistics
 	stats := map[string]interface{}{
 		"cpu_percent":      hostStats.CPUUtilization * 100, // Convert to percentage
 		"memory_total":     hostInfo.Memory,
 		"memory_available": hostInfo.Memory - hostStats.MemoryUsed,
-		"disk_total":       0, // TODO: implement disk stats
-		"disk_free":        0, // TODO: implement disk stats
+		"disk_total":       totalDiskBytes,
+		"disk_free":        freeDiskBytes,
 		"uptime":           0, // TODO: implement uptime
 		"vm_count":         len(vms),
 		"host_info":        hostInfo,
