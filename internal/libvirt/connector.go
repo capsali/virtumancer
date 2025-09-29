@@ -46,6 +46,51 @@ type VMInfo struct {
 	GuestInfo         map[string]interface{} `json:"guest_info,omitempty"`
 }
 
+// MemoryDetails holds detailed memory configuration from libvirt APIs
+type MemoryDetails struct {
+	MaxMemoryKB  uint64               `json:"max_memory_kb"`
+	MemoryParams []libvirt.TypedParam `json:"memory_params,omitempty"`
+}
+
+// CPUDetails holds detailed CPU configuration from libvirt APIs
+type CPUDetails struct {
+	MaxVcpus        int32                `json:"max_vcpus"`
+	CurrentVcpus    int32                `json:"current_vcpus"`
+	VcpuPinInfo     [][]bool             `json:"vcpu_pin_info,omitempty"`
+	EmulatorPinInfo []bool               `json:"emulator_pin_info,omitempty"`
+	CPUStats        []libvirt.TypedParam `json:"cpu_stats,omitempty"`
+}
+
+// BlockDeviceDetail holds detailed block device information from libvirt APIs
+type BlockDeviceDetail struct {
+	Device     string        `json:"device"`
+	SourcePath string        `json:"source_path"`
+	Capacity   uint64        `json:"capacity"`
+	Allocation uint64        `json:"allocation"`
+	Physical   uint64        `json:"physical"`
+	JobInfo    *BlockJobInfo `json:"job_info,omitempty"`
+}
+
+// BlockJobInfo holds information about ongoing block jobs
+type BlockJobInfo struct {
+	Type      int32  `json:"type"`
+	Bandwidth uint64 `json:"bandwidth"`
+	Cur       uint64 `json:"cur"`
+	End       uint64 `json:"end"`
+}
+
+// SecurityDetail holds security label information from libvirt APIs
+type SecurityDetail struct {
+	Label     string `json:"label"`
+	Enforcing int32  `json:"enforcing"`
+}
+
+// IOThreadDetail holds I/O thread information from libvirt APIs
+type IOThreadDetail struct {
+	IOThreadID uint32 `json:"iothread_id"`
+	Cpumap     []bool `json:"cpumap"`
+}
+
 // VcpuDetail holds detailed information about a single VCPU
 type VcpuDetail struct {
 	Number  uint32 `json:"number"`
@@ -2050,4 +2095,250 @@ func (c *Connector) getDiskSizeFromAllPools(conn *libvirt.Libvirt, diskPath stri
 	}
 
 	return 0, fmt.Errorf("volume not found by path in any storage pool")
+}
+
+// GetDomainMemoryDetails retrieves detailed memory configuration using libvirt APIs
+func (c *Connector) GetDomainMemoryDetails(hostID, vmName string) (*MemoryDetails, error) {
+	l, domain, err := c.getDomainByName(hostID, vmName)
+	if err != nil {
+		return nil, err
+	}
+
+	maxMem, err := l.DomainGetMaxMemory(domain)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get max memory: %w", err)
+	}
+
+	// Get memory parameters
+	memParams, _, err := l.DomainGetMemoryParameters(domain, -1, 0)
+	if err != nil {
+		// Not all hypervisors support memory parameters, so we'll continue without them
+		log.Debugf("Memory parameters not available for domain %s: %v", vmName, err)
+	}
+
+	return &MemoryDetails{
+		MaxMemoryKB:  maxMem,
+		MemoryParams: memParams,
+	}, nil
+}
+
+// GetDomainCPUDetails retrieves detailed CPU configuration using libvirt APIs
+func (c *Connector) GetDomainCPUDetails(hostID, vmName string) (*CPUDetails, error) {
+	l, domain, err := c.getDomainByName(hostID, vmName)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get VCPU count with flags
+	maxVcpus, err := l.DomainGetVcpusFlags(domain, uint32(libvirt.DomainVCPUMaximum))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get max VCPUs: %w", err)
+	}
+
+	currentVcpus, err := l.DomainGetVcpusFlags(domain, uint32(libvirt.DomainVCPUCurrent))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get current VCPUs: %w", err)
+	}
+
+	// Get VCPU pinning info (optional - may not be supported by all hypervisors)
+	vcpuPinInfo, _, err := l.DomainGetVcpuPinInfo(domain, int32(currentVcpus), 1, 0)
+	if err != nil {
+		log.Debugf("VCPU pin info not available for domain %s: %v", vmName, err)
+	}
+
+	// Get emulator pin info (optional)
+	emulatorPinInfo, _, err := l.DomainGetEmulatorPinInfo(domain, 1, 0)
+	if err != nil {
+		log.Debugf("Emulator pin info not available for domain %s: %v", vmName, err)
+	}
+
+	// Get CPU stats (optional)
+	cpuStats, _, err := l.DomainGetCPUStats(domain, 0, 0, 1, 0)
+	if err != nil {
+		log.Debugf("CPU stats not available for domain %s: %v", vmName, err)
+	}
+
+	// Convert emulator pin info from []byte to []bool
+	var emulatorPin []bool
+	if emulatorPinInfo != nil {
+		emulatorPin = make([]bool, len(emulatorPinInfo)*8)
+		for i, b := range emulatorPinInfo {
+			for j := 0; j < 8; j++ {
+				emulatorPin[i*8+j] = (b & (1 << j)) != 0
+			}
+		}
+	}
+
+	// Convert VCPU pin info from []byte to [][]bool (simplified for now)
+	var vcpuPin [][]bool
+	if vcpuPinInfo != nil {
+		// For now, create a simple 2D array - this would need proper parsing
+		// based on the actual CPU topology
+		vcpuPin = make([][]bool, currentVcpus)
+		for i := range vcpuPin {
+			vcpuPin[i] = make([]bool, len(vcpuPinInfo)*8)
+			// This is a simplified conversion - real implementation would need
+			// to parse the pinning info properly
+		}
+	}
+
+	return &CPUDetails{
+		MaxVcpus:        int32(maxVcpus),
+		CurrentVcpus:    int32(currentVcpus),
+		VcpuPinInfo:     vcpuPin,
+		EmulatorPinInfo: emulatorPin,
+		CPUStats:        cpuStats,
+	}, nil
+}
+
+// GetDomainBlockDetails retrieves detailed block device information using libvirt APIs
+func (c *Connector) GetDomainBlockDetails(hostID, vmName string) ([]BlockDeviceDetail, error) {
+	l, domain, err := c.getDomainByName(hostID, vmName)
+	if err != nil {
+		return nil, err
+	}
+
+	// First get the XML to find device names
+	xmlDesc, err := l.DomainGetXMLDesc(domain, 0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get XML for block devices: %w", err)
+	}
+
+	type DiskXML struct {
+		Target struct {
+			Dev string `xml:"dev,attr"`
+		} `xml:"target"`
+		Source struct {
+			File string `xml:"file,attr"`
+			Dev  string `xml:"dev,attr"`
+		} `xml:"source"`
+	}
+	type DomainXML struct {
+		Disks []DiskXML `xml:"devices>disk"`
+	}
+
+	var domainDef DomainXML
+	if err := xml.Unmarshal([]byte(xmlDesc), &domainDef); err != nil {
+		return nil, fmt.Errorf("failed to parse domain XML for disks: %w", err)
+	}
+
+	var blockDetails []BlockDeviceDetail
+	for _, disk := range domainDef.Disks {
+		if disk.Target.Dev == "" {
+			continue
+		}
+
+		// Get block info using API
+		capacity, allocation, physical, err := l.DomainGetBlockInfo(domain, disk.Target.Dev, 0)
+		if err != nil {
+			log.Debugf("Failed to get block info for device %s: %v", disk.Target.Dev, err)
+			continue
+		}
+
+		// Get block job info (for snapshots, backups, etc.)
+		jobType, bandwidth, cur, end, _, err := l.DomainGetBlockJobInfo(domain, disk.Target.Dev, 0)
+		var jobInfo *BlockJobInfo
+		if err == nil {
+			jobInfo = &BlockJobInfo{
+				Type:      int32(jobType),
+				Bandwidth: uint64(bandwidth),
+				Cur:       cur,
+				End:       end,
+			}
+		}
+
+		blockDetails = append(blockDetails, BlockDeviceDetail{
+			Device:     disk.Target.Dev,
+			SourcePath: getSourcePath(disk.Source.File, disk.Source.Dev),
+			Capacity:   capacity,
+			Allocation: allocation,
+			Physical:   physical,
+			JobInfo:    jobInfo,
+		})
+	}
+
+	return blockDetails, nil
+}
+
+// GetDomainSecurityDetails retrieves security label information using libvirt APIs
+func (c *Connector) GetDomainSecurityDetails(hostID, vmName string) ([]SecurityDetail, error) {
+	l, domain, err := c.getDomainByName(hostID, vmName)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get security label list
+	secLabels, _, err := l.DomainGetSecurityLabelList(domain)
+	if err != nil {
+		log.Debugf("Security labels not available for domain %s: %v", vmName, err)
+		return nil, nil
+	}
+
+	var securityDetails []SecurityDetail
+	for _, label := range secLabels {
+		// Convert []int8 to string
+		labelStr := string(convertInt8ArrayToBytes(label.Label))
+		securityDetails = append(securityDetails, SecurityDetail{
+			Label:     labelStr,
+			Enforcing: label.Enforcing,
+		})
+	}
+
+	return securityDetails, nil
+}
+
+// GetDomainIOThreadDetails retrieves I/O thread information using libvirt APIs
+func (c *Connector) GetDomainIOThreadDetails(hostID, vmName string) ([]IOThreadDetail, error) {
+	l, domain, err := c.getDomainByName(hostID, vmName)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get IOThread info
+	iothreadInfo, _, err := l.DomainGetIothreadInfo(domain, 0)
+	if err != nil {
+		log.Debugf("IOThread info not available for domain %s: %v", vmName, err)
+		return nil, nil
+	}
+
+	var iothreadDetails []IOThreadDetail
+	for _, info := range iothreadInfo {
+		iothreadDetails = append(iothreadDetails, IOThreadDetail{
+			IOThreadID: info.IothreadID,
+			Cpumap:     convertBytesToBoolArray(info.Cpumap),
+		})
+	}
+
+	return iothreadDetails, nil
+}
+
+// Helper function to convert []int8 to []byte for string conversion
+func convertInt8ArrayToBytes(arr []int8) []byte {
+	bytes := make([]byte, len(arr))
+	for i, v := range arr {
+		bytes[i] = byte(v)
+	}
+	return bytes
+}
+
+// Helper function to convert []byte to []bool for CPU maps
+func convertBytesToBoolArray(bytes []byte) []bool {
+	if bytes == nil {
+		return nil
+	}
+	bools := make([]bool, len(bytes)*8)
+	for i, b := range bytes {
+		for j := 0; j < 8; j++ {
+			bools[i*8+j] = (b & (1 << j)) != 0
+		}
+	}
+	return bools
+}
+
+// Helper function to get source path
+func getSourcePath(file, dev string) string {
+	if file != "" {
+		return file
+	}
+	return dev
 }

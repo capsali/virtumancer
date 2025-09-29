@@ -2919,6 +2919,62 @@ func (s *HostService) syncVMHardware(tx *gorm.DB, vmUUID string, hostID string, 
 	}
 	defer log.Debugf("syncVMHardware: vm=%s host=%s finished", vmUUID, hostID)
 
+	// Get VM name for enhanced API calls
+	var vm storage.VirtualMachine
+	if err := tx.Where("uuid = ?", vmUUID).First(&vm).Error; err != nil {
+		log.Debugf("Failed to find VM for enhanced sync: %v", err)
+		// Continue with standard sync if we can't get the VM name
+	}
+
+	// --- Enhanced API Data Collection (only if we have VM name) ---
+	var memoryDetails *libvirt.MemoryDetails
+	var cpuDetails *libvirt.CPUDetails
+	var blockDetails []libvirt.BlockDeviceDetail
+	var securityDetails []libvirt.SecurityDetail
+	var iothreadDetails []libvirt.IOThreadDetail
+
+	if vm.Name != "" {
+		// Get enhanced memory details using direct libvirt APIs
+		if memDetails, err := s.connector.GetDomainMemoryDetails(hostID, vm.Name); err == nil {
+			memoryDetails = memDetails
+			log.Debugf("Enhanced memory details retrieved for VM %s", vm.Name)
+		} else {
+			log.Debugf("Failed to get enhanced memory details for VM %s: %v", vm.Name, err)
+		}
+
+		// Get enhanced CPU details using direct libvirt APIs
+		if cpuDet, err := s.connector.GetDomainCPUDetails(hostID, vm.Name); err == nil {
+			cpuDetails = cpuDet
+			log.Debugf("Enhanced CPU details retrieved for VM %s", vm.Name)
+		} else {
+			log.Debugf("Failed to get enhanced CPU details for VM %s: %v", vm.Name, err)
+		}
+
+		// Get enhanced block device details using direct libvirt APIs
+		if blockDet, err := s.connector.GetDomainBlockDetails(hostID, vm.Name); err == nil {
+			blockDetails = blockDet
+			log.Debugf("Enhanced block details retrieved for VM %s", vm.Name)
+		} else {
+			log.Debugf("Failed to get enhanced block details for VM %s: %v", vm.Name, err)
+		}
+
+		// Get enhanced security details using direct libvirt APIs
+		if secDet, err := s.connector.GetDomainSecurityDetails(hostID, vm.Name); err == nil {
+			securityDetails = secDet
+			log.Debugf("Enhanced security details retrieved for VM %s", vm.Name)
+		} else {
+			log.Debugf("Failed to get enhanced security details for VM %s: %v", vm.Name, err)
+		}
+
+		// Get enhanced IOThread details using direct libvirt APIs
+		if iothreadDet, err := s.connector.GetDomainIOThreadDetails(hostID, vm.Name); err == nil {
+			iothreadDetails = iothreadDet
+			log.Debugf("Enhanced IOThread details retrieved for VM %s", vm.Name)
+		} else {
+			log.Debugf("Failed to get enhanced IOThread details for VM %s: %v", vm.Name, err)
+		}
+	}
+
 	// --- Sync Networks / Ports ---
 	if netChanged, err := s.syncVMNetworks(tx, vmUUID, hostID, hardware.Networks); err != nil {
 		return false, err
@@ -2926,6 +2982,7 @@ func (s *HostService) syncVMHardware(tx *gorm.DB, vmUUID string, hostID string, 
 		changed = true
 	}
 
+	// Sync disks (potentially enhanced with block device details)
 	if diskChanged, err := s.syncVMDisks(tx, vmUUID, hostID, hardware.Disks); err != nil {
 		return false, err
 	} else if diskChanged {
@@ -3026,6 +3083,12 @@ func (s *HostService) syncVMHardware(tx *gorm.DB, vmUUID string, hostID string, 
 		return false, err
 	} else if hypervisorFeaturesChanged {
 		changed = true
+	}
+
+	// Log enhanced data collection summary
+	if vm.Name != "" {
+		log.Debugf("Enhanced API collection summary for VM %s: memory=%v, cpu=%v, block_devs=%d, security=%d, iothreads=%d",
+			vm.Name, memoryDetails != nil, cpuDetails != nil, len(blockDetails), len(securityDetails), len(iothreadDetails))
 	}
 
 	if lifecycleChanged, err := s.syncVMLifecycleActions(tx, vmUUID, hardware.LifecycleActions); err != nil {
