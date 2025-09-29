@@ -1646,22 +1646,195 @@ func (c *Connector) ResetDomain(hostID, vmName string) error {
 
 // GetDiskSize gets the actual size of a disk file from the host
 func (c *Connector) GetDiskSize(hostID, diskPath string) (uint64, error) {
-	_, err := c.GetConnection(hostID)
+	conn, err := c.GetConnection(hostID)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get libvirt connection: %w", err)
 	}
 
-	// For now, we'll implement a simple version that returns 0
-	// In a production environment, you would use libvirt APIs like:
-	// - virDomainBlockInfo for active domains
-	// - virStorageVolGetInfo for storage volumes
-	// - File system operations for direct file access
+	// Strategy 1: Try to find the disk as a storage volume
+	capacity, err := c.getDiskSizeFromStorageVolume(conn, diskPath)
+	if err == nil && capacity > 0 {
+		log.Verbosef("Got disk size from storage volume for %s: %d bytes", diskPath, capacity)
+		return capacity, nil
+	}
 
-	// TODO: Implement proper disk size detection
-	// This could involve checking if the disk is:
-	// 1. A storage volume (use virStorageVolGetInfo)
-	// 2. A raw file (use file stat operations)
-	// 3. Part of an active domain (use virDomainBlockInfo)
+	// Strategy 2: Try to get size from active domain block info
+	capacity, err = c.getDiskSizeFromDomainBlockInfo(conn, diskPath)
+	if err == nil && capacity > 0 {
+		log.Verbosef("Got disk size from domain block info for %s: %d bytes", diskPath, capacity)
+		return capacity, nil
+	}
 
-	return 0, nil
+	// Strategy 3: Try to get size by searching all storage pools for the volume
+	capacity, err = c.getDiskSizeFromAllPools(conn, diskPath)
+	if err == nil && capacity > 0 {
+		log.Verbosef("Got disk size from storage pools search for %s: %d bytes", diskPath, capacity)
+		return capacity, nil
+	}
+
+	log.Verbosef("Could not determine disk size for %s using any libvirt method", diskPath)
+	return 0, fmt.Errorf("unable to determine disk size for %s", diskPath)
+}
+
+// getDiskSizeFromStorageVolume attempts to get disk size by treating path as a volume name
+func (c *Connector) getDiskSizeFromStorageVolume(conn *libvirt.Libvirt, diskPath string) (uint64, error) {
+	// First, try to find which pool contains this volume
+	pools, err := conn.StoragePools(libvirt.ConnectListAllStoragePoolsFlags(0))
+	if err != nil {
+		return 0, fmt.Errorf("failed to list storage pools: %w", err)
+	}
+
+	// Extract the volume name from the path
+	volumeName := filepath.Base(diskPath)
+
+	for _, pool := range pools {
+		// Get pool XML to get the pool name
+		poolXML, err := conn.StoragePoolGetXMLDesc(pool, 0)
+		if err != nil {
+			continue // Skip this pool if we can't get its XML
+		}
+
+		// Parse pool XML to get the name
+		var poolDef struct {
+			XMLName xml.Name `xml:"pool"`
+			Name    string   `xml:"name"`
+		}
+		if err := xml.Unmarshal([]byte(poolXML), &poolDef); err != nil {
+			continue // Skip this pool if we can't parse its XML
+		}
+
+		// Try to find the volume in this pool
+		vol, err := conn.StorageVolLookupByName(pool, volumeName)
+		if err != nil {
+			continue // Volume not in this pool
+		}
+
+		// Get volume info
+		volType, capacity, allocation, err := conn.StorageVolGetInfo(vol)
+		if err != nil {
+			continue // Skip if we can't get volume info
+		}
+
+		log.Verbosef("Found volume %s in pool %s: type=%d, capacity=%d, allocation=%d",
+			volumeName, poolDef.Name, volType, capacity, allocation)
+
+		return capacity, nil
+	}
+
+	return 0, fmt.Errorf("volume not found in any storage pool")
+}
+
+// getDiskSizeFromDomainBlockInfo attempts to get disk size from active domains
+func (c *Connector) getDiskSizeFromDomainBlockInfo(conn *libvirt.Libvirt, diskPath string) (uint64, error) {
+	// Get all domains
+	domains, err := conn.Domains()
+	if err != nil {
+		return 0, fmt.Errorf("failed to list domains: %w", err)
+	}
+
+	for _, domain := range domains {
+		// Check if domain is active
+		stateInt, _, err := conn.DomainGetState(domain, 0)
+		if err != nil {
+			continue // Skip domains where we can't get state
+		}
+		state := libvirt.DomainState(stateInt)
+		if state != libvirt.DomainRunning {
+			continue // Skip inactive domains
+		}
+
+		// Get domain XML to find block devices
+		domainXML, err := conn.DomainGetXMLDesc(domain, 0)
+		if err != nil {
+			continue // Skip if we can't get domain XML
+		}
+
+		// Parse domain XML to find disk devices
+		var domainDef struct {
+			XMLName xml.Name `xml:"domain"`
+			Devices struct {
+				Disks []struct {
+					Type   string `xml:"type,attr"`
+					Device string `xml:"device,attr"`
+					Source struct {
+						File string `xml:"file,attr"`
+						Dev  string `xml:"dev,attr"`
+					} `xml:"source"`
+					Target struct {
+						Dev string `xml:"dev,attr"`
+					} `xml:"target"`
+				} `xml:"disk"`
+			} `xml:"devices"`
+		}
+
+		if err := xml.Unmarshal([]byte(domainXML), &domainDef); err != nil {
+			continue // Skip if we can't parse domain XML
+		}
+
+		// Look for our disk path in this domain
+		for _, disk := range domainDef.Devices.Disks {
+			var sourcePath string
+			if disk.Source.File != "" {
+				sourcePath = disk.Source.File
+			} else if disk.Source.Dev != "" {
+				sourcePath = disk.Source.Dev
+			}
+
+			if sourcePath == diskPath {
+				// Found the disk in this domain, get block info
+				allocation, capacity, physical, err := conn.DomainGetBlockInfo(domain, diskPath, 0)
+				if err != nil {
+					log.Verbosef("Failed to get block info for %s in domain: %v", diskPath, err)
+					continue
+				}
+
+				log.Verbosef("Found disk %s in active domain: capacity=%d, allocation=%d, physical=%d",
+					diskPath, capacity, allocation, physical)
+
+				// Return the capacity (virtual size)
+				return capacity, nil
+			}
+		}
+	}
+
+	return 0, fmt.Errorf("disk not found in any active domain")
+}
+
+// getDiskSizeFromAllPools searches all storage pools for volumes that match the disk path
+func (c *Connector) getDiskSizeFromAllPools(conn *libvirt.Libvirt, diskPath string) (uint64, error) {
+	pools, err := conn.StoragePools(libvirt.ConnectListAllStoragePoolsFlags(0))
+	if err != nil {
+		return 0, fmt.Errorf("failed to list storage pools: %w", err)
+	}
+
+	for _, pool := range pools {
+		// Get all volumes in this pool
+		volumes, _, err := conn.StoragePoolListAllVolumes(pool, -1, 0)
+		if err != nil {
+			continue // Skip this pool if we can't list volumes
+		}
+
+		for _, vol := range volumes {
+			// Get volume path
+			volPath, err := conn.StorageVolGetPath(vol)
+			if err != nil {
+				continue // Skip this volume if we can't get its path
+			}
+
+			if volPath == diskPath {
+				// Found the volume, get its info
+				volType, capacity, allocation, err := conn.StorageVolGetInfo(vol)
+				if err != nil {
+					continue // Skip if we can't get volume info
+				}
+
+				log.Verbosef("Found volume by path %s: type=%d, capacity=%d, allocation=%d",
+					diskPath, volType, capacity, allocation)
+
+				return capacity, nil
+			}
+		}
+	}
+
+	return 0, fmt.Errorf("volume not found by path in any storage pool")
 }

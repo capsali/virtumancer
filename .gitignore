@@ -1,3 +1,9 @@
+# Logs
+logs
+*.log
+debug.log
+server.log
+
 # Go backend
 virtumancer
 virtumancer.db
