@@ -1719,7 +1719,7 @@ func (s *HostService) detectDriftOrIngestVM(hostID, vmName string, isInitialSync
 // syncVMSecurityLabels handles security label configuration synchronization for a VM
 func (s *HostService) syncVMSecurityLabels(tx *gorm.DB, vmUUID string, securityLabels []libvirt.SecurityLabelInfo) (bool, error) {
 	changed := false
-	
+
 	for _, label := range securityLabels {
 		relabel := false
 		if label.Relabel == "yes" {
@@ -1755,7 +1755,7 @@ func (s *HostService) syncVMSecurityLabels(tx *gorm.DB, vmUUID string, securityL
 // syncVMLaunchSecurity handles launch security configuration synchronization for a VM
 func (s *HostService) syncVMLaunchSecurity(tx *gorm.DB, vmUUID string, launchSecurity *libvirt.LaunchSecurityInfo) (bool, error) {
 	changed := false
-	
+
 	if launchSecurity != nil {
 		launchSec := storage.LaunchSecurity{
 			VMUUID: vmUUID,
@@ -1802,7 +1802,7 @@ func (s *HostService) syncVMLaunchSecurity(tx *gorm.DB, vmUUID string, launchSec
 // syncVMHypervisorFeatures handles hypervisor feature configuration synchronization for a VM
 func (s *HostService) syncVMHypervisorFeatures(tx *gorm.DB, vmUUID string, hypervisorFeatures []libvirt.HypervisorFeatureInfo) (bool, error) {
 	changed := false
-	
+
 	for _, feature := range hypervisorFeatures {
 		hvFeature := storage.HypervisorFeature{
 			VMUUID: vmUUID,
@@ -1830,7 +1830,7 @@ func (s *HostService) syncVMHypervisorFeatures(tx *gorm.DB, vmUUID string, hyper
 // syncVMLifecycleActions handles lifecycle action configuration synchronization for a VM
 func (s *HostService) syncVMLifecycleActions(tx *gorm.DB, vmUUID string, lifecycleActions *libvirt.LifecycleActionInfo) (bool, error) {
 	changed := false
-	
+
 	if lifecycleActions != nil {
 		lifecycle := storage.LifecycleAction{
 			VMUUID:        vmUUID,
@@ -1866,7 +1866,7 @@ func (s *HostService) syncVMLifecycleActions(tx *gorm.DB, vmUUID string, lifecyc
 // syncVMClockConfig handles clock configuration synchronization for a VM
 func (s *HostService) syncVMClockConfig(tx *gorm.DB, vmUUID string, clockConfig *libvirt.ClockInfo) (bool, error) {
 	changed := false
-	
+
 	if clockConfig != nil {
 		clock := storage.Clock{
 			VMUUID: vmUUID,
@@ -1901,7 +1901,7 @@ func (s *HostService) syncVMClockConfig(tx *gorm.DB, vmUUID string, clockConfig 
 // syncVMPerfEvents handles performance event configuration synchronization for a VM
 func (s *HostService) syncVMPerfEvents(tx *gorm.DB, vmUUID string, perfEvents []libvirt.PerfEventInfo) (bool, error) {
 	changed := false
-	
+
 	for _, event := range perfEvents {
 		perfEvent := storage.PerfEvent{
 			VMUUID: vmUUID,
@@ -1930,7 +1930,7 @@ func (s *HostService) syncVMPerfEvents(tx *gorm.DB, vmUUID string, perfEvents []
 // syncVMOSConfig handles operating system configuration synchronization for a VM
 func (s *HostService) syncVMOSConfig(tx *gorm.DB, vmUUID string, osConfig *libvirt.OSConfigInfo) (bool, error) {
 	changed := false
-	
+
 	if osConfig != nil {
 		osConfigData := storage.OSConfig{
 			VMUUID:         vmUUID,
@@ -1975,7 +1975,7 @@ func (s *HostService) syncVMOSConfig(tx *gorm.DB, vmUUID string, osConfig *libvi
 // syncVMSMBIOS handles SMBIOS information synchronization for a VM
 func (s *HostService) syncVMSMBIOS(tx *gorm.DB, vmUUID string, smbiosInfo []libvirt.SMBIOSInfo) (bool, error) {
 	changed := false
-	
+
 	if len(smbiosInfo) > 0 {
 		for _, smbios := range smbiosInfo {
 			smbiosConfig := storage.SMBIOSSystemInfo{
@@ -2008,7 +2008,7 @@ func (s *HostService) syncVMSMBIOS(tx *gorm.DB, vmUUID string, smbiosInfo []libv
 // syncVMCPUFeatures handles CPU feature flags synchronization for a VM
 func (s *HostService) syncVMCPUFeatures(tx *gorm.DB, vmUUID string, cpuFeatures []libvirt.CPUFeatureInfo) (bool, error) {
 	changed := false
-	
+
 	for _, feature := range cpuFeatures {
 		cpuFeature := storage.CPUFeature{
 			VMUUID: vmUUID,
@@ -2036,7 +2036,7 @@ func (s *HostService) syncVMCPUFeatures(tx *gorm.DB, vmUUID string, cpuFeatures 
 // syncVMCPUTopology handles CPU topology configuration synchronization for a VM
 func (s *HostService) syncVMCPUTopology(tx *gorm.DB, vmUUID string, cpuInfo *libvirt.CPUConfigInfo) (bool, error) {
 	changed := false
-	
+
 	if cpuInfo != nil && cpuInfo.Topology != nil {
 		cpuTopology := storage.CPUTopology{
 			VMUUID:  vmUUID,
@@ -2069,7 +2069,7 @@ func (s *HostService) syncVMCPUTopology(tx *gorm.DB, vmUUID string, cpuInfo *lib
 // syncVMMemoryConfig handles memory configuration synchronization for a VM
 func (s *HostService) syncVMMemoryConfig(tx *gorm.DB, vmUUID string, memoryBacking *libvirt.MemoryBackingInfo) (bool, error) {
 	changed := false
-	
+
 	if memoryBacking != nil {
 		memConfig := storage.MemoryConfig{
 			VMUUID:       vmUUID,
@@ -2109,7 +2109,7 @@ func (s *HostService) syncVMMemoryConfig(tx *gorm.DB, vmUUID string, memoryBacki
 // syncVMHostdevs handles host device (PCI/USB passthrough) synchronization for a VM
 func (s *HostService) syncVMHostdevs(tx *gorm.DB, vmUUID, hostID string, hostdevs []libvirt.HostdevInfo) (bool, error) {
 	changed := false
-	
+
 	for _, hd := range hostdevs {
 		addr := fmt.Sprintf("%s:%s:%s.%s", hd.Source.Address.Domain, hd.Source.Address.Bus, hd.Source.Address.Slot, hd.Source.Address.Function)
 		// find or create HostDevice by host and address
@@ -2179,7 +2179,7 @@ func (s *HostService) syncVMHostdevs(tx *gorm.DB, vmUUID, hostID string, hostdev
 // syncVMBlockDevs handles QEMU blockdev nodes synchronization for a VM
 func (s *HostService) syncVMBlockDevs(tx *gorm.DB, blockdevs []libvirt.BlockDev) (bool, error) {
 	changed := false
-	
+
 	for _, bd := range blockdevs {
 		var b storage.BlockDev
 		var bList []storage.BlockDev
@@ -2202,7 +2202,7 @@ func (s *HostService) syncVMBlockDevs(tx *gorm.DB, blockdevs []libvirt.BlockDev)
 // syncVMNUMANodes handles NUMA topology synchronization for a VM
 func (s *HostService) syncVMNUMANodes(tx *gorm.DB, vmUUID string, numaNodes []libvirt.NUMANodeInfo) (bool, error) {
 	changed := false
-	
+
 	var existingNUMA []storage.NUMANode
 	if err := tx.Where("vm_uuid = ?", vmUUID).Find(&existingNUMA).Error; err != nil {
 		return false, err
@@ -2252,7 +2252,7 @@ func (s *HostService) syncVMNUMANodes(tx *gorm.DB, vmUUID string, numaNodes []li
 // syncVMIOThreads handles I/O threads synchronization for a VM
 func (s *HostService) syncVMIOThreads(tx *gorm.DB, iothreads []libvirt.IOThread) (bool, error) {
 	changed := false
-	
+
 	for _, it := range iothreads {
 		var thr storage.IOThread
 		var thrList []storage.IOThread
@@ -2274,7 +2274,7 @@ func (s *HostService) syncVMIOThreads(tx *gorm.DB, iothreads []libvirt.IOThread)
 // syncVMMdevs handles mediated device synchronization for a VM
 func (s *HostService) syncVMMdevs(tx *gorm.DB, vmUUID string, mdevs []libvirt.MdevInfo) (bool, error) {
 	changed := false
-	
+
 	for _, m := range mdevs {
 		// create or find MediatedDevice by type+device id
 		var md storage.MediatedDevice
@@ -2329,7 +2329,7 @@ func (s *HostService) syncVMMdevs(tx *gorm.DB, vmUUID string, mdevs []libvirt.Md
 // syncVMBootConfig handles boot configuration synchronization for a VM
 func (s *HostService) syncVMBootConfig(tx *gorm.DB, vmUUID string, boot []libvirt.BootEntry) (bool, error) {
 	changed := false
-	
+
 	if len(boot) > 0 {
 		bootJSON, _ := json.Marshal(boot)
 		var bc storage.BootConfig
@@ -2358,7 +2358,7 @@ func (s *HostService) syncVMBootConfig(tx *gorm.DB, vmUUID string, boot []libvir
 // syncVMVideos handles video device synchronization for a VM
 func (s *HostService) syncVMVideos(tx *gorm.DB, vmUUID string, videos []libvirt.VideoInfo) (bool, error) {
 	changed := false
-	
+
 	var existingVideoAttachments []storage.VideoAttachment
 	if err := tx.Preload("VideoModel").Where("vm_uuid = ?", vmUUID).Find(&existingVideoAttachments).Error; err != nil {
 		return false, err
@@ -2367,7 +2367,7 @@ func (s *HostService) syncVMVideos(tx *gorm.DB, vmUUID string, videos []libvirt.
 	for _, va := range existingVideoAttachments {
 		existingVideoByIndex[va.MonitorIndex] = va
 	}
-	
+
 	for _, v := range videos {
 		modelType := v.Model.Type
 		// Ensure VideoModel resource exists
@@ -2492,7 +2492,7 @@ func (s *HostService) syncVMVideos(tx *gorm.DB, vmUUID string, videos []libvirt.
 // syncVMConsole handles graphics/console synchronization for a VM
 func (s *HostService) syncVMConsole(tx *gorm.DB, vmUUID, hostID string, graphics *libvirt.GraphicsInfo) (bool, error) {
 	changed := false
-	
+
 	var desiredGfxType string
 	if graphics.VNC {
 		desiredGfxType = "vnc"
@@ -2572,7 +2572,7 @@ func (s *HostService) syncVMConsole(tx *gorm.DB, vmUUID, hostID string, graphics
 // syncVMDisks handles disk synchronization for a VM
 func (s *HostService) syncVMDisks(tx *gorm.DB, vmUUID, hostID string, disks []libvirt.DiskInfo) (bool, error) {
 	changed := false
-	
+
 	// Fetch existing disk attachments for this VM
 	var existingDiskAttachments []storage.DiskAttachment
 	tx.Preload("Disk").Where("vm_uuid = ?", vmUUID).Find(&existingDiskAttachments)
@@ -2846,12 +2846,12 @@ func (s *HostService) syncVMNetworks(tx *gorm.DB, vmUUID string, hostID string, 
 			} else {
 				// Create new attachment
 				existingAtt = storage.PortAttachment{
-					VMUUID:      vmUUID,
-					PortID:      newPort.ID,
-					DeviceName:  net.Target.Dev,
-					MACAddress:  net.Mac.Address,
-					ModelName:   net.Model.Type,
-					HostID:      hostID,
+					VMUUID:     vmUUID,
+					PortID:     newPort.ID,
+					DeviceName: net.Target.Dev,
+					MACAddress: net.Mac.Address,
+					ModelName:  net.Model.Type,
+					HostID:     hostID,
 				}
 				if err := tx.Create(&existingAtt).Error; err != nil {
 					return false, err

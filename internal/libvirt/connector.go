@@ -28,21 +28,21 @@ type GraphicsInfo struct {
 
 // VMInfo holds basic information about a virtual machine.
 type VMInfo struct {
-	ID                uint32              `json:"id"`
-	UUID              string              `json:"uuid"`
-	Name              string              `json:"name"`
-	State             libvirt.DomainState `json:"state"`
-	MaxMem            uint64              `json:"max_mem"`
-	Memory            uint64              `json:"memory"`
-	Vcpu              uint                `json:"vcpu"`
-	CpuTime           uint64              `json:"cpu_time"`
-	Uptime            int64               `json:"uptime"`
-	Persistent        bool                `json:"persistent"`
-	Autostart         bool                `json:"autostart"`
-	Graphics          GraphicsInfo        `json:"graphics"`
+	ID         uint32              `json:"id"`
+	UUID       string              `json:"uuid"`
+	Name       string              `json:"name"`
+	State      libvirt.DomainState `json:"state"`
+	MaxMem     uint64              `json:"max_mem"`
+	Memory     uint64              `json:"memory"`
+	Vcpu       uint                `json:"vcpu"`
+	CpuTime    uint64              `json:"cpu_time"`
+	Uptime     int64               `json:"uptime"`
+	Persistent bool                `json:"persistent"`
+	Autostart  bool                `json:"autostart"`
+	Graphics   GraphicsInfo        `json:"graphics"`
 	// Enhanced API-based data
-	VcpuDetails       []VcpuDetail        `json:"vcpu_details,omitempty"`
-	NetworkInterfaces []NetworkInterface  `json:"network_interfaces,omitempty"`
+	VcpuDetails       []VcpuDetail           `json:"vcpu_details,omitempty"`
+	NetworkInterfaces []NetworkInterface     `json:"network_interfaces,omitempty"`
 	GuestInfo         map[string]interface{} `json:"guest_info,omitempty"`
 }
 
@@ -1776,7 +1776,7 @@ func (c *Connector) GetDomainNetworkInfo(hostID, vmName string) ([]NetworkInterf
 	var networkInterfaces []NetworkInterface
 
 	// Try multiple sources for network information
-	// Source 0 = lease, 1 = agent, 2 = arp  
+	// Source 0 = lease, 1 = agent, 2 = arp
 	for _, source := range []uint32{1, 0, 2} {
 		if interfaces, err := l.DomainInterfaceAddresses(domain, source, 0); err == nil && len(interfaces) > 0 {
 			networkInterfaces = make([]NetworkInterface, len(interfaces))
