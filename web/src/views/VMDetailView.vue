@@ -364,6 +364,19 @@
             </div>
           </div>
           <div class="flex items-center gap-2">
+            <!-- Sync Button -->
+            <FButton
+              variant="ghost"
+              size="sm"
+              @click.stop="showSyncConfirmModal = true"
+              :disabled="!!vm.taskState"
+              class="p-2"
+              title="Sync VM from libvirt"
+            >
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+              </svg>
+            </FButton>
             <!-- Settings Cog Wheel -->
             <FButton
               variant="ghost"
@@ -778,6 +791,7 @@ import FCard from '@/components/ui/FCard.vue';
 import FButton from '@/components/ui/FButton.vue';
 import FBreadcrumbs from '@/components/ui/FBreadcrumbs.vue';
 import FBackButton from '@/components/ui/FBackButton.vue';
+import FModal from '@/components/ui/FModal.vue';
 import VMHardwareConfigModalExtended from '@/components/modals/VMHardwareConfigModalExtended.vue';
 import MetricSettingsModal from '@/components/modals/MetricSettingsModal.vue';
 // Types will be inferred from store usage
