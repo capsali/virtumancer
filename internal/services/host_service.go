@@ -1959,6 +1959,13 @@ func (s *HostService) syncVMHardware(tx *gorm.DB, vmUUID string, hostID string, 
 				capacityBytes = disk.Capacity.Value
 			}
 			updates["capacity_bytes"] = capacityBytes
+		} else {
+			// If capacity is not available in domain XML, try to get it from libvirt
+			if diskPath := disk.Source.File; diskPath != "" {
+				if diskSize, err := s.connector.GetDiskSize(hostID, diskPath); err == nil && diskSize > 0 {
+					updates["capacity_bytes"] = diskSize
+				}
+			}
 		}
 
 		var diskResList []storage.Disk

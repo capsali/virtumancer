@@ -115,24 +115,24 @@ type VirtualMachine struct {
 // StoragePool represents a libvirt storage pool (e.g., LVM, a directory).
 type StoragePool struct {
 	gorm.Model
-	HostID          string
-	Name            string
-	UUID            string `gorm:"uniqueIndex"`
-	Type            string
-	Path            string
-	CapacityBytes   uint64
-	AllocationBytes uint64
+	HostID          string `json:"host_id"`
+	Name            string `json:"name"`
+	UUID            string `gorm:"uniqueIndex" json:"uuid"`
+	Type            string `json:"type"`
+	Path            string `json:"path"`
+	CapacityBytes   uint64 `json:"capacity_bytes"`
+	AllocationBytes uint64 `json:"allocation_bytes"`
 }
 
 // Volume represents a single storage volume, like a virtual disk or an ISO.
 type Volume struct {
 	gorm.Model
-	StoragePoolID   uint
-	Name            string
-	Type            string // 'DISK' or 'ISO'
-	Format          string
-	CapacityBytes   uint64
-	AllocationBytes uint64
+	StoragePoolID   uint   `json:"storage_pool_id"`
+	Name            string `json:"name"`
+	Type            string `json:"type"` // 'DISK' or 'ISO'
+	Format          string `json:"format"`
+	CapacityBytes   uint64 `json:"capacity_bytes"`
+	AllocationBytes uint64 `json:"allocation_bytes"`
 }
 
 // --- Network Management ---
@@ -140,40 +140,40 @@ type Volume struct {
 // Network represents a virtual network or bridge on a host.
 type Network struct {
 	gorm.Model
-	HostID     string `gorm:"uniqueIndex:idx_network_host_name"`
-	Name       string `gorm:"uniqueIndex:idx_network_host_name"`
-	UUID       string
-	BridgeName string
-	Mode       string // e.g., 'bridged', 'nat', 'isolated'
+	HostID     string `gorm:"uniqueIndex:idx_network_host_name" json:"host_id"`
+	Name       string `gorm:"uniqueIndex:idx_network_host_name" json:"name"`
+	UUID       string `json:"uuid"`
+	BridgeName string `json:"bridge_name"`
+	Mode       string `json:"mode"` // e.g., 'bridged', 'nat', 'isolated'
 }
 
 // Port represents a virtual Network Interface Card (vNIC) belonging to a VM.
 type Port struct {
 	gorm.Model
 	// VMUUID was removed in favor of explicit PortAttachment records.
-	MACAddress string // canonical MAC for the resource
+	MACAddress string `json:"mac_address"` // canonical MAC for the resource
 	// DeviceName removed from Port; device name is attachment-scoped
-	ModelName           string // e.g., 'virtio', 'e1000'
-	IPAddress           string
-	HostID              string `gorm:"index"`     // optional host scoping for unattached ports
-	SourceType          string `gorm:"size:32"`   // 'network'|'bridge'|'hostdev'|'vhostuser'|'null'|'vdpa'
-	SourceRef           string `gorm:"type:text"` // network name, hostdev address, or vhost socket path
-	PortGroup           string `gorm:"type:text"` // portgroup name for network sources
-	VirtualPortJSON     string `gorm:"type:text"` // serialized <virtualport> subelements
-	FilterRefJSON       string `gorm:"type:text"` // serialized <filterref> subelements
-	VlanTagsJSON        string `gorm:"type:text"` // serialized VLAN tags / metadata
-	TrustGuestRxFilters bool
-	PrimaryVlan         *int   `gorm:"default:NULL"` // nullable primary VLAN tag
-	AddressJSON         string `gorm:"type:text"`    // optional device address (pci/slot/function)
+	ModelName           string `json:"model_name"` // e.g., 'virtio', 'e1000'
+	IPAddress           string `json:"ip_address"`
+	HostID              string `gorm:"index" json:"host_id"`               // optional host scoping for unattached ports
+	SourceType          string `gorm:"size:32" json:"source_type"`         // 'network'|'bridge'|'hostdev'|'vhostuser'|'null'|'vdpa'
+	SourceRef           string `gorm:"type:text" json:"source_ref"`        // network name, hostdev address, or vhost socket path
+	PortGroup           string `gorm:"type:text" json:"port_group"`        // portgroup name for network sources
+	VirtualPortJSON     string `gorm:"type:text" json:"virtual_port_json"` // serialized <virtualport> subelements
+	FilterRefJSON       string `gorm:"type:text" json:"filter_ref_json"`   // serialized <filterref> subelements
+	VlanTagsJSON        string `gorm:"type:text" json:"vlan_tags_json"`    // serialized VLAN tags / metadata
+	TrustGuestRxFilters bool   `json:"trust_guest_rx_filters"`
+	PrimaryVlan         *int   `gorm:"default:NULL" json:"primary_vlan"` // nullable primary VLAN tag
+	AddressJSON         string `gorm:"type:text" json:"address_json"`    // optional device address (pci/slot/function)
 }
 
 // PortBinding links a Port to a Network.
 type PortBinding struct {
 	gorm.Model
-	PortID    uint
-	Port      Port
-	NetworkID uint
-	Network   Network
+	PortID    uint    `json:"port_id"`
+	Port      Port    `json:"port"`
+	NetworkID uint    `json:"network_id"`
+	Network   Network `json:"network"`
 }
 
 // PortAttachment links a Port to a VirtualMachine and stores per-VM attachment metadata.
@@ -181,16 +181,16 @@ type PortBinding struct {
 // (for provisioning / pool usage) and then be attached to VMs later.
 type PortAttachment struct {
 	gorm.Model
-	VMUUID      string `gorm:"index"`
-	PortID      uint   `gorm:"index"`
-	Port        Port
-	HostID      string `gorm:"index"` // host that the attachment is bound to (if attached)
-	DeviceName  string // per-VM device name (overrides Port.DeviceName)
-	MACAddress  string // per-attachment MAC override
-	ModelName   string // per-attachment model, if different
-	Ordinal     int
-	Metadata    string `gorm:"type:text"` // optional JSON for hotplug / per-attachment options
-	AddressJSON string `gorm:"type:text"` // optional PCI/USB address for this attachment
+	VMUUID      string `gorm:"index" json:"vm_uuid"`
+	PortID      uint   `gorm:"index" json:"port_id"`
+	Port        Port   `json:"port"`
+	HostID      string `gorm:"index" json:"host_id"` // host that the attachment is bound to (if attached)
+	DeviceName  string `json:"device_name"`          // per-VM device name (overrides Port.DeviceName)
+	MACAddress  string `json:"mac_address"`          // per-attachment MAC override
+	ModelName   string `json:"model_name"`           // per-attachment model, if different
+	Ordinal     int    `json:"ordinal"`
+	Metadata    string `gorm:"type:text" json:"metadata"`     // optional JSON for hotplug / per-attachment options
+	AddressJSON string `gorm:"type:text" json:"address_json"` // optional PCI/USB address for this attachment
 }
 
 // FilterRef represents a network filterref applied to a specific port/resource.
@@ -483,28 +483,28 @@ type IOMMUDeviceAttachment struct {
 // by a storage pool, or a raw path when unmanaged.
 type Disk struct {
 	gorm.Model
-	Name          string
-	VolumeID      *uint
-	Path          string
-	Format        string
-	CapacityBytes uint64
-	Serial        string
-	DriverJSON    string `gorm:"type:text"` // driver options (cache/io/…) as JSON
-	BackingJSON   string `gorm:"type:text"` // backingStore / layered info
+	Name          string `json:"name"`
+	VolumeID      *uint  `json:"volume_id"`
+	Path          string `json:"path"`
+	Format        string `json:"format"`
+	CapacityBytes uint64 `json:"capacity_bytes"`
+	Serial        string `json:"serial"`
+	DriverJSON    string `gorm:"type:text" json:"driver_json"`  // driver options (cache/io/…) as JSON
+	BackingJSON   string `gorm:"type:text" json:"backing_json"` // backingStore / layered info
 }
 
 // DiskAttachment links a Disk (or volume) to a VM and stores per-VM metadata.
 type DiskAttachment struct {
 	gorm.Model
-	VMUUID      string `gorm:"index"`
-	DiskID      uint
-	Disk        Disk   // Preloaded disk resource
-	DeviceName  string // e.g., vda
-	BusType     string // virtio/sata/ide
-	ReadOnly    bool
-	Shareable   bool
-	AddressJSON string `gorm:"type:text"` // PCI address or target addressing
-	Metadata    string `gorm:"type:text"`
+	VMUUID      string `gorm:"index" json:"vm_uuid"`
+	DiskID      uint   `json:"disk_id"`
+	Disk        Disk   `json:"disk"`        // Preloaded disk resource
+	DeviceName  string `json:"device_name"` // e.g., vda
+	BusType     string `json:"bus_type"`    // virtio/sata/ide
+	ReadOnly    bool   `json:"read_only"`
+	Shareable   bool   `json:"shareable"`
+	AddressJSON string `gorm:"type:text" json:"address_json"` // PCI address or target addressing
+	Metadata    string `gorm:"type:text" json:"metadata"`
 }
 
 // VideoModel represents a virtual display adapter template (shared model).

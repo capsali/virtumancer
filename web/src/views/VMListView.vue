@@ -343,18 +343,6 @@
                     <path d="M12 2.252A8.014 8.014 0 0117.748 8H12V2.252z" />
                   </svg>
                 </FButton>
-                <!-- Edit Settings button - moved from dropdown -->
-                <FButton
-                  variant="ghost"
-                  size="sm"
-                  @click.stop="editVM(vm)"
-                  class="p-2 hidden xl:flex"
-                  title="Edit Settings"
-                >
-                  <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                    <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
-                  </svg>
-                </FButton>
                 <!-- Dropdown Menu -->
                 <div class="relative">
                   <FButton
@@ -383,16 +371,6 @@
                           <path d="M12 2.252A8.014 8.014 0 0117.748 8H12V2.252z" />
                         </svg>
                         View Details
-                      </button>
-                      <!-- Show Edit Settings only on screens smaller than xl -->
-                      <button
-                        @click.stop="editVM(vm)"
-                        class="w-full px-4 py-2 text-left text-sm text-slate-300 hover:bg-slate-700/50 hover:text-white transition-colors flex items-center gap-3 xl:hidden"
-                      >
-                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                          <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
-                        </svg>
-                        Edit Settings
                       </button>
                       <button
                         @click.stop="cloneVM(vm)"
@@ -523,15 +501,6 @@
       <p class="text-slate-400">No virtual machines match your current filters.</p>
     </div>
 
-    <!-- VM Configuration Modal -->
-    <VMConfigurationModal
-      :show="showVMConfigModal"
-      :host-id="selectedVMForEdit?.hostId"
-      :vm-data="selectedVMForEdit"
-      :edit-mode="true"
-      @close="closeVMConfigModal"
-      @vm-updated="handleVMUpdated"
-    />
   </div>
 </template>
 
@@ -544,7 +513,6 @@ import { useUserPreferences } from '@/composables/useUserPreferences'
 import FCard from '@/components/ui/FCard.vue'
 import FButton from '@/components/ui/FButton.vue'
 import FBreadcrumbs from '@/components/ui/FBreadcrumbs.vue'
-import VMConfigurationModal from '@/components/modals/VMConfigurationModalSimple.vue'
 import { getConsoleRoute } from '@/utils/console'
 
 const router = useRouter()
@@ -557,10 +525,6 @@ const searchQuery = ref('')
 const statusFilter = ref('all')
 const hostFilter = ref('all')
 const activeDropdown = ref<string | null>(null)
-
-// VM Configuration Modal state
-const showVMConfigModal = ref(false)
-const selectedVMForEdit = ref<any>(null)
 
 // Use preferences for persistent state
 const viewMode = computed({
@@ -711,12 +675,6 @@ const viewVMDetails = (vm: any) => {
   router.push(`/hosts/${vm.hostId}/vms/${vm.name}`)
 }
 
-const editVM = (vm: any) => {
-  activeDropdown.value = null
-  selectedVMForEdit.value = vm
-  showVMConfigModal.value = true
-}
-
 const cloneVM = (vm: any) => {
   activeDropdown.value = null
   // TODO: Implement clone VM functionality
@@ -739,24 +697,6 @@ const deleteVM = async (vm: any) => {
     } catch (error) {
       console.error('Failed to delete VM:', error)
     }
-  }
-}
-
-// VM Configuration Modal handlers
-const closeVMConfigModal = () => {
-  showVMConfigModal.value = false
-  selectedVMForEdit.value = null
-}
-
-const handleVMUpdated = async (updatedConfig: any) => {
-  try {
-    // TODO: Implement VM configuration update API call
-    console.log('VM configuration updated:', updatedConfig)
-    // Refresh VMs after update
-    await fetchVMsForAllHosts()
-    closeVMConfigModal()
-  } catch (error) {
-    console.error('Failed to update VM configuration:', error)
   }
 }
 

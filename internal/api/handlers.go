@@ -1287,13 +1287,34 @@ func (h *APIHandler) ListPorts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Transform to include network_id from PortBinding
+	type PortResponse struct {
+		storage.Port
+		NetworkID *uint `json:"network_id,omitempty"`
+	}
+
+	var response = make([]PortResponse, 0)
+	for _, port := range ports {
+		resp := PortResponse{
+			Port: port,
+		}
+
+		// Get network_id through port binding
+		var binding storage.PortBinding
+		if err := h.DB.Where("port_id = ?", port.ID).First(&binding).Error; err == nil {
+			resp.NetworkID = &binding.NetworkID
+		}
+
+		response = append(response, resp)
+	}
+
 	// Ensure we return an empty array instead of null
-	if ports == nil {
-		ports = []storage.Port{}
+	if response == nil {
+		response = []PortResponse{}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(ports)
+	json.NewEncoder(w).Encode(response)
 }
 
 // ListPortAttachments returns all port attachments across all VMs.

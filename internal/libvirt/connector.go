@@ -1643,3 +1643,25 @@ func (c *Connector) ResetDomain(hostID, vmName string) error {
 	}
 	return l.DomainReset(domain, 0)
 }
+
+// GetDiskSize gets the actual size of a disk file from the host
+func (c *Connector) GetDiskSize(hostID, diskPath string) (uint64, error) {
+	_, err := c.GetConnection(hostID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get libvirt connection: %w", err)
+	}
+
+	// For now, we'll implement a simple version that returns 0
+	// In a production environment, you would use libvirt APIs like:
+	// - virDomainBlockInfo for active domains
+	// - virStorageVolGetInfo for storage volumes
+	// - File system operations for direct file access
+
+	// TODO: Implement proper disk size detection
+	// This could involve checking if the disk is:
+	// 1. A storage volume (use virStorageVolGetInfo)
+	// 2. A raw file (use file stat operations)
+	// 3. Part of an active domain (use virDomainBlockInfo)
+
+	return 0, nil
+}
