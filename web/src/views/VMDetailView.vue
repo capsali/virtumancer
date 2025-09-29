@@ -151,7 +151,7 @@
     <div v-if="vm && vm.state === 'ACTIVE'" class="grid grid-cols-1 xl:grid-cols-3 gap-6">
       <!-- Left Column: Performance Metrics -->
       <div class="xl:col-span-2 space-y-6">
-        <FCard v-if="vmStats" class="card-glow h-[340px]">
+        <FCard class="card-glow h-[340px]">
           <div class="p-6 h-full flex flex-col">
             <div class="flex items-center justify-between mb-6">
               <div class="flex items-center gap-4">
@@ -200,8 +200,8 @@
                   </svg>
                 </div>
                 <h4 class="text-sm font-semibold text-slate-300 mb-1">CPU</h4>
-                <p class="text-lg font-bold text-blue-400">{{ cpuValue.toFixed(1) }}%</p>
-                <p class="text-xs text-slate-500">{{ cpuLabel }}</p>
+                <p class="text-lg font-bold text-blue-400">{{ vmStats ? cpuValue.toFixed(1) + '%' : 'N/A' }}</p>
+                <p class="text-xs text-slate-500">{{ vmStats ? cpuLabel : 'Not available' }}</p>
               </div>
 
               <!-- Memory Usage -->
@@ -212,8 +212,8 @@
                   </svg>
                 </div>
                 <h4 class="text-sm font-semibold text-slate-300 mb-1">Memory</h4>
-                <p class="text-lg font-bold text-purple-400">{{ formatBytes((vmStats.memory_mb || 0) * 1024 * 1024) }}</p>
-                <p class="text-xs text-slate-500">Usage</p>
+                <p class="text-lg font-bold text-purple-400">{{ vmStats ? formatBytes((vmStats.memory_mb || 0) * 1024 * 1024) : 'N/A' }}</p>
+                <p class="text-xs text-slate-500">{{ vmStats ? 'Usage' : 'Not available' }}</p>
               </div>
 
               <!-- Disk I/O -->
@@ -224,8 +224,8 @@
                   </svg>
                 </div>
                 <h4 class="text-sm font-semibold text-slate-300 mb-1">Disk I/O</h4>
-                <p class="text-xs font-medium text-green-400">R: {{ (vmStats.disk_read_kib_per_sec || 0).toFixed(1) }} KiB/s</p>
-                <p class="text-xs font-medium text-green-300">W: {{ (vmStats.disk_write_kib_per_sec || 0).toFixed(1) }} KiB/s</p>
+                <p class="text-xs font-medium text-green-400">R: {{ vmStats ? (vmStats.disk_read_kib_per_sec || 0).toFixed(1) + ' KiB/s' : 'N/A' }}</p>
+                <p class="text-xs font-medium text-green-300">W: {{ vmStats ? (vmStats.disk_write_kib_per_sec || 0).toFixed(1) + ' KiB/s' : 'N/A' }}</p>
               </div>
 
               <!-- Network I/O -->
@@ -236,26 +236,15 @@
                   </svg>
                 </div>
                 <h4 class="text-sm font-semibold text-slate-300 mb-1">Network</h4>
-                <p class="text-xs font-medium text-cyan-400">RX: {{ (vmStats.network_rx_mbps || vmStats.network_rx_mb || 0).toFixed(2) }} {{ settings.units.network === 'kb' ? 'KB/s' : 'MB/s' }}</p>
-                <p class="text-xs font-medium text-cyan-300">TX: {{ (vmStats.network_tx_mbps || vmStats.network_tx_mb || 0).toFixed(2) }} {{ settings.units.network === 'kb' ? 'KB/s' : 'MB/s' }}</p>
+                <p class="text-xs font-medium text-cyan-400">RX: {{ vmStats ? (vmStats.network_rx_mbps || vmStats.network_rx_mb || 0).toFixed(2) + ' ' + (settings.units.network === 'kb' ? 'KB/s' : 'MB/s') : 'N/A' }}</p>
+                <p class="text-xs font-medium text-cyan-300">TX: {{ vmStats ? (vmStats.network_tx_mbps || vmStats.network_tx_mb || 0).toFixed(2) + ' ' + (settings.units.network === 'kb' ? 'KB/s' : 'MB/s') : 'N/A' }}</p>
               </div>
 
 
             </div>
           </div>
         </FCard>
-        
-        <FCard v-else class="card-glow">
-          <div class="p-8 text-center">
-            <div class="flex justify-center mb-4">
-              <svg class="w-12 h-12 text-slate-600" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M3 3a1 1 0 000 2v8a2 2 0 002 2h2.586l-1.293 1.293a1 1 0 101.414 1.414L10 15.414l2.293 2.293a1 1 0 001.414-1.414L12.414 15H15a2 2 0 002-2V5a1 1 0 100-2H3zm11.707 4.707a1 1 0 00-1.414-1.414L10 9.586 6.707 6.293a1 1 0 00-1.414 1.414l4 4a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
-              </svg>
-            </div>
-            <h4 class="text-lg font-semibold text-white mb-2">No Performance Data Available</h4>
-            <p class="text-slate-400">Performance metrics are only available when the VM is running.</p>
-          </div>
-        </FCard>
+
       </div>
 
       <!-- Right Column: Console Preview -->
