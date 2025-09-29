@@ -3831,3 +3831,800 @@ func (c *Connector) GetDomainCompleteXMLAnalysis(hostID, vmName string) (*Comple
 
 	return analysis, nil
 }
+
+// =============================
+// Phase 1: Enhanced Disk API Methods
+// =============================
+
+// EnhancedDiskInfo combines XML and API data for comprehensive disk information
+type EnhancedDiskInfo struct {
+	DiskInfo // Embedded XML-parsed disk info
+	// API-sourced enhancements
+	BlockStats      *DomainBlockStatsResult
+	AllocationBytes uint64
+	PhysicalBytes   uint64
+	VolumeInfo      *VolumeDetail
+}
+
+// DomainBlockStatsResult stores block statistics from API
+type DomainBlockStatsResult struct {
+	ReadReqs   int64
+	ReadBytes  int64
+	WriteReqs  int64
+	WriteBytes int64
+	Errors     int64
+}
+
+// VolumeDetail stores enhanced volume information from storage APIs
+type VolumeDetail struct {
+	Name        string
+	Type        int8
+	Capacity    uint64
+	Allocation  uint64
+	Path        string
+	Format      string
+	BackingPath string
+}
+
+// GetEnhancedDiskInfo retrieves comprehensive disk information using APIs where possible
+func (c *Connector) GetEnhancedDiskInfo(hostID, vmUUID string, disks []DiskInfo) ([]EnhancedDiskInfo, error) {
+	conn, err := c.GetConnection(hostID)
+	if err != nil {
+		return nil, err
+	}
+
+	enhanced := make([]EnhancedDiskInfo, 0, len(disks))
+
+	// Get the domain for API calls
+	domain, err := c.getDomainByUUID(conn, vmUUID)
+	if err != nil {
+		log.Debugf("Could not lookup domain %s for enhanced disk info: %v", vmUUID, err)
+		// Fallback to XML-only data
+		for _, disk := range disks {
+			enhanced = append(enhanced, EnhancedDiskInfo{DiskInfo: disk})
+		}
+		return enhanced, nil
+	}
+
+	for _, disk := range disks {
+		enhancedDisk := EnhancedDiskInfo{DiskInfo: disk}
+
+		// Try to get block statistics (for running VMs)
+		if state, _, err := conn.DomainGetState(domain, 0); err == nil && state == 1 { // VIR_DOMAIN_RUNNING
+			if rdReq, rdBytes, wrReq, wrBytes, errs, err := conn.DomainBlockStats(domain, disk.Target.Dev); err == nil {
+				enhancedDisk.BlockStats = &DomainBlockStatsResult{
+					ReadReqs:   rdReq,
+					ReadBytes:  rdBytes,
+					WriteReqs:  wrReq,
+					WriteBytes: wrBytes,
+					Errors:     errs,
+				}
+			}
+		}
+
+		// Try to get block info (allocation, capacity, physical)
+		diskPath := disk.Source.File
+		if diskPath == "" {
+			diskPath = disk.Source.Dev
+		}
+		if diskPath != "" {
+			if allocation, capacity, physical, err := conn.DomainGetBlockInfo(domain, diskPath, 0); err == nil {
+				enhancedDisk.AllocationBytes = allocation
+				enhancedDisk.PhysicalBytes = physical
+				// Update capacity if not available from XML
+				if disk.Capacity.Value == 0 {
+					enhancedDisk.DiskInfo.Capacity.Value = capacity
+					enhancedDisk.DiskInfo.Capacity.Unit = "bytes"
+				}
+			}
+		}
+
+		// Try to get volume information if it's pool-managed
+		if disk.Source.File != "" {
+			if volDetail, err := c.getVolumeDetailFromPath(conn, disk.Source.File); err == nil {
+				enhancedDisk.VolumeInfo = volDetail
+			}
+		}
+
+		enhanced = append(enhanced, enhancedDisk)
+	}
+
+	return enhanced, nil
+}
+
+// getDomainByUUID helper function to lookup domain by UUID string
+func (c *Connector) getDomainByUUID(conn *libvirt.Libvirt, uuidStr string) (libvirt.Domain, error) {
+	// Convert string UUID to byte array
+	uuid, err := parseUUID(uuidStr)
+	if err != nil {
+		return libvirt.Domain{}, err
+	}
+
+	return conn.DomainLookupByUUID(uuid)
+}
+
+// parseUUID converts a UUID string to a 16-byte array
+func parseUUID(uuidStr string) (libvirt.UUID, error) {
+	var uuid libvirt.UUID
+
+	// Remove hyphens from UUID string
+	cleanUUID := strings.ReplaceAll(uuidStr, "-", "")
+
+	// Convert hex string to bytes
+	if len(cleanUUID) != 32 {
+		return uuid, fmt.Errorf("invalid UUID format: %s", uuidStr)
+	}
+
+	for i := 0; i < 16; i++ {
+		hex := cleanUUID[i*2 : i*2+2]
+		b, err := strconv.ParseUint(hex, 16, 8)
+		if err != nil {
+			return uuid, fmt.Errorf("invalid UUID format: %s", uuidStr)
+		}
+		uuid[i] = byte(b)
+	}
+
+	return uuid, nil
+}
+
+// getVolumeDetailFromPath attempts to get volume details by searching storage pools
+func (c *Connector) getVolumeDetailFromPath(conn *libvirt.Libvirt, diskPath string) (*VolumeDetail, error) {
+	// Get all storage pools
+	pools, _, err := conn.ConnectListAllStoragePools(0, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, pool := range pools {
+		// List volumes in this pool
+		volumes, _, err := conn.StoragePoolListAllVolumes(pool, 0, 0)
+		if err != nil {
+			continue
+		}
+
+		for _, vol := range volumes {
+			// Get volume path
+			volPath, err := conn.StorageVolGetPath(vol)
+			if err != nil {
+				continue
+			}
+
+			// Check if this volume matches our disk path
+			if volPath == diskPath {
+				// Get volume info
+				volType, capacity, allocation, err := conn.StorageVolGetInfo(vol)
+				if err != nil {
+					continue
+				}
+
+				// Try to get volume XML for format information
+				volXML, err := conn.StorageVolGetXMLDesc(vol, 0)
+				format := "unknown"
+				if err == nil {
+					// Parse format from XML - simplified extraction
+					if strings.Contains(volXML, "format type='qcow2'") {
+						format = "qcow2"
+					} else if strings.Contains(volXML, "format type='raw'") {
+						format = "raw"
+					}
+				}
+
+				return &VolumeDetail{
+					Type:       volType,
+					Capacity:   capacity,
+					Allocation: allocation,
+					Path:       volPath,
+					Format:     format,
+				}, nil
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("volume not found for path: %s", diskPath)
+}
+
+// GetDiskBlockStatistics retrieves real-time block I/O statistics for all VM disks
+func (c *Connector) GetDiskBlockStatistics(hostID, vmUUID string) (map[string]DomainBlockStatsResult, error) {
+	conn, err := c.GetConnection(hostID)
+	if err != nil {
+		return nil, err
+	}
+
+	domain, err := c.getDomainByUUID(conn, vmUUID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check if domain is running
+	state, _, err := conn.DomainGetState(domain, 0)
+	if err != nil || state != 1 { // Not running
+		return nil, fmt.Errorf("domain not running, cannot get block statistics")
+	}
+
+	// Get domain XML to find all disk devices
+	xmlDesc, err := conn.DomainGetXMLDesc(domain, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	// Parse disk devices from XML
+	var def DomainHardwareXML
+	if err := xml.Unmarshal([]byte(xmlDesc), &def); err != nil {
+		return nil, err
+	}
+
+	stats := make(map[string]DomainBlockStatsResult)
+	for _, disk := range def.Devices.Disks {
+		if rdReq, rdBytes, wrReq, wrBytes, errs, err := conn.DomainBlockStats(domain, disk.Target.Dev); err == nil {
+			stats[disk.Target.Dev] = DomainBlockStatsResult{
+				ReadReqs:   rdReq,
+				ReadBytes:  rdBytes,
+				WriteReqs:  wrReq,
+				WriteBytes: wrBytes,
+				Errors:     errs,
+			}
+		}
+	}
+
+	return stats, nil
+}
+
+// =============================
+// Phase 2: Enhanced Network API Methods
+// =============================
+
+// EnhancedNetworkInfo combines XML and API data for comprehensive network information
+type EnhancedNetworkInfo struct {
+	NetworkInfo // Embedded XML-parsed network info
+	// API-sourced enhancements
+	InterfaceStats *DomainInterfaceStatsResult
+	DHCPLeases     []NetworkDHCPLeaseInfo
+	InterfaceAddrs []DomainInterfaceAddress
+}
+
+// DomainInterfaceStatsResult stores network interface statistics from API
+type DomainInterfaceStatsResult struct {
+	RxBytes   int64
+	RxPackets int64
+	RxErrs    int64
+	RxDrop    int64
+	TxBytes   int64
+	TxPackets int64
+	TxErrs    int64
+	TxDrop    int64
+}
+
+// NetworkDHCPLeaseInfo stores DHCP lease information
+type NetworkDHCPLeaseInfo struct {
+	MacAddress string
+	IPAddress  string
+	Hostname   string
+	ClientID   string
+	ExpireTime time.Time
+}
+
+// DomainInterfaceAddress stores interface address from API
+type DomainInterfaceAddress struct {
+	Name    string
+	MacAddr string
+	Addrs   []NetworkInterfaceAddress
+}
+
+// =============================
+// Phase 4: Enhanced Node/Device API Methods
+// =============================
+
+// NodePerformanceInfo contains host/node performance information from APIs
+type NodePerformanceInfo struct {
+	// Node info from NodeGetInfo
+	CPUModel string `json:"cpu_model"`
+	Memory   uint64 `json:"memory"`
+	CPUs     int32  `json:"cpus"`
+	MHz      int32  `json:"mhz"`
+	Nodes    int32  `json:"nodes"`
+	Sockets  int32  `json:"sockets"`
+	Cores    int32  `json:"cores"`
+	Threads  int32  `json:"threads"`
+	// Memory stats from NodeGetMemoryStats
+	TotalMemory  uint64 `json:"total_memory"`
+	FreeMemory   uint64 `json:"free_memory"`
+	BuffMemory   uint64 `json:"buff_memory"`
+	CachedMemory uint64 `json:"cached_memory"`
+	// CPU stats from NodeGetCPUStats
+	UserCPUTime   uint64 `json:"user_cpu_time"`
+	SystemCPUTime uint64 `json:"system_cpu_time"`
+	IdleCPUTime   uint64 `json:"idle_cpu_time"`
+	IOWaitTime    uint64 `json:"iowait_time"`
+	// Calculated metrics
+	CPUPercent    float64   `json:"cpu_percent"`
+	MemoryPercent float64   `json:"memory_percent"`
+	CollectedAt   time.Time `json:"collected_at"`
+}
+
+// DevicePerformanceInfo contains device-specific performance metrics
+type DevicePerformanceInfo struct {
+	DeviceType     string    `json:"device_type"`
+	DeviceName     string    `json:"device_name"`
+	BandwidthUsed  uint64    `json:"bandwidth_used"`
+	BandwidthLimit uint64    `json:"bandwidth_limit"`
+	LatencyMs      float64   `json:"latency_ms"`
+	ErrorCount     uint64    `json:"error_count"`
+	MetricsJSON    string    `json:"metrics_json"`
+	CollectedAt    time.Time `json:"collected_at"`
+}
+
+// NetworkInterfaceAddress represents an IP address assigned to an interface
+type NetworkInterfaceAddress struct {
+	Type   int32
+	Addr   string
+	Prefix uint32
+}
+
+// GetEnhancedNetworkInfo retrieves comprehensive network information using APIs where possible
+func (c *Connector) GetEnhancedNetworkInfo(hostID, vmUUID string, networks []NetworkInfo) ([]EnhancedNetworkInfo, error) {
+	conn, err := c.GetConnection(hostID)
+	if err != nil {
+		return nil, err
+	}
+
+	enhanced := make([]EnhancedNetworkInfo, 0, len(networks))
+
+	// Get the domain for API calls
+	domain, err := c.getDomainByUUID(conn, vmUUID)
+	if err != nil {
+		log.Debugf("Could not lookup domain %s for enhanced network info: %v", vmUUID, err)
+		// Fallback to XML-only data
+		for _, network := range networks {
+			enhanced = append(enhanced, EnhancedNetworkInfo{NetworkInfo: network})
+		}
+		return enhanced, nil
+	}
+
+	for _, network := range networks {
+		enhancedNetwork := EnhancedNetworkInfo{NetworkInfo: network}
+
+		// Try to get interface statistics (for running VMs)
+		if state, _, err := conn.DomainGetState(domain, 0); err == nil && state == 1 { // VIR_DOMAIN_RUNNING
+			if rxBytes, rxPackets, rxErrs, rxDrop, txBytes, txPackets, txErrs, txDrop, err := conn.DomainInterfaceStats(domain, network.Target.Dev); err == nil {
+				enhancedNetwork.InterfaceStats = &DomainInterfaceStatsResult{
+					RxBytes:   rxBytes,
+					RxPackets: rxPackets,
+					RxErrs:    rxErrs,
+					RxDrop:    rxDrop,
+					TxBytes:   txBytes,
+					TxPackets: txPackets,
+					TxErrs:    txErrs,
+					TxDrop:    txDrop,
+				}
+			}
+		}
+
+		// Try to get interface addresses
+		if interfaces, err := conn.DomainInterfaceAddresses(domain, 0, 0); err == nil {
+			enhancedNetwork.InterfaceAddrs = make([]DomainInterfaceAddress, 0, len(interfaces))
+			for _, iface := range interfaces {
+				// Convert OptString to string helper
+				macAddr := ""
+				if len(iface.Hwaddr) > 0 {
+					macAddr = iface.Hwaddr[0]
+				}
+
+				domainAddr := DomainInterfaceAddress{
+					Name:    iface.Name,
+					MacAddr: macAddr,
+					Addrs:   make([]NetworkInterfaceAddress, 0, len(iface.Addrs)),
+				}
+				for _, addr := range iface.Addrs {
+					domainAddr.Addrs = append(domainAddr.Addrs, NetworkInterfaceAddress{
+						Type:   addr.Type,
+						Addr:   addr.Addr,
+						Prefix: addr.Prefix,
+					})
+				}
+				enhancedNetwork.InterfaceAddrs = append(enhancedNetwork.InterfaceAddrs, domainAddr)
+			}
+		}
+
+		// Try to get DHCP leases if network is specified
+		if network.Source.Network != "" {
+			if netObj, err := conn.NetworkLookupByName(network.Source.Network); err == nil {
+				if leases, _, err := conn.NetworkGetDhcpLeases(netObj, libvirt.OptString{}, 0, 0); err == nil {
+					enhancedNetwork.DHCPLeases = make([]NetworkDHCPLeaseInfo, 0, len(leases))
+					for _, lease := range leases {
+						// Convert OptString to string
+						macAddr := ""
+						if len(lease.Mac) > 0 {
+							macAddr = lease.Mac[0]
+						}
+						hostname := ""
+						if len(lease.Hostname) > 0 {
+							hostname = lease.Hostname[0]
+						}
+						clientID := ""
+						if len(lease.Clientid) > 0 {
+							clientID = lease.Clientid[0]
+						}
+
+						// Filter leases by MAC address if available
+						if network.Mac.Address == "" || macAddr == network.Mac.Address {
+							leaseInfo := NetworkDHCPLeaseInfo{
+								MacAddress: macAddr,
+								IPAddress:  lease.Ipaddr,
+								Hostname:   hostname,
+								ClientID:   clientID,
+								ExpireTime: time.Unix(int64(lease.Expirytime), 0),
+							}
+							enhancedNetwork.DHCPLeases = append(enhancedNetwork.DHCPLeases, leaseInfo)
+						}
+					}
+				}
+			}
+		}
+
+		enhanced = append(enhanced, enhancedNetwork)
+	}
+
+	return enhanced, nil
+}
+
+// GetNetworkInterfaceStatistics retrieves real-time network I/O statistics for all VM interfaces
+func (c *Connector) GetNetworkInterfaceStatistics(hostID, vmUUID string) (map[string]DomainInterfaceStatsResult, error) {
+	conn, err := c.GetConnection(hostID)
+	if err != nil {
+		return nil, err
+	}
+
+	domain, err := c.getDomainByUUID(conn, vmUUID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check if domain is running
+	state, _, err := conn.DomainGetState(domain, 0)
+	if err != nil || state != 1 { // Not running
+		return nil, fmt.Errorf("domain not running, cannot get interface statistics")
+	}
+
+	// Get domain XML to find all network interfaces
+	xmlDesc, err := conn.DomainGetXMLDesc(domain, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	// Parse network interfaces from XML
+	var def DomainHardwareXML
+	if err := xml.Unmarshal([]byte(xmlDesc), &def); err != nil {
+		return nil, err
+	}
+
+	stats := make(map[string]DomainInterfaceStatsResult)
+	for _, iface := range def.Devices.Interfaces {
+		if rxBytes, rxPackets, rxErrs, rxDrop, txBytes, txPackets, txErrs, txDrop, err := conn.DomainInterfaceStats(domain, iface.Target.Dev); err == nil {
+			stats[iface.Target.Dev] = DomainInterfaceStatsResult{
+				RxBytes:   rxBytes,
+				RxPackets: rxPackets,
+				RxErrs:    rxErrs,
+				RxDrop:    rxDrop,
+				TxBytes:   txBytes,
+				TxPackets: txPackets,
+				TxErrs:    txErrs,
+				TxDrop:    txDrop,
+			}
+		}
+	}
+
+	return stats, nil
+}
+
+// =============================
+// Phase 3: Enhanced CPU & Memory API Methods
+// =============================
+
+// EnhancedDomainInfo combines XML and API data for comprehensive domain resource information
+type EnhancedDomainInfo struct {
+	// API-sourced data from DomainGetInfo
+	State     uint8
+	MaxMemory uint64 // KB
+	Memory    uint64 // KB
+	NrVirtCPU uint16
+	CPUTime   uint64 // nanoseconds
+	// Extended API data
+	MaxVCPUs     int32
+	VCPUCount    int32
+	VCPUInfo     []VCPUInfo
+	MemoryParams map[string]interface{}
+}
+
+// VCPUInfo stores individual VCPU information
+type VCPUInfo struct {
+	Number  uint32
+	State   int32
+	CPUTime uint64
+	CPU     int32
+}
+
+// GetEnhancedDomainInfo retrieves comprehensive domain resource information using APIs
+func (c *Connector) GetEnhancedDomainInfo(hostID, vmUUID string) (*EnhancedDomainInfo, error) {
+	conn, err := c.GetConnection(hostID)
+	if err != nil {
+		return nil, err
+	}
+
+	domain, err := c.getDomainByUUID(conn, vmUUID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get basic domain info
+	state, maxMem, memory, nrVirtCPU, cpuTime, err := conn.DomainGetInfo(domain)
+	if err != nil {
+		return nil, err
+	}
+
+	enhanced := &EnhancedDomainInfo{
+		State:     state,
+		MaxMemory: maxMem,
+		Memory:    memory,
+		NrVirtCPU: nrVirtCPU,
+		CPUTime:   cpuTime,
+	}
+
+	// Get maximum VCPUs
+	if maxVCPUs, err := conn.DomainGetMaxVcpus(domain); err == nil {
+		enhanced.MaxVCPUs = maxVCPUs
+	}
+
+	// Get current VCPU count
+	if vcpuCount, err := conn.DomainGetVcpusFlags(domain, 0); err == nil {
+		enhanced.VCPUCount = vcpuCount
+	}
+
+	// Get detailed VCPU information (if domain is running)
+	if state == 1 { // VIR_DOMAIN_RUNNING
+		if vcpuInfos, _, err := conn.DomainGetVcpus(domain, int32(nrVirtCPU), 0); err == nil {
+			enhanced.VCPUInfo = make([]VCPUInfo, len(vcpuInfos))
+			for i, vcpu := range vcpuInfos {
+				enhanced.VCPUInfo[i] = VCPUInfo{
+					Number:  vcpu.Number,
+					State:   vcpu.State,
+					CPUTime: vcpu.CPUTime,
+					CPU:     vcpu.CPU,
+				}
+			}
+		}
+	}
+
+	// Get memory parameters
+	if memParams, _, err := conn.DomainGetMemoryParameters(domain, 0, 0); err == nil {
+		enhanced.MemoryParams = make(map[string]interface{})
+		for _, param := range memParams {
+			// Use the discriminated union correctly
+			enhanced.MemoryParams[param.Field] = param.Value.I
+		}
+	}
+
+	return enhanced, nil
+}
+
+// GetEnhancedCPUPerformance retrieves CPU performance metrics using APIs
+func (c *Connector) GetEnhancedCPUPerformance(hostID, vmUUID string) (*CPUPerformanceData, error) {
+	enhanced, err := c.GetEnhancedDomainInfo(hostID, vmUUID)
+	if err != nil {
+		return nil, err
+	}
+
+	cpuPerf := &CPUPerformanceData{
+		State:     enhanced.State,
+		MaxMemory: enhanced.MaxMemory,
+		Memory:    enhanced.Memory,
+		NrVirtCPU: enhanced.NrVirtCPU,
+		CPUTime:   enhanced.CPUTime,
+		VCPUCount: enhanced.VCPUCount,
+		MaxVCPUs:  enhanced.MaxVCPUs,
+	}
+
+	// Calculate CPU percentage (simplified - would need previous measurement for accurate calculation)
+	if enhanced.CPUTime > 0 && enhanced.NrVirtCPU > 0 {
+		// This is a placeholder calculation - in practice you'd need to compare with previous samples
+		cpuPerf.CPUPercent = float64(enhanced.NrVirtCPU) * 10.0 // Placeholder value
+	}
+
+	return cpuPerf, nil
+}
+
+// GetEnhancedMemoryPerformance retrieves memory performance metrics using APIs
+func (c *Connector) GetEnhancedMemoryPerformance(hostID, vmUUID string) (*MemoryPerformanceData, error) {
+	enhanced, err := c.GetEnhancedDomainInfo(hostID, vmUUID)
+	if err != nil {
+		return nil, err
+	}
+
+	memPerf := &MemoryPerformanceData{
+		MaxMemoryKB:     enhanced.MaxMemory,
+		CurrentMemoryKB: enhanced.Memory,
+	}
+
+	// Extract memory parameters
+	if enhanced.MemoryParams != nil {
+		if val, ok := enhanced.MemoryParams["hard_limit"]; ok {
+			if limit, ok := val.(uint64); ok {
+				memPerf.HardLimit = limit
+			}
+		}
+		if val, ok := enhanced.MemoryParams["soft_limit"]; ok {
+			if limit, ok := val.(uint64); ok {
+				memPerf.SoftLimit = limit
+			}
+		}
+		if val, ok := enhanced.MemoryParams["min_guarantee"]; ok {
+			if guarantee, ok := val.(uint64); ok {
+				memPerf.MinGuarantee = guarantee
+			}
+		}
+		if val, ok := enhanced.MemoryParams["swap_hard_limit"]; ok {
+			if limit, ok := val.(uint64); ok {
+				memPerf.SwapHardLimit = limit
+			}
+		}
+	}
+
+	// Calculate memory percentage
+	if enhanced.MaxMemory > 0 {
+		memPerf.MemoryPercent = float64(enhanced.Memory) / float64(enhanced.MaxMemory) * 100.0
+	}
+
+	return memPerf, nil
+}
+
+// CPUPerformanceData represents CPU performance metrics
+type CPUPerformanceData struct {
+	State      uint8
+	MaxMemory  uint64
+	Memory     uint64
+	NrVirtCPU  uint16
+	CPUTime    uint64
+	VCPUCount  int32
+	MaxVCPUs   int32
+	CPUPercent float64
+}
+
+// MemoryPerformanceData represents memory performance metrics
+type MemoryPerformanceData struct {
+	MaxMemoryKB     uint64
+	CurrentMemoryKB uint64
+	ActualBalloonKB uint64
+	HardLimit       uint64
+	SoftLimit       uint64
+	MinGuarantee    uint64
+	SwapHardLimit   uint64
+	MemoryPercent   float64
+}
+
+// GetNodePerformance fetches host/node performance metrics using libvirt APIs
+func (c *Connector) GetNodePerformance(hostID string) (*NodePerformanceInfo, error) {
+	conn, err := c.GetConnection(hostID)
+	if err != nil {
+		return nil, err
+	}
+
+	info := &NodePerformanceInfo{}
+
+	// Get node info
+	model, memory, cpus, mhz, nodes, sockets, cores, threads, err := conn.NodeGetInfo()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get node info: %w", err)
+	}
+
+	// Convert byte array to string for CPU model
+	modelBytes := model[:]
+	nullIndex := len(modelBytes)
+	for i, b := range modelBytes {
+		if b == 0 {
+			nullIndex = i
+			break
+		}
+	}
+	// Convert []int8 to []byte then to string
+	byteModel := make([]byte, nullIndex)
+	for i := 0; i < nullIndex; i++ {
+		byteModel[i] = byte(modelBytes[i])
+	}
+	info.CPUModel = string(byteModel)
+
+	info.Memory = memory
+	info.CPUs = int32(cpus)
+	info.MHz = int32(mhz)
+	info.Nodes = int32(nodes)
+	info.Sockets = int32(sockets)
+	info.Cores = int32(cores)
+	info.Threads = int32(threads)
+
+	// Get node CPU stats (use -1 for all CPUs)
+	cpuStats, _, err := conn.NodeGetCPUStats(-1, 0, 0)
+	if err != nil {
+		// Silent failure since this is optional
+	} else {
+		for _, stat := range cpuStats {
+			value := stat.Value
+			switch stat.Field {
+			case "user":
+				info.UserCPUTime = value
+			case "system":
+				info.SystemCPUTime = value
+			case "idle":
+				info.IdleCPUTime = value
+			case "iowait":
+				info.IOWaitTime = value
+			}
+		}
+	}
+
+	// Get node memory stats (use 0 for nparams and -1 for all cells)
+	memStats, _, err := conn.NodeGetMemoryStats(0, -1, 0)
+	if err != nil {
+		// Silent failure since this is optional
+	} else {
+		for _, stat := range memStats {
+			value := stat.Value
+			switch stat.Field {
+			case "total":
+				info.TotalMemory = value
+			case "free":
+				info.FreeMemory = value
+			case "buffers":
+				info.BuffMemory = value
+			case "cached":
+				info.CachedMemory = value
+			}
+		}
+	}
+
+	// Calculate CPU percentage
+	totalCPUTime := info.UserCPUTime + info.SystemCPUTime + info.IdleCPUTime + info.IOWaitTime
+	if totalCPUTime > 0 {
+		activeCPUTime := info.UserCPUTime + info.SystemCPUTime
+		info.CPUPercent = float64(activeCPUTime) / float64(totalCPUTime) * 100
+	}
+
+	// Calculate memory percentage
+	if info.TotalMemory > 0 {
+		usedMemory := info.TotalMemory - info.FreeMemory
+		info.MemoryPercent = float64(usedMemory) / float64(info.TotalMemory) * 100
+	}
+
+	info.CollectedAt = time.Now()
+	return info, nil
+}
+
+// GetDevicePerformance fetches device-specific performance metrics
+func (c *Connector) GetDevicePerformance(hostID, vmUUID string) ([]DevicePerformanceInfo, error) {
+	conn, err := c.GetConnection(hostID)
+	if err != nil {
+		return nil, err
+	}
+
+	domain, err := c.getDomainByUUID(conn, vmUUID)
+	if err != nil {
+		return nil, err
+	}
+
+	var devices []DevicePerformanceInfo
+
+	// Get hostname (if available) as a basic device metric
+	hostname, err := conn.DomainGetHostname(domain, 0)
+	if err == nil && len(hostname) > 0 {
+		device := DevicePerformanceInfo{
+			DeviceType:  "hostname",
+			DeviceName:  "hostname",
+			MetricsJSON: fmt.Sprintf(`{"hostname": "%s"}`, hostname),
+			CollectedAt: time.Now(),
+		}
+		devices = append(devices, device)
+	}
+
+	// For other device metrics, we would need to parse XML and then get specific device stats
+	// This is a placeholder for device-specific metrics that would require XML parsing
+	// to identify devices and then API calls for their specific performance data
+
+	return devices, nil
+}

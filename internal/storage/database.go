@@ -1,6 +1,8 @@
 package storage
 
 import (
+	"time"
+
 	log "github.com/capsali/virtumancer/internal/logging"
 
 	"gorm.io/driver/sqlite"
@@ -491,6 +493,14 @@ type Disk struct {
 	Serial        string `json:"serial"`
 	DriverJSON    string `gorm:"type:text" json:"driver_json"`  // driver options (cache/io/…) as JSON
 	BackingJSON   string `gorm:"type:text" json:"backing_json"` // backingStore / layered info
+	// Enhanced API-sourced fields
+	VolumeType      string `json:"volume_type"`             // From StorageVolGetInfo
+	AllocationBytes uint64 `json:"allocation_bytes"`        // Actual space used
+	PhysicalBytes   uint64 `json:"physical_bytes"`          // Physical storage footprint
+	TargetPath      string `json:"target_path"`             // Target device path
+	SourceFormat    string `json:"source_format"`           // Source format if different
+	Encryption      string `json:"encryption"`              // Encryption info from API
+	IOTune          string `gorm:"type:text" json:"iotune"` // I/O tuning parameters as JSON
 }
 
 // DiskAttachment links a Disk (or volume) to a VM and stores per-VM metadata.
@@ -505,6 +515,133 @@ type DiskAttachment struct {
 	Shareable   bool   `json:"shareable"`
 	AddressJSON string `gorm:"type:text" json:"address_json"` // PCI address or target addressing
 	Metadata    string `gorm:"type:text" json:"metadata"`
+}
+
+// BlockStatistics stores real-time disk performance metrics from libvirt APIs
+type BlockStatistics struct {
+	gorm.Model
+	DiskAttachmentID uint   `gorm:"index" json:"disk_attachment_id"`
+	VMUUID           string `gorm:"index" json:"vm_uuid"`
+	DeviceName       string `json:"device_name"`
+	// Block I/O statistics from DomainGetBlockStats
+	ReadReqs   uint64 `json:"read_reqs"`   // Number of read requests
+	ReadBytes  uint64 `json:"read_bytes"`  // Bytes read
+	WriteReqs  uint64 `json:"write_reqs"`  // Number of write requests
+	WriteBytes uint64 `json:"write_bytes"` // Bytes written
+	Errors     uint64 `json:"errors"`      // Error count
+	// Block info from DomainGetBlockInfo
+	Allocation uint64 `json:"allocation"` // Actual disk space used
+	Capacity   uint64 `json:"capacity"`   // Total disk capacity
+	Physical   uint64 `json:"physical"`   // Physical size on storage
+	// Timestamp for metrics aging
+	CollectedAt time.Time `json:"collected_at"`
+}
+
+// NetworkStatistics stores real-time network performance metrics from libvirt APIs
+type NetworkStatistics struct {
+	gorm.Model
+	PortAttachmentID uint   `gorm:"index" json:"port_attachment_id"`
+	VMUUID           string `gorm:"index" json:"vm_uuid"`
+	DeviceName       string `json:"device_name"`
+	// Network I/O statistics from DomainInterfaceStats
+	RxBytes   uint64 `json:"rx_bytes"`   // Bytes received
+	RxPackets uint64 `json:"rx_packets"` // Packets received
+	RxErrs    uint64 `json:"rx_errs"`    // Receive errors
+	RxDrop    uint64 `json:"rx_drop"`    // Receive drops
+	TxBytes   uint64 `json:"tx_bytes"`   // Bytes transmitted
+	TxPackets uint64 `json:"tx_packets"` // Packets transmitted
+	TxErrs    uint64 `json:"tx_errs"`    // Transmit errors
+	TxDrop    uint64 `json:"tx_drop"`    // Transmit drops
+	// DHCP information from NetworkGetDhcpLeases
+	IPAddress   string    `json:"ip_address"`   // DHCP assigned IP
+	LeaseExpiry time.Time `json:"lease_expiry"` // DHCP lease expiration
+	// Timestamp for metrics aging
+	CollectedAt time.Time `json:"collected_at"`
+}
+
+// CPUPerformance stores real-time CPU performance metrics from libvirt APIs
+type CPUPerformance struct {
+	gorm.Model
+	VMUUID string `gorm:"index" json:"vm_uuid"`
+	// CPU info from DomainGetInfo
+	State     uint8  `json:"state"`       // Domain state
+	MaxMemory uint64 `json:"max_memory"`  // Maximum memory in KB
+	Memory    uint64 `json:"memory"`      // Current memory in KB
+	NrVirtCPU uint16 `json:"nr_virt_cpu"` // Number of virtual CPUs
+	CPUTime   uint64 `json:"cpu_time"`    // CPU time used in nanoseconds
+	// VCPU details from DomainGetVcpus
+	VCPUCount int32 `json:"vcpu_count"` // Actual VCPU count
+	MaxVCPUs  int32 `json:"max_vcpus"`  // Maximum VCPUs
+	// Performance metrics
+	CPUPercent float64 `json:"cpu_percent"` // CPU utilization percentage
+	// Timestamp for metrics aging
+	CollectedAt time.Time `json:"collected_at"`
+}
+
+// MemoryPerformance stores real-time memory performance metrics from libvirt APIs
+type MemoryPerformance struct {
+	gorm.Model
+	VMUUID string `gorm:"index" json:"vm_uuid"`
+	// Memory info from DomainGetInfo and DomainGetMemoryParameters
+	MaxMemoryKB     uint64 `json:"max_memory_kb"`     // Maximum memory in KB
+	CurrentMemoryKB uint64 `json:"current_memory_kb"` // Current memory allocation in KB
+	ActualBalloonKB uint64 `json:"actual_balloon_kb"` // Actual memory from balloon
+	// Memory parameters from DomainGetMemoryParameters
+	HardLimit     uint64 `json:"hard_limit"`      // Hard memory limit
+	SoftLimit     uint64 `json:"soft_limit"`      // Soft memory limit
+	MinGuarantee  uint64 `json:"min_guarantee"`   // Minimum guaranteed memory
+	SwapHardLimit uint64 `json:"swap_hard_limit"` // Swap hard limit
+	// Calculated metrics
+	MemoryPercent float64 `json:"memory_percent"` // Memory utilization percentage
+	// Timestamp for metrics aging
+	CollectedAt time.Time `json:"collected_at"`
+}
+
+// NodePerformance stores real-time node/host performance metrics from libvirt APIs
+type NodePerformance struct {
+	gorm.Model
+	HostID string `gorm:"index" json:"host_id"`
+	// Node info from NodeGetInfo
+	CPUModel string `json:"cpu_model"` // CPU model
+	Memory   uint64 `json:"memory"`    // Total memory in KB
+	CPUs     int32  `json:"cpus"`      // Number of CPUs
+	MHz      int32  `json:"mhz"`       // CPU frequency
+	Nodes    int32  `json:"nodes"`     // Number of NUMA nodes
+	Sockets  int32  `json:"sockets"`   // Number of CPU sockets
+	Cores    int32  `json:"cores"`     // Cores per socket
+	Threads  int32  `json:"threads"`   // Threads per core
+	// Memory stats from NodeGetMemoryStats
+	TotalMemory  uint64 `json:"total_memory"`  // Total memory
+	FreeMemory   uint64 `json:"free_memory"`   // Free memory
+	BuffMemory   uint64 `json:"buff_memory"`   // Buffered memory
+	CachedMemory uint64 `json:"cached_memory"` // Cached memory
+	// CPU stats from NodeGetCPUStats
+	UserCPUTime   uint64 `json:"user_cpu_time"`   // User CPU time
+	SystemCPUTime uint64 `json:"system_cpu_time"` // System CPU time
+	IdleCPUTime   uint64 `json:"idle_cpu_time"`   // Idle CPU time
+	IOWaitTime    uint64 `json:"iowait_time"`     // I/O wait time
+	// Calculated metrics
+	CPUPercent    float64 `json:"cpu_percent"`    // Overall CPU utilization
+	MemoryPercent float64 `json:"memory_percent"` // Memory utilization
+	// Timestamp for metrics aging
+	CollectedAt time.Time `json:"collected_at"`
+}
+
+// DevicePerformance stores device-specific performance metrics
+type DevicePerformance struct {
+	gorm.Model
+	VMUUID     string `gorm:"index" json:"vm_uuid"`
+	DeviceType string `json:"device_type"` // "video", "sound", "hostdev", etc.
+	DeviceName string `json:"device_name"` // Device identifier
+	// Generic performance metrics
+	BandwidthUsed  uint64  `json:"bandwidth_used"`  // Used bandwidth
+	BandwidthLimit uint64  `json:"bandwidth_limit"` // Bandwidth limit
+	LatencyMs      float64 `json:"latency_ms"`      // Latency in milliseconds
+	ErrorCount     uint64  `json:"error_count"`     // Error count
+	// Device-specific JSON data
+	MetricsJSON string `gorm:"type:text" json:"metrics_json"` // Device-specific metrics as JSON
+	// Timestamp for metrics aging
+	CollectedAt time.Time `json:"collected_at"`
 }
 
 // VideoModel represents a virtual display adapter template (shared model).
@@ -1108,6 +1245,12 @@ func InitDB(dataSourceName string) (*gorm.DB, error) {
 		&DeviceAlias{},
 		&Disk{},
 		&DiskAttachment{},
+		&BlockStatistics{},
+		&NetworkStatistics{},
+		&CPUPerformance{},
+		&MemoryPerformance{},
+		&NodePerformance{},
+		&DevicePerformance{},
 		&VideoModel{},
 		&VideoAttachment{},
 		&VideoDevice{},

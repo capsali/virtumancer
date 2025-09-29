@@ -2,6 +2,7 @@ package services
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -1424,7 +1425,7 @@ func (s *HostService) ingestVMFromLibvirt(hostID, vmName string) (bool, error) {
 			}
 			// Also ingest hardware for the restored VM
 			if hw, hwErr := s.connector.GetDomainHardware(hostID, vmName); hwErr == nil {
-				if _, err := s.syncVMHardware(tx, softVM.UUID, hostID, hw, &vmInfo.Graphics); err != nil {
+				if _, err := s.syncVMHardware(tx, softVM.UUID, hostID, hw, &vmInfo.Graphics, nil, nil); err != nil {
 					tx.Rollback()
 					return false, fmt.Errorf("failed to sync hardware for restored VM during ingestion: %w", err)
 				}
@@ -1505,7 +1506,7 @@ func (s *HostService) ingestVMFromLibvirt(hostID, vmName string) (bool, error) {
 
 	// Ingest hardware for the new VM
 	if hw, hwErr := s.connector.GetDomainHardware(hostID, vmName); hwErr == nil {
-		if _, err := s.syncVMHardware(tx, newVM.UUID, hostID, hw, &vmInfo.Graphics); err != nil {
+		if _, err := s.syncVMHardware(tx, newVM.UUID, hostID, hw, &vmInfo.Graphics, nil, nil); err != nil {
 			tx.Rollback()
 			return false, fmt.Errorf("failed to sync hardware during ingestion: %w", err)
 		}
@@ -1695,7 +1696,7 @@ func (s *HostService) detectDriftOrIngestVM(hostID, vmName string, isInitialSync
 			if hwErr != nil {
 				log.Verbosef("Warning: could not fetch hardware for restored VM %s: %v", vmInfo.Name, hwErr)
 			} else {
-				if _, err := s.syncVMHardware(tx, existingVM.UUID, hostID, hardwareInfo, &vmInfo.Graphics); err != nil {
+				if _, err := s.syncVMHardware(tx, existingVM.UUID, hostID, hardwareInfo, &vmInfo.Graphics, nil, nil); err != nil {
 					tx.Rollback()
 					return false, fmt.Errorf("failed to sync hardware for restored VM: %w", err)
 				}
@@ -2569,8 +2570,259 @@ func (s *HostService) syncVMConsole(tx *gorm.DB, vmUUID, hostID string, graphics
 	return changed, nil
 }
 
-// syncVMDisks handles disk synchronization for a VM
+// syncVMDisks handles disk synchronization for a VM using enhanced API data
 func (s *HostService) syncVMDisks(tx *gorm.DB, vmUUID, hostID string, disks []libvirt.DiskInfo) (bool, error) {
+	changed := false
+
+	// Get enhanced disk information using API data where possible
+	enhancedDisks, err := s.connector.GetEnhancedDiskInfo(hostID, vmUUID, disks)
+	if err != nil {
+		log.Debugf("Failed to get enhanced disk info for VM %s, falling back to XML-only: %v", vmUUID, err)
+		// Fallback to original XML-based sync
+		return s.syncVMDisksXMLOnly(tx, vmUUID, hostID, disks)
+	}
+
+	// Fetch existing disk attachments for this VM
+	var existingDiskAttachments []storage.DiskAttachment
+	tx.Preload("Disk").Where("vm_uuid = ?", vmUUID).Find(&existingDiskAttachments)
+	existingDiskAttachmentsMap := make(map[string]storage.DiskAttachment)
+	for _, da := range existingDiskAttachments {
+		existingDiskAttachmentsMap[da.DeviceName] = da
+	}
+
+	for _, enhancedDisk := range enhancedDisks {
+		disk := enhancedDisk.DiskInfo
+
+		// First, handle Volume if it's pool-managed (with API data)
+		var volume *storage.Volume
+		if enhancedDisk.VolumeInfo != nil {
+			// Use API-sourced volume information
+			var vol storage.Volume
+			tx.FirstOrCreate(&vol, storage.Volume{Name: enhancedDisk.VolumeInfo.Path}, storage.Volume{
+				Name:            enhancedDisk.VolumeInfo.Path,
+				Format:          enhancedDisk.VolumeInfo.Format,
+				Type:            "DISK",
+				CapacityBytes:   enhancedDisk.VolumeInfo.Capacity,
+				AllocationBytes: enhancedDisk.VolumeInfo.Allocation,
+			})
+			volume = &vol
+		} else if disk.Source.File != "" {
+			// Fallback to XML-based volume creation
+			var vol storage.Volume
+			tx.FirstOrCreate(&vol, storage.Volume{Name: disk.Source.File}, storage.Volume{
+				Name: disk.Source.File, Format: disk.Driver.Type, Type: "DISK",
+			})
+			volume = &vol
+		}
+
+		// Create or update Disk resource with enhanced API data
+		var diskRes storage.Disk
+		diskName := disk.Source.File
+		if diskName == "" {
+			diskName = disk.Source.Dev // block device
+		}
+		if diskName == "" {
+			diskName = fmt.Sprintf("disk-%s", disk.Target.Dev) // fallback
+		}
+
+		// For driver options, serialize to JSON
+		driverJSON, _ := json.Marshal(map[string]interface{}{
+			"name": disk.Driver.Name,
+			"type": disk.Driver.Type,
+		})
+
+		updates := make(map[string]interface{})
+		if volume != nil {
+			updates["volume_id"] = volume.ID
+		}
+		path := disk.Source.File
+		if path == "" {
+			path = disk.Source.Dev
+		}
+		updates["path"] = path
+		updates["format"] = disk.Driver.Type
+		updates["driver_json"] = string(driverJSON)
+
+		// Use API-sourced capacity data
+		capacityBytes := enhancedDisk.AllocationBytes
+		if disk.Capacity.Value > 0 {
+			// Convert capacity from XML
+			switch disk.Capacity.Unit {
+			case "bytes":
+				capacityBytes = disk.Capacity.Value
+			case "KB", "KiB":
+				capacityBytes = disk.Capacity.Value * 1024
+			case "MB", "MiB":
+				capacityBytes = disk.Capacity.Value * 1024 * 1024
+			case "GB", "GiB":
+				capacityBytes = disk.Capacity.Value * 1024 * 1024 * 1024
+			case "TB", "TiB":
+				capacityBytes = disk.Capacity.Value * 1024 * 1024 * 1024 * 1024
+			default:
+				capacityBytes = disk.Capacity.Value
+			}
+		} else if enhancedDisk.VolumeInfo != nil {
+			// Use API volume capacity
+			capacityBytes = enhancedDisk.VolumeInfo.Capacity
+		}
+
+		if capacityBytes > 0 {
+			updates["capacity_bytes"] = capacityBytes
+		}
+
+		// Add enhanced API fields
+		if enhancedDisk.AllocationBytes > 0 {
+			updates["allocation_bytes"] = enhancedDisk.AllocationBytes
+		}
+		if enhancedDisk.PhysicalBytes > 0 {
+			updates["physical_bytes"] = enhancedDisk.PhysicalBytes
+		}
+		if enhancedDisk.VolumeInfo != nil {
+			updates["volume_type"] = string(enhancedDisk.VolumeInfo.Type)
+			updates["source_format"] = enhancedDisk.VolumeInfo.Format
+		}
+
+		var diskResList []storage.Disk
+		tx.Where("name = ?", diskName).Limit(1).Find(&diskResList)
+		if len(diskResList) == 0 {
+			diskRes = storage.Disk{Name: diskName}
+			for k, v := range updates {
+				switch k {
+				case "volume_id":
+					if vid, ok := v.(uint); ok {
+						diskRes.VolumeID = &vid
+					}
+				case "path":
+					diskRes.Path = v.(string)
+				case "format":
+					diskRes.Format = v.(string)
+				case "driver_json":
+					diskRes.DriverJSON = v.(string)
+				case "capacity_bytes":
+					if cb, ok := v.(uint64); ok {
+						diskRes.CapacityBytes = cb
+					}
+				case "allocation_bytes":
+					if ab, ok := v.(uint64); ok {
+						diskRes.AllocationBytes = ab
+					}
+				case "physical_bytes":
+					if pb, ok := v.(uint64); ok {
+						diskRes.PhysicalBytes = pb
+					}
+				case "volume_type":
+					diskRes.VolumeType = v.(string)
+				case "source_format":
+					diskRes.SourceFormat = v.(string)
+				}
+			}
+			if err := tx.Create(&diskRes).Error; err != nil {
+				return false, err
+			}
+		} else {
+			diskRes = diskResList[0]
+			// Update existing
+			if err := tx.Model(&diskRes).Updates(updates).Error; err != nil {
+				return false, err
+			}
+		}
+
+		attachment, exists := existingDiskAttachmentsMap[disk.Target.Dev]
+		if exists {
+			updates := make(map[string]interface{})
+			if attachment.DiskID != diskRes.ID {
+				updates["disk_id"] = diskRes.ID
+			}
+			if attachment.BusType != disk.Target.Bus {
+				updates["bus_type"] = disk.Target.Bus
+			}
+			if len(updates) > 0 {
+				if err := tx.Model(&attachment).Updates(updates).Error; err != nil {
+					return false, err
+				}
+				changed = true
+			}
+			delete(existingDiskAttachmentsMap, disk.Target.Dev)
+		} else {
+			newAttachment := storage.DiskAttachment{
+				VMUUID: vmUUID, DiskID: diskRes.ID, DeviceName: disk.Target.Dev, BusType: disk.Target.Bus, ReadOnly: disk.ReadOnly, Shareable: disk.Shareable,
+			}
+			if err := tx.Create(&newAttachment).Error; err != nil {
+				return false, err
+			}
+
+			// Store block statistics if available
+			if enhancedDisk.BlockStats != nil {
+				blockStat := storage.BlockStatistics{
+					DiskAttachmentID: newAttachment.ID,
+					VMUUID:           vmUUID,
+					DeviceName:       disk.Target.Dev,
+					ReadReqs:         uint64(enhancedDisk.BlockStats.ReadReqs),
+					ReadBytes:        uint64(enhancedDisk.BlockStats.ReadBytes),
+					WriteReqs:        uint64(enhancedDisk.BlockStats.WriteReqs),
+					WriteBytes:       uint64(enhancedDisk.BlockStats.WriteBytes),
+					Errors:           uint64(enhancedDisk.BlockStats.Errors),
+					Allocation:       enhancedDisk.AllocationBytes,
+					Capacity:         capacityBytes,
+					Physical:         enhancedDisk.PhysicalBytes,
+					CollectedAt:      time.Now(),
+				}
+				if err := tx.Create(&blockStat).Error; err != nil {
+					log.Debugf("Failed to store block statistics for %s: %v", disk.Target.Dev, err)
+				}
+			}
+
+			// For shareable or readonly disks, allow multi-attach (DeviceID=nil)
+			// For exclusive disks, prevent double attach
+			var deviceID *uint
+			if disk.Shareable || disk.ReadOnly {
+				deviceID = nil
+			} else {
+				// Check if already attached to another VM
+				var existingAllocs []storage.AttachmentIndex
+				tx.Where("device_type = ? AND device_id = ?", "disk", diskRes.ID).Limit(1).Find(&existingAllocs)
+				if len(existingAllocs) > 0 {
+					existingAlloc := existingAllocs[0]
+					if existingAlloc.VMUUID != vmUUID {
+						log.Verbosef("disk device id=%d already allocated to VM %s (attachment_index id %d); skipping attach for VM %s", diskRes.ID, existingAlloc.VMUUID, existingAlloc.ID, vmUUID)
+						// don't attach, continue to next disk
+						continue
+					}
+				}
+				devID := diskRes.ID
+				deviceID = &devID
+			}
+
+			alloc := storage.AttachmentIndex{VMUUID: vmUUID, DeviceType: "disk", AttachmentID: newAttachment.ID, DeviceID: deviceID}
+			if err := s.ensureAttachmentIndex(tx, alloc); err != nil {
+				return false, err
+			}
+			changed = true
+		}
+	}
+
+	// Clean up any stale disk attachments
+	if len(existingDiskAttachmentsMap) > 0 {
+		var idsToDelete []uint
+		for _, attachment := range existingDiskAttachmentsMap {
+			idsToDelete = append(idsToDelete, attachment.ID)
+		}
+		// Remove index entries first, then remove attachment rows within the same tx
+		if err := tx.Where("device_type = ? AND attachment_id IN ?", "disk", idsToDelete).Delete(&storage.AttachmentIndex{}).Error; err != nil {
+			return false, err
+		}
+		// Remove the stale disk attachments
+		if err := tx.Where("id IN ?", idsToDelete).Delete(&storage.DiskAttachment{}).Error; err != nil {
+			return false, err
+		}
+		changed = true
+	}
+
+	return changed, nil
+}
+
+// syncVMDisksXMLOnly is the fallback method using only XML parsing (Phase 1 legacy support)
+func (s *HostService) syncVMDisksXMLOnly(tx *gorm.DB, vmUUID, hostID string, disks []libvirt.DiskInfo) (bool, error) {
 	changed := false
 
 	// Fetch existing disk attachments for this VM
@@ -2759,8 +3011,290 @@ func (s *HostService) syncVMDisks(tx *gorm.DB, vmUUID, hostID string, disks []li
 	return changed, nil
 }
 
-// syncVMNetworks handles network/port synchronization for a VM
+// syncVMNetworks handles network/port synchronization for a VM using enhanced API data
 func (s *HostService) syncVMNetworks(tx *gorm.DB, vmUUID string, hostID string, networks []libvirt.NetworkInfo) (bool, error) {
+	var changed bool = false
+
+	// Get enhanced network information using API data where possible
+	enhancedNetworks, err := s.connector.GetEnhancedNetworkInfo(hostID, vmUUID, networks)
+	if err != nil {
+		log.Debugf("Failed to get enhanced network info for VM %s, falling back to XML-only: %v", vmUUID, err)
+		// Fallback to original XML-based sync
+		return s.syncVMNetworksXMLOnly(tx, vmUUID, hostID, networks)
+	}
+
+	// Fetch existing attachments for this VM (if any) and map by MAC
+	var existingPortAttachments []storage.PortAttachment
+	if err := tx.Preload("Port").Where("vm_uuid = ?", vmUUID).Find(&existingPortAttachments).Error; err != nil {
+		return false, err
+	}
+	existingByMAC := make(map[string]storage.PortAttachment)
+	existingByDev := make(map[string]storage.PortAttachment)
+	for _, a := range existingPortAttachments {
+		if a.MACAddress != "" {
+			existingByMAC[a.MACAddress] = a
+		}
+		if a.DeviceName != "" {
+			existingByDev[a.DeviceName] = a
+		}
+	}
+
+	for _, enhancedNetwork := range enhancedNetworks {
+		network := enhancedNetwork.NetworkInfo
+
+		// First, handle the Network resource (libvirt network or bridge)
+		var netRes storage.Network
+
+		if network.Source.Network != "" {
+			// Virtual network
+			var existingNets []storage.Network
+			tx.Where("host_id = ? AND name = ?", hostID, network.Source.Network).Limit(1).Find(&existingNets)
+			if len(existingNets) == 0 {
+				netRes = storage.Network{
+					HostID:     hostID,
+					Name:       network.Source.Network,
+					UUID:       "", // Will be filled if we can query the network
+					BridgeName: "",
+					Mode:       "nat",
+				}
+				if err := tx.Create(&netRes).Error; err != nil {
+					// Check if it's a unique constraint violation and try to find existing
+					if strings.Contains(err.Error(), "UNIQUE constraint failed") || strings.Contains(err.Error(), "duplicate key") {
+						log.Debugf("Network already exists for host %s, name %s, attempting to find existing", hostID, network.Source.Network)
+						if findErr := tx.Where("host_id = ? AND name = ?", hostID, network.Source.Network).First(&netRes).Error; findErr != nil {
+							return false, fmt.Errorf("failed to create or find network %s: %w", network.Source.Network, err)
+						}
+					} else {
+						return false, err
+					}
+				} else {
+					changed = true // Mark as changed when creating new network
+				}
+			} else {
+				netRes = existingNets[0]
+			}
+		} else if network.Source.Bridge != "" {
+			// Bridge network - check by both name and bridge_name to avoid duplicates
+			var existingNets []storage.Network
+			tx.Where("host_id = ? AND (name = ? OR bridge_name = ?)", hostID, network.Source.Bridge, network.Source.Bridge).Limit(1).Find(&existingNets)
+			if len(existingNets) == 0 {
+				netRes = storage.Network{
+					HostID:     hostID,
+					Name:       network.Source.Bridge,
+					UUID:       "",
+					BridgeName: network.Source.Bridge,
+					Mode:       "bridged",
+				}
+				if err := tx.Create(&netRes).Error; err != nil {
+					// Check if it's a unique constraint violation and try to find existing
+					if strings.Contains(err.Error(), "UNIQUE constraint failed") || strings.Contains(err.Error(), "duplicate key") {
+						log.Debugf("Bridge network already exists for host %s, name %s, attempting to find existing", hostID, network.Source.Bridge)
+						if findErr := tx.Where("host_id = ? AND (name = ? OR bridge_name = ?)", hostID, network.Source.Bridge, network.Source.Bridge).First(&netRes).Error; findErr != nil {
+							return false, fmt.Errorf("failed to create or find bridge network %s: %w", network.Source.Bridge, err)
+						}
+					} else {
+						return false, err
+					}
+				} else {
+					changed = true // Mark as changed when creating new network
+				}
+			} else {
+				netRes = existingNets[0]
+			}
+		} else {
+			// Create a default network entry
+			netRes = storage.Network{
+				HostID:     hostID,
+				Name:       fmt.Sprintf("default-%s", network.Target.Dev),
+				UUID:       "",
+				BridgeName: "",
+				Mode:       "unknown",
+			}
+			if err := tx.Create(&netRes).Error; err != nil {
+				return false, err
+			}
+		}
+
+		// Create or update Port resource with enhanced API data
+		var portRes storage.Port
+		portName := network.Mac.Address
+		if portName == "" {
+			portName = fmt.Sprintf("port-%s", network.Target.Dev)
+		}
+
+		updates := make(map[string]interface{})
+		updates["network_id"] = netRes.ID
+		updates["name"] = portName
+		updates["mac_address"] = network.Mac.Address
+
+		// Add enhanced network data
+		if len(enhancedNetwork.InterfaceAddrs) > 0 {
+			// Use first IP address as primary
+			for _, addr := range enhancedNetwork.InterfaceAddrs {
+				if len(addr.Addrs) > 0 {
+					updates["ip_address"] = addr.Addrs[0].Addr
+					break
+				}
+			}
+		}
+
+		// Add DHCP lease information
+		if len(enhancedNetwork.DHCPLeases) > 0 {
+			lease := enhancedNetwork.DHCPLeases[0] // Use first lease
+			updates["ip_address"] = lease.IPAddress
+		}
+
+		var portResList []storage.Port
+		tx.Where("mac_address = ?", network.Mac.Address).Limit(1).Find(&portResList)
+		if len(portResList) == 0 {
+			portRes = storage.Port{
+				MACAddress: network.Mac.Address,
+				ModelName:  network.Model.Type,
+			}
+			// Apply enhanced data
+			for k, v := range updates {
+				switch k {
+				case "mac_address":
+					portRes.MACAddress = v.(string)
+				case "ip_address":
+					portRes.IPAddress = v.(string)
+				}
+			}
+			if err := tx.Create(&portRes).Error; err != nil {
+				return false, err
+			}
+		} else {
+			portRes = portResList[0]
+			if err := tx.Model(&portRes).Updates(updates).Error; err != nil {
+				return false, err
+			}
+		}
+
+		// Create or update PortAttachment
+		var attachment storage.PortAttachment
+		existingAttachment, existsByMAC := existingByMAC[network.Mac.Address]
+		if !existsByMAC {
+			// Also try by device name
+			existingAttachment, existsByMAC = existingByDev[network.Target.Dev]
+		}
+
+		if existsByMAC {
+			attachment = existingAttachment
+			updates := make(map[string]interface{})
+			if attachment.PortID != portRes.ID {
+				updates["port_id"] = portRes.ID
+			}
+			if attachment.DeviceName != network.Target.Dev {
+				updates["device_name"] = network.Target.Dev
+			}
+			if attachment.ModelName != network.Model.Type {
+				updates["model_name"] = network.Model.Type
+			}
+			if len(updates) > 0 {
+				if err := tx.Model(&attachment).Updates(updates).Error; err != nil {
+					return false, err
+				}
+				changed = true
+			}
+			// Remove from maps to avoid cleanup
+			delete(existingByMAC, network.Mac.Address)
+			delete(existingByDev, network.Target.Dev)
+		} else {
+			attachment = storage.PortAttachment{
+				VMUUID:     vmUUID,
+				PortID:     portRes.ID,
+				HostID:     hostID,
+				DeviceName: network.Target.Dev,
+				MACAddress: network.Mac.Address,
+				ModelName:  network.Model.Type,
+			}
+			if err := tx.Create(&attachment).Error; err != nil {
+				return false, err
+			}
+
+			// Store network statistics if available
+			if enhancedNetwork.InterfaceStats != nil {
+				netStat := storage.NetworkStatistics{
+					PortAttachmentID: attachment.ID,
+					VMUUID:           vmUUID,
+					DeviceName:       network.Target.Dev,
+					RxBytes:          uint64(enhancedNetwork.InterfaceStats.RxBytes),
+					RxPackets:        uint64(enhancedNetwork.InterfaceStats.RxPackets),
+					RxErrs:           uint64(enhancedNetwork.InterfaceStats.RxErrs),
+					RxDrop:           uint64(enhancedNetwork.InterfaceStats.RxDrop),
+					TxBytes:          uint64(enhancedNetwork.InterfaceStats.TxBytes),
+					TxPackets:        uint64(enhancedNetwork.InterfaceStats.TxPackets),
+					TxErrs:           uint64(enhancedNetwork.InterfaceStats.TxErrs),
+					TxDrop:           uint64(enhancedNetwork.InterfaceStats.TxDrop),
+					CollectedAt:      time.Now(),
+				}
+
+				// Add DHCP information if available
+				if len(enhancedNetwork.DHCPLeases) > 0 {
+					lease := enhancedNetwork.DHCPLeases[0]
+					netStat.IPAddress = lease.IPAddress
+					netStat.LeaseExpiry = lease.ExpireTime
+				}
+
+				if err := tx.Create(&netStat).Error; err != nil {
+					log.Debugf("Failed to store network statistics for %s: %v", network.Target.Dev, err)
+				}
+			}
+
+			// Manage attachment index
+			alloc := storage.AttachmentIndex{
+				VMUUID:       vmUUID,
+				DeviceType:   "port",
+				AttachmentID: attachment.ID,
+				DeviceID:     &portRes.ID,
+			}
+			if err := s.ensureAttachmentIndex(tx, alloc); err != nil {
+				return false, err
+			}
+			changed = true
+		}
+	}
+
+	// Clean up any stale port attachments
+	allExisting := make([]storage.PortAttachment, 0)
+	for _, a := range existingByMAC {
+		allExisting = append(allExisting, a)
+	}
+	for _, a := range existingByDev {
+		// Check if not already in the MAC map to avoid duplicates
+		found := false
+		for _, existing := range allExisting {
+			if existing.ID == a.ID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			allExisting = append(allExisting, a)
+		}
+	}
+
+	if len(allExisting) > 0 {
+		var idsToDelete []uint
+		for _, attachment := range allExisting {
+			idsToDelete = append(idsToDelete, attachment.ID)
+		}
+		// Remove index entries first
+		if err := tx.Where("device_type = ? AND attachment_id IN ?", "port", idsToDelete).Delete(&storage.AttachmentIndex{}).Error; err != nil {
+			return false, err
+		}
+		// Remove the stale port attachments
+		if err := tx.Where("id IN ?", idsToDelete).Delete(&storage.PortAttachment{}).Error; err != nil {
+			return false, err
+		}
+		changed = true
+	}
+
+	return changed, nil
+}
+
+// syncVMNetworksXMLOnly is the fallback method using only XML parsing (Phase 2 legacy support)
+func (s *HostService) syncVMNetworksXMLOnly(tx *gorm.DB, vmUUID string, hostID string, networks []libvirt.NetworkInfo) (bool, error) {
 	var changed bool = false
 
 	// Fetch existing attachments for this VM (if any) and map by MAC
@@ -2910,7 +3444,7 @@ func (s *HostService) syncVMNetworks(tx *gorm.DB, vmUUID string, hostID string, 
 	return changed, nil
 }
 
-func (s *HostService) syncVMHardware(tx *gorm.DB, vmUUID string, hostID string, hardware *libvirt.HardwareInfo, graphics *libvirt.GraphicsInfo) (bool, error) {
+func (s *HostService) syncVMHardware(tx *gorm.DB, vmUUID string, hostID string, hardware *libvirt.HardwareInfo, graphics *libvirt.GraphicsInfo, nodePerformance *libvirt.NodePerformanceInfo, devicePerformance []libvirt.DevicePerformanceInfo) (bool, error) {
 	var changed bool = false
 	if hardware != nil {
 		log.Debugf("syncVMHardware: vm=%s host=%s start devices: disks=%d networks=%d", vmUUID, hostID, len(hardware.Disks), len(hardware.Networks))
@@ -3046,7 +3580,7 @@ func (s *HostService) syncVMHardware(tx *gorm.DB, vmUUID string, hostID string, 
 			}
 		}
 
-		// Phase 4: XML-Only Components (for comprehensive data)
+		// Phase 4c: XML-Only Components (for comprehensive data)
 		if xmlFeatures, err := s.connector.GetDomainXMLOnlyFeatures(hostID, vm.Name); err == nil {
 			xmlOnlyFeatures = xmlFeatures
 			log.Debugf("XML-only features retrieved for VM %s", vm.Name)
@@ -3196,6 +3730,42 @@ func (s *HostService) syncVMHardware(tx *gorm.DB, vmUUID string, hostID string, 
 		return false, err
 	} else if perfEventsChanged {
 		changed = true
+	}
+
+	// Phase 4a: Gather and sync node performance data (if not provided)
+	if nodePerformance == nil {
+		if nodePerfData, err := s.connector.GetNodePerformance(hostID); err == nil {
+			nodePerformance = nodePerfData
+			log.Debugf("Node performance data retrieved for host %s", hostID)
+		} else {
+			log.Debugf("Failed to get node performance data for host %s: %v", hostID, err)
+		}
+	}
+
+	if nodePerformance != nil {
+		if nodeChanged, err := s.syncNodePerformance(tx, hostID, nodePerformance); err != nil {
+			return false, err
+		} else if nodeChanged {
+			changed = true
+		}
+	}
+
+	// Phase 4b: Gather and sync device performance data (if not provided)
+	if devicePerformance == nil || len(devicePerformance) == 0 {
+		if devicePerfData, err := s.connector.GetDevicePerformance(hostID, vmUUID); err == nil {
+			devicePerformance = devicePerfData
+			log.Debugf("Device performance data retrieved for VM %s (%d devices)", vmUUID, len(devicePerfData))
+		} else {
+			log.Debugf("Failed to get device performance data for VM %s: %v", vmUUID, err)
+		}
+	}
+
+	if devicePerformance != nil && len(devicePerformance) > 0 {
+		if deviceChanged, err := s.syncDevicePerformance(tx, vmUUID, devicePerformance); err != nil {
+			return false, err
+		} else if deviceChanged {
+			changed = true
+		}
 	}
 
 	return changed, nil
@@ -3941,7 +4511,7 @@ func (s *HostService) SyncVMFromLibvirt(hostID, vmName string) error {
 
 	// Sync hardware
 	if hardwareInfo != nil {
-		if _, err := s.syncVMHardware(tx, vmToUpdate.UUID, hostID, hardwareInfo, &vmInfo.Graphics); err != nil {
+		if _, err := s.syncVMHardware(tx, vmToUpdate.UUID, hostID, hardwareInfo, &vmInfo.Graphics, nil, nil); err != nil {
 			tx.Rollback()
 			return fmt.Errorf("failed to sync hardware during manual sync: %w", err)
 		}
@@ -4520,4 +5090,122 @@ func (m *HostMonitoringManager) pollHostStats(hostID string, sub *HostSubscripti
 			return
 		}
 	}
+}
+
+// =============================
+// Phase 4: Node & Device Performance Sync Methods
+// =============================
+
+// syncNodePerformance handles node/host performance data synchronization
+func (s *HostService) syncNodePerformance(tx *gorm.DB, hostID string, nodePerf *libvirt.NodePerformanceInfo) (bool, error) {
+	if nodePerf == nil {
+		return false, nil
+	}
+
+	// Create storage model
+	perfData := storage.NodePerformance{
+		HostID:        hostID,
+		CPUModel:      nodePerf.CPUModel,
+		Memory:        nodePerf.Memory,
+		CPUs:          nodePerf.CPUs,
+		MHz:           nodePerf.MHz,
+		Nodes:         nodePerf.Nodes,
+		Sockets:       nodePerf.Sockets,
+		Cores:         nodePerf.Cores,
+		Threads:       nodePerf.Threads,
+		TotalMemory:   nodePerf.TotalMemory,
+		FreeMemory:    nodePerf.FreeMemory,
+		BuffMemory:    nodePerf.BuffMemory,
+		CachedMemory:  nodePerf.CachedMemory,
+		UserCPUTime:   nodePerf.UserCPUTime,
+		SystemCPUTime: nodePerf.SystemCPUTime,
+		IdleCPUTime:   nodePerf.IdleCPUTime,
+		IOWaitTime:    nodePerf.IOWaitTime,
+		CPUPercent:    nodePerf.CPUPercent,
+		MemoryPercent: nodePerf.MemoryPercent,
+		CollectedAt:   nodePerf.CollectedAt,
+	}
+
+	// Check if a recent record exists (within last minute)
+	var existing storage.NodePerformance
+	recentThreshold := time.Now().Add(-1 * time.Minute)
+
+	err := tx.Where("host_id = ? AND collected_at > ?", hostID, recentThreshold).
+		Order("collected_at DESC").
+		First(&existing).Error
+
+	if err == nil {
+		// Update existing recent record
+		result := tx.Model(&existing).Updates(perfData)
+		if result.Error != nil {
+			return false, fmt.Errorf("failed to update node performance: %w", result.Error)
+		}
+		return result.RowsAffected > 0, nil
+	} else if errors.Is(err, gorm.ErrRecordNotFound) {
+		// Create new record
+		result := tx.Create(&perfData)
+		if result.Error != nil {
+			return false, fmt.Errorf("failed to create node performance: %w", result.Error)
+		}
+		return true, nil
+	}
+
+	return false, err
+}
+
+// syncDevicePerformance handles device performance data synchronization
+func (s *HostService) syncDevicePerformance(tx *gorm.DB, vmUUID string, devicePerf []libvirt.DevicePerformanceInfo) (bool, error) {
+	if len(devicePerf) == 0 {
+		return false, nil
+	}
+
+	changed := false
+
+	for _, device := range devicePerf {
+		// Create storage model
+		perfData := storage.DevicePerformance{
+			VMUUID:         vmUUID,
+			DeviceType:     device.DeviceType,
+			DeviceName:     device.DeviceName,
+			BandwidthUsed:  device.BandwidthUsed,
+			BandwidthLimit: device.BandwidthLimit,
+			LatencyMs:      device.LatencyMs,
+			ErrorCount:     device.ErrorCount,
+			MetricsJSON:    device.MetricsJSON,
+			CollectedAt:    device.CollectedAt,
+		}
+
+		// Check if a recent record exists for this device (within last minute)
+		var existing storage.DevicePerformance
+		recentThreshold := time.Now().Add(-1 * time.Minute)
+
+		err := tx.Where("vm_uuid = ? AND device_type = ? AND device_name = ? AND collected_at > ?",
+			vmUUID, device.DeviceType, device.DeviceName, recentThreshold).
+			Order("collected_at DESC").
+			First(&existing).Error
+
+		if err == nil {
+			// Update existing recent record
+			result := tx.Model(&existing).Updates(perfData)
+			if result.Error != nil {
+				return false, fmt.Errorf("failed to update device performance for %s/%s: %w",
+					device.DeviceType, device.DeviceName, result.Error)
+			}
+			if result.RowsAffected > 0 {
+				changed = true
+			}
+		} else if errors.Is(err, gorm.ErrRecordNotFound) {
+			// Create new record
+			result := tx.Create(&perfData)
+			if result.Error != nil {
+				return false, fmt.Errorf("failed to create device performance for %s/%s: %w",
+					device.DeviceType, device.DeviceName, result.Error)
+			}
+			changed = true
+		} else {
+			return false, err
+		}
+	}
+
+	return changed, nil
 }
