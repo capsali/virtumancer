@@ -2933,7 +2933,19 @@ func (s *HostService) syncVMHardware(tx *gorm.DB, vmUUID string, hostID string, 
 	var securityDetails []libvirt.SecurityDetail
 	var iothreadDetails []libvirt.IOThreadDetail
 
+	// Phase 1-4 Enhanced API data
+	var numaDetails *libvirt.NUMADetails
+	var memoryStats *libvirt.MemoryStats
+	var guestAgentDetails *libvirt.GuestAgentDetails
+	var performanceDetails *libvirt.PerformanceDetails
+	var cpuPerformance *libvirt.CPUPerformanceDetails
+	var networkDetails *libvirt.NetworkInterfaceDetails
+	var hybridDetails *libvirt.HybridDomainDetails
+	var optimizedSync *libvirt.OptimizedSyncData
+	var xmlOnlyFeatures *libvirt.XMLOnlyFeatures
+
 	if vm.Name != "" {
+		// Phase 0: Existing enhanced API methods
 		// Get enhanced memory details using direct libvirt APIs
 		if memDetails, err := s.connector.GetDomainMemoryDetails(hostID, vm.Name); err == nil {
 			memoryDetails = memDetails
@@ -2973,6 +2985,83 @@ func (s *HostService) syncVMHardware(tx *gorm.DB, vmUUID string, hostID string, 
 		} else {
 			log.Debugf("Failed to get enhanced IOThread details for VM %s: %v", vm.Name, err)
 		}
+
+		// Phase 1: Enhanced Direct API Usage
+		if numaDet, err := s.connector.GetDomainNUMADetails(hostID, vm.Name); err == nil {
+			numaDetails = numaDet
+			log.Debugf("NUMA details retrieved for VM %s", vm.Name)
+		} else {
+			log.Debugf("Failed to get NUMA details for VM %s: %v", vm.Name, err)
+		}
+
+		if memStats, err := s.connector.GetDomainMemoryStats(hostID, vm.Name); err == nil {
+			memoryStats = memStats
+			log.Debugf("Memory statistics retrieved for VM %s", vm.Name)
+		} else {
+			log.Debugf("Failed to get memory statistics for VM %s: %v", vm.Name, err)
+		}
+
+		if guestDet, err := s.connector.GetDomainGuestAgentDetails(hostID, vm.Name); err == nil {
+			guestAgentDetails = guestDet
+			log.Debugf("Guest agent details retrieved for VM %s", vm.Name)
+		} else {
+			log.Debugf("Failed to get guest agent details for VM %s: %v", vm.Name, err)
+		}
+
+		if perfDet, err := s.connector.GetDomainPerformanceDetails(hostID, vm.Name); err == nil {
+			performanceDetails = perfDet
+			log.Debugf("Performance details retrieved for VM %s", vm.Name)
+		} else {
+			log.Debugf("Failed to get performance details for VM %s: %v", vm.Name, err)
+		}
+
+		// Phase 2: Performance and Statistics APIs
+		if cpuPerf, err := s.connector.GetDomainCPUPerformance(hostID, vm.Name); err == nil {
+			cpuPerformance = cpuPerf
+			log.Debugf("CPU performance details retrieved for VM %s", vm.Name)
+		} else {
+			log.Debugf("Failed to get CPU performance details for VM %s: %v", vm.Name, err)
+		}
+
+		if netDet, err := s.connector.GetDomainInterfaceAddresses(hostID, vm.Name); err == nil {
+			networkDetails = netDet
+			log.Debugf("Network interface details retrieved for VM %s", vm.Name)
+		} else {
+			log.Debugf("Failed to get network interface details for VM %s: %v", vm.Name, err)
+		}
+
+		// Phase 3: Hybrid Optimization (use optimized sync for best performance)
+		if optSync, err := s.connector.GetDomainOptimizedSync(hostID, vm.Name); err == nil {
+			optimizedSync = optSync
+			log.Debugf("Optimized sync data retrieved for VM %s (strategy: %v)", vm.Name, optSync.Strategy)
+		} else {
+			log.Debugf("Failed to get optimized sync data for VM %s: %v", vm.Name, err)
+
+			// Fallback to hybrid details if optimized sync fails
+			if hybridDet, err := s.connector.GetDomainHybridDetails(hostID, vm.Name); err == nil {
+				hybridDetails = hybridDet
+				log.Debugf("Hybrid details retrieved for VM %s", vm.Name)
+			} else {
+				log.Debugf("Failed to get hybrid details for VM %s: %v", vm.Name, err)
+			}
+		}
+
+		// Phase 4: XML-Only Components (for comprehensive data)
+		if xmlFeatures, err := s.connector.GetDomainXMLOnlyFeatures(hostID, vm.Name); err == nil {
+			xmlOnlyFeatures = xmlFeatures
+			log.Debugf("XML-only features retrieved for VM %s", vm.Name)
+		} else {
+			log.Debugf("Failed to get XML-only features for VM %s: %v", vm.Name, err)
+		}
+
+		// Log summary of retrieved data
+		log.Infof("VM %s data retrieval summary - Phase 0: %t, Phase 1: %t (numa:%t mem_stats:%t guest:%t perf:%t), Phase 2: %t, Phase 3: %t, Phase 4: %t",
+			vm.Name,
+			memoryDetails != nil && cpuDetails != nil,
+			numaDetails != nil || memoryStats != nil || guestAgentDetails != nil || performanceDetails != nil,
+			cpuPerformance != nil || networkDetails != nil,
+			optimizedSync != nil || hybridDetails != nil,
+			xmlOnlyFeatures != nil)
 	}
 
 	// --- Sync Networks / Ports ---

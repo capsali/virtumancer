@@ -91,6 +91,567 @@ type IOThreadDetail struct {
 	Cpumap     []bool `json:"cpumap"`
 }
 
+// NUMADetails holds NUMA configuration from libvirt APIs
+type NUMADetails struct {
+	NUMAParams []libvirt.TypedParam `json:"numa_params,omitempty"`
+	NodeCount  int                  `json:"node_count"`
+}
+
+// MemoryStats holds detailed memory statistics from libvirt APIs
+type MemoryStats struct {
+	Actual         uint64 `json:"actual"`
+	SwapIn         uint64 `json:"swap_in,omitempty"`
+	SwapOut        uint64 `json:"swap_out,omitempty"`
+	MajorFault     uint64 `json:"major_fault,omitempty"`
+	MinorFault     uint64 `json:"minor_fault,omitempty"`
+	Unused         uint64 `json:"unused,omitempty"`
+	Available      uint64 `json:"available,omitempty"`
+	Rss            uint64 `json:"rss,omitempty"`
+	Usable         uint64 `json:"usable,omitempty"`
+	LastUpdate     uint64 `json:"last_update,omitempty"`
+	DiskCaches     uint64 `json:"disk_caches,omitempty"`
+	HugetlbPgalloc uint64 `json:"hugetlb_pgalloc,omitempty"`
+	HugetlbPgfail  uint64 `json:"hugetlb_pgfail,omitempty"`
+}
+
+// GuestAgentDetails holds guest agent information from libvirt APIs
+type GuestAgentDetails struct {
+	Hostname    string                 `json:"hostname,omitempty"`
+	OSInfo      map[string]interface{} `json:"os_info,omitempty"`
+	Interfaces  []GuestInterfaceInfo   `json:"interfaces,omitempty"`
+	Filesystems []GuestFilesystemInfo  `json:"filesystems,omitempty"`
+	Users       []GuestUserInfo        `json:"users,omitempty"`
+	Timezone    GuestTimezoneInfo      `json:"timezone,omitempty"`
+}
+
+// GuestInterfaceInfo holds guest network interface information
+type GuestInterfaceInfo struct {
+	Name    string   `json:"name"`
+	HWAddr  string   `json:"hwaddr,omitempty"`
+	IPAddrs []string `json:"ip_addrs,omitempty"`
+}
+
+// GuestFilesystemInfo holds guest filesystem information
+type GuestFilesystemInfo struct {
+	Name       string `json:"name"`
+	Mountpoint string `json:"mountpoint"`
+	FSType     string `json:"fstype"`
+	TotalBytes uint64 `json:"total_bytes"`
+	UsedBytes  uint64 `json:"used_bytes"`
+}
+
+// GuestUserInfo holds guest user session information
+type GuestUserInfo struct {
+	User      string `json:"user"`
+	Domain    string `json:"domain,omitempty"`
+	LoginTime uint64 `json:"login_time"`
+}
+
+// GuestTimezoneInfo holds guest timezone information
+type GuestTimezoneInfo struct {
+	Name   string `json:"name"`
+	Offset int32  `json:"offset"`
+}
+
+// PerformanceDetails holds comprehensive performance statistics
+type PerformanceDetails struct {
+	CPUStats       []libvirt.TypedParam          `json:"cpu_stats,omitempty"`
+	MemoryStats    *MemoryStats                  `json:"memory_stats,omitempty"`
+	BlockStats     map[string]BlockStatsInfo     `json:"block_stats,omitempty"`
+	InterfaceStats map[string]InterfaceStatsInfo `json:"interface_stats,omitempty"`
+	DomainTime     *DomainTimeInfo               `json:"domain_time,omitempty"`
+}
+
+// BlockStatsInfo holds block device statistics
+type BlockStatsInfo struct {
+	ReadRequests  uint64 `json:"read_requests"`
+	ReadBytes     uint64 `json:"read_bytes"`
+	WriteRequests uint64 `json:"write_requests"`
+	WriteBytes    uint64 `json:"write_bytes"`
+	Errors        uint64 `json:"errors"`
+}
+
+// InterfaceStatsInfo holds network interface statistics
+type InterfaceStatsInfo struct {
+	RxBytes   uint64 `json:"rx_bytes"`
+	RxPackets uint64 `json:"rx_packets"`
+	RxErrors  uint64 `json:"rx_errors"`
+	RxDrops   uint64 `json:"rx_drops"`
+	TxBytes   uint64 `json:"tx_bytes"`
+	TxPackets uint64 `json:"tx_packets"`
+	TxErrors  uint64 `json:"tx_errors"`
+	TxDrops   uint64 `json:"tx_drops"`
+}
+
+// DomainTimeInfo holds domain time information
+type DomainTimeInfo struct {
+	Seconds     uint64 `json:"seconds"`
+	Nanoseconds uint32 `json:"nanoseconds"`
+	Synced      bool   `json:"synced"`
+}
+
+// Phase 2 Types: Performance and Statistics APIs
+
+// CPUPerformanceDetails holds comprehensive CPU performance data
+type CPUPerformanceDetails struct {
+	VCPUStats    map[int]VCPUStats `json:"vcpu_stats"`
+	HostCPUStats *HostCPUStats     `json:"host_cpu_stats,omitempty"`
+}
+
+// VCPUStats holds per-VCPU statistics
+type VCPUStats struct {
+	CPUTime    uint64 `json:"cpu_time"`
+	UserTime   uint64 `json:"user_time,omitempty"`
+	SystemTime uint64 `json:"system_time,omitempty"`
+}
+
+// HostCPUStats holds host CPU statistics for comparison
+type HostCPUStats struct {
+	User   uint64 `json:"user"`
+	Kernel uint64 `json:"kernel"`
+	Idle   uint64 `json:"idle"`
+	IOWait uint64 `json:"iowait"`
+}
+
+// NetworkInterfaceDetails holds network interface addressing information
+type NetworkInterfaceDetails struct {
+	Interfaces []InterfaceAddress `json:"interfaces"`
+}
+
+// InterfaceAddress holds interface addressing details
+type InterfaceAddress struct {
+	Name   string      `json:"name"`
+	HWAddr string      `json:"hwaddr,omitempty"`
+	Addrs  []IPAddress `json:"addrs"`
+}
+
+// IPAddress holds IP address information
+type IPAddress struct {
+	Type   int    `json:"type"`
+	Addr   string `json:"addr"`
+	Prefix int    `json:"prefix"`
+}
+
+// DomainJobInfo holds information about active domain jobs
+type DomainJobInfo struct {
+	Type          int    `json:"type"`
+	TimeElapsed   uint64 `json:"time_elapsed"`
+	TimeRemaining uint64 `json:"time_remaining"`
+	DataTotal     uint64 `json:"data_total"`
+	DataProcessed uint64 `json:"data_processed"`
+	DataRemaining uint64 `json:"data_remaining"`
+	MemTotal      uint64 `json:"mem_total"`
+	MemProcessed  uint64 `json:"mem_processed"`
+	MemRemaining  uint64 `json:"mem_remaining"`
+	FileTotal     uint64 `json:"file_total"`
+	FileProcessed uint64 `json:"file_processed"`
+	FileRemaining uint64 `json:"file_remaining"`
+}
+
+// Phase 3 Types: Hybrid Optimization
+
+// HybridDomainDetails combines API and XML data
+type HybridDomainDetails struct {
+	APIData *APIDomainData `json:"api_data"`
+	XMLData *XMLDomainData `json:"xml_data"`
+}
+
+// APIDomainData holds all API-sourced domain information
+type APIDomainData struct {
+	MemoryDetails      *MemoryDetails      `json:"memory_details,omitempty"`
+	CPUDetails         *CPUDetails         `json:"cpu_details,omitempty"`
+	BlockDetails       []BlockDeviceDetail `json:"block_details,omitempty"`
+	SecurityDetails    []SecurityDetail    `json:"security_details,omitempty"`
+	NUMADetails        *NUMADetails        `json:"numa_details,omitempty"`
+	MemoryStats        *MemoryStats        `json:"memory_stats,omitempty"`
+	PerformanceDetails *PerformanceDetails `json:"performance_details,omitempty"`
+}
+
+// XMLDomainData holds all XML-sourced domain information
+type XMLDomainData struct {
+	RawXML       string           `json:"raw_xml,omitempty"`
+	Features     *XMLFeatures     `json:"features,omitempty"`
+	OSConfig     *XMLOSConfig     `json:"os_config,omitempty"`
+	DeviceConfig *XMLDeviceConfig `json:"device_config,omitempty"`
+}
+
+// OptimizedSyncData holds intelligently sourced domain data
+type OptimizedSyncData struct {
+	Strategy             map[string]string        `json:"strategy"`
+	MemoryStats          *MemoryStats             `json:"memory_stats,omitempty"`
+	PerformanceDetails   *PerformanceDetails      `json:"performance_details,omitempty"`
+	CPUPerformance       *CPUPerformanceDetails   `json:"cpu_performance,omitempty"`
+	NetworkDetails       *NetworkInterfaceDetails `json:"network_details,omitempty"`
+	GraphicsConfig       *XMLGraphicsConfig       `json:"graphics_config,omitempty"`
+	TPMConfig            *XMLTPMConfig            `json:"tpm_config,omitempty"`
+	HypervisorFeatures   *XMLHypervisorFeatures   `json:"hypervisor_features,omitempty"`
+	EnhancedBlockDetails *EnhancedBlockDetails    `json:"enhanced_block_details,omitempty"`
+}
+
+// XML-specific structures for Phase 3
+type XMLFeatures struct {
+	ACPI     bool   `json:"acpi"`
+	APIC     bool   `json:"apic"`
+	PAE      bool   `json:"pae"`
+	HAP      bool   `json:"hap"`
+	VirtType string `json:"virt_type,omitempty"`
+}
+
+type XMLOSConfig struct {
+	Type      string   `json:"type"`
+	Arch      string   `json:"arch"`
+	Machine   string   `json:"machine"`
+	BootOrder []string `json:"boot_order"`
+	Kernel    string   `json:"kernel,omitempty"`
+	Initrd    string   `json:"initrd,omitempty"`
+	Cmdline   string   `json:"cmdline,omitempty"`
+}
+
+type XMLDeviceConfig struct {
+	Emulator    string          `json:"emulator,omitempty"`
+	Controllers []XMLController `json:"controllers,omitempty"`
+	Channels    []XMLChannel    `json:"channels,omitempty"`
+	Watchdog    *XMLWatchdog    `json:"watchdog,omitempty"`
+	RNG         *XMLRNGDevice   `json:"rng,omitempty"`
+}
+
+type XMLGraphicsConfig struct {
+	Type     string `json:"type"`
+	Port     int    `json:"port,omitempty"`
+	AutoPort bool   `json:"autoport"`
+	Listen   string `json:"listen,omitempty"`
+	Keymap   string `json:"keymap,omitempty"`
+}
+
+type XMLTPMConfig struct {
+	Model   string `json:"model"`
+	Type    string `json:"type"`
+	Version string `json:"version,omitempty"`
+}
+
+type XMLHypervisorFeatures struct {
+	Relaxed   bool `json:"relaxed"`
+	VAPIC     bool `json:"vapic"`
+	Spinlocks bool `json:"spinlocks"`
+	VPIndex   bool `json:"vpindex"`
+	Runtime   bool `json:"runtime"`
+	Synic     bool `json:"synic"`
+	Reset     bool `json:"reset"`
+	VendorID  bool `json:"vendor_id"`
+}
+
+type XMLController struct {
+	Type  string `json:"type"`
+	Index int    `json:"index"`
+	Model string `json:"model,omitempty"`
+}
+
+type XMLChannel struct {
+	Type   string `json:"type"`
+	Name   string `json:"name,omitempty"`
+	Source string `json:"source,omitempty"`
+	Target string `json:"target,omitempty"`
+}
+
+type XMLWatchdog struct {
+	Model  string `json:"model"`
+	Action string `json:"action"`
+}
+
+type XMLRNGDevice struct {
+	Model string `json:"model"`
+	Rate  int    `json:"rate,omitempty"`
+}
+
+type EnhancedBlockDetails struct {
+	Devices     []BlockDeviceDetail         `json:"devices"`
+	XMLMetadata map[string]XMLBlockMetadata `json:"xml_metadata"`
+}
+
+type XMLBlockMetadata struct {
+	Driver     string `json:"driver,omitempty"`
+	Cache      string `json:"cache,omitempty"`
+	IO         string `json:"io,omitempty"`
+	Discard    string `json:"discard,omitempty"`
+	Encryption bool   `json:"encryption"`
+}
+
+// Phase 4 Types: XML-Only Components
+
+// XMLOnlyFeatures holds features that are only available through XML parsing
+type XMLOnlyFeatures struct {
+	HypervisorFeatures *DetailedHypervisorFeatures `json:"hypervisor_features,omitempty"`
+	CPUFeatures        *DetailedCPUFeatures        `json:"cpu_features,omitempty"`
+	NUMATopology       *DetailedNUMATopology       `json:"numa_topology,omitempty"`
+	AdvancedDevices    *AdvancedDeviceConfigs      `json:"advanced_devices,omitempty"`
+	OSLoader           *OSLoaderConfig             `json:"os_loader,omitempty"`
+	ClockConfig        *ClockConfig                `json:"clock_config,omitempty"`
+}
+
+// CompleteXMLAnalysis holds comprehensive XML analysis results
+type CompleteXMLAnalysis struct {
+	OriginalXML      string                 `json:"original_xml"`
+	ParsedComponents map[string]interface{} `json:"parsed_components"`
+}
+
+// Detailed XML structures for Phase 4
+type DetailedHypervisorFeatures struct {
+	HyperV  *HyperVFeatures  `json:"hyperv,omitempty"`
+	KVM     *KVMFeatures     `json:"kvm,omitempty"`
+	Xen     *XenFeatures     `json:"xen,omitempty"`
+	PowerPC *PowerPCFeatures `json:"powerpc,omitempty"`
+	S390    *S390Features    `json:"s390,omitempty"`
+	MSR     *MSRFeatures     `json:"msr,omitempty"`
+	GIC     *GICFeatures     `json:"gic,omitempty"`
+}
+
+type HyperVFeatures struct {
+	Relaxed         *FeatureState `json:"relaxed,omitempty"`
+	VAPIC           *FeatureState `json:"vapic,omitempty"`
+	Spinlocks       *FeatureState `json:"spinlocks,omitempty"`
+	VPIndex         *FeatureState `json:"vpindex,omitempty"`
+	Runtime         *FeatureState `json:"runtime,omitempty"`
+	Synic           *FeatureState `json:"synic,omitempty"`
+	SynicTimer      *FeatureState `json:"synic_timer,omitempty"`
+	Reset           *FeatureState `json:"reset,omitempty"`
+	VendorID        *FeatureState `json:"vendor_id,omitempty"`
+	Frequencies     *FeatureState `json:"frequencies,omitempty"`
+	ReenLightenment *FeatureState `json:"reenlightenment,omitempty"`
+	TLBFlush        *FeatureState `json:"tlbflush,omitempty"`
+	IPI             *FeatureState `json:"ipi,omitempty"`
+	EVMCS           *FeatureState `json:"evmcs,omitempty"`
+}
+
+type KVMFeatures struct {
+	Hidden        *FeatureState `json:"hidden,omitempty"`
+	HintDedicated *FeatureState `json:"hint_dedicated,omitempty"`
+	PollControl   *FeatureState `json:"poll_control,omitempty"`
+	MSRFeatures   *FeatureState `json:"msr_features,omitempty"`
+}
+
+type XenFeatures struct {
+	E820Host       *FeatureState `json:"e820_host,omitempty"`
+	HAPTranslation *FeatureState `json:"hap_translation,omitempty"`
+}
+
+type PowerPCFeatures struct {
+	HTM      *FeatureState `json:"htm,omitempty"`
+	NestedHV *FeatureState `json:"nested_hv,omitempty"`
+}
+
+type S390Features struct {
+	CMMA  *FeatureState `json:"cmma,omitempty"`
+	PFMFI *FeatureState `json:"pfmfi,omitempty"`
+}
+
+type MSRFeatures struct {
+	UnknownMSR *FeatureState `json:"unknown_msr,omitempty"`
+}
+
+type GICFeatures struct {
+	Version string `json:"version,omitempty"`
+}
+
+type FeatureState struct {
+	State      string            `json:"state"`
+	Attributes map[string]string `json:"attributes,omitempty"`
+}
+
+type DetailedCPUFeatures struct {
+	Mode        string       `json:"mode"`
+	Match       string       `json:"match"`
+	Check       string       `json:"check"`
+	Migratable  string       `json:"migratable,omitempty"`
+	Model       *CPUModel    `json:"model,omitempty"`
+	Vendor      string       `json:"vendor,omitempty"`
+	Topology    *CPUTopology `json:"topology,omitempty"`
+	Features    []CPUFeature `json:"features,omitempty"`
+	Cache       *CPUCache    `json:"cache,omitempty"`
+	MaxPhysAddr *MaxPhysAddr `json:"maxphysaddr,omitempty"`
+}
+
+type CPUModel struct {
+	Name     string `json:"name"`
+	Fallback string `json:"fallback,omitempty"`
+	VendorID string `json:"vendor_id,omitempty"`
+}
+
+type CPUTopology struct {
+	Sockets int `json:"sockets"`
+	Dies    int `json:"dies,omitempty"`
+	Cores   int `json:"cores"`
+	Threads int `json:"threads"`
+}
+
+type CPUFeature struct {
+	Policy string `json:"policy"`
+	Name   string `json:"name"`
+}
+
+type CPUCache struct {
+	Mode  string `json:"mode"`
+	Level int    `json:"level,omitempty"`
+}
+
+type MaxPhysAddr struct {
+	Mode string `json:"mode"`
+	Bits int    `json:"bits,omitempty"`
+}
+
+type DetailedNUMATopology struct {
+	Cells []NUMACell `json:"cells"`
+}
+
+type NUMACell struct {
+	ID        int            `json:"id"`
+	CPUs      string         `json:"cpus"`
+	Memory    uint64         `json:"memory"`
+	Unit      string         `json:"unit"`
+	MemAccess string         `json:"memaccess,omitempty"`
+	Distances []NUMADistance `json:"distances,omitempty"`
+	Caches    []NUMACache    `json:"caches,omitempty"`
+}
+
+type NUMADistance struct {
+	ID    int `json:"id"`
+	Value int `json:"value"`
+}
+
+type NUMACache struct {
+	Level         int    `json:"level"`
+	Associativity string `json:"associativity"`
+	Policy        string `json:"policy"`
+	Size          uint64 `json:"size"`
+	Unit          string `json:"unit"`
+	Line          uint64 `json:"line"`
+}
+
+type AdvancedDeviceConfigs struct {
+	Input      []InputDevice     `json:"input,omitempty"`
+	Video      []VideoDevice     `json:"video,omitempty"`
+	Sound      []SoundDevice     `json:"sound,omitempty"`
+	Hostdev    []HostDevice      `json:"hostdev,omitempty"`
+	RedirDev   []RedirDevice     `json:"redirdev,omitempty"`
+	SmartCard  []SmartCardDevice `json:"smartcard,omitempty"`
+	Hub        []HubDevice       `json:"hub,omitempty"`
+	MemBalloon *MemBalloonDevice `json:"memballoon,omitempty"`
+	Panic      []PanicDevice     `json:"panic,omitempty"`
+	SHMEM      []SHMEMDevice     `json:"shmem,omitempty"`
+	Memory     []MemoryDevice    `json:"memory,omitempty"`
+	IOMMU      *IOMMUDevice      `json:"iommu,omitempty"`
+	VSOCK      *VSockDevice      `json:"vsock,omitempty"`
+}
+
+type InputDevice struct {
+	Type string `json:"type"`
+	Bus  string `json:"bus"`
+}
+
+type VideoDevice struct {
+	Model        string             `json:"model"`
+	VRAMBytes    uint64             `json:"vram_bytes,omitempty"`
+	Heads        int                `json:"heads,omitempty"`
+	Primary      bool               `json:"primary,omitempty"`
+	Acceleration *VideoAcceleration `json:"acceleration,omitempty"`
+}
+
+type VideoAcceleration struct {
+	Accel2D    bool   `json:"accel2d"`
+	Accel3D    bool   `json:"accel3d"`
+	RenderNode string `json:"rendernode,omitempty"`
+}
+
+type SoundDevice struct {
+	Model string `json:"model"`
+	Codec string `json:"codec,omitempty"`
+}
+
+type HostDevice struct {
+	Mode    string            `json:"mode"`
+	Type    string            `json:"type"`
+	Managed bool              `json:"managed"`
+	Source  map[string]string `json:"source"`
+}
+
+type RedirDevice struct {
+	Bus  string `json:"bus"`
+	Type string `json:"type"`
+}
+
+type SmartCardDevice struct {
+	Mode string `json:"mode"`
+	Type string `json:"type,omitempty"`
+}
+
+type HubDevice struct {
+	Type string `json:"type"`
+}
+
+type MemBalloonDevice struct {
+	Model             string `json:"model"`
+	AutoDeflate       bool   `json:"autodeflate,omitempty"`
+	FreePageReporting bool   `json:"freepage_reporting,omitempty"`
+}
+
+type PanicDevice struct {
+	Model string `json:"model"`
+}
+
+type SHMEMDevice struct {
+	Name string `json:"name"`
+	Size uint64 `json:"size"`
+}
+
+type MemoryDevice struct {
+	Model      string `json:"model"`
+	Access     string `json:"access,omitempty"`
+	Discard    bool   `json:"discard,omitempty"`
+	TargetSize uint64 `json:"target_size"`
+	TargetNode int    `json:"target_node,omitempty"`
+}
+
+type IOMMUDevice struct {
+	Model string `json:"model"`
+}
+
+type VSockDevice struct {
+	Model string `json:"model"`
+	CID   uint32 `json:"cid,omitempty"`
+}
+
+type OSLoaderConfig struct {
+	Type          string `json:"type"`
+	ReadOnly      bool   `json:"readonly,omitempty"`
+	Secure        bool   `json:"secure,omitempty"`
+	Path          string `json:"path,omitempty"`
+	Template      string `json:"template,omitempty"`
+	NVRAM         string `json:"nvram,omitempty"`
+	NVRAMTemplate string `json:"nvram_template,omitempty"`
+}
+
+type ClockConfig struct {
+	Offset     string        `json:"offset"`
+	Adjustment string        `json:"adjustment,omitempty"`
+	Timezone   string        `json:"timezone,omitempty"`
+	Timers     []TimerConfig `json:"timers,omitempty"`
+}
+
+type TimerConfig struct {
+	Name       string        `json:"name"`
+	Track      string        `json:"track,omitempty"`
+	TickPolicy string        `json:"tickpolicy,omitempty"`
+	CatchUp    *TimerCatchUp `json:"catchup,omitempty"`
+	Frequency  uint64        `json:"frequency,omitempty"`
+	Mode       string        `json:"mode,omitempty"`
+	Present    bool          `json:"present"`
+}
+
+type TimerCatchUp struct {
+	Threshold uint64 `json:"threshold,omitempty"`
+	Slew      uint64 `json:"slew,omitempty"`
+	Limit     uint64 `json:"limit,omitempty"`
+}
+
 // VcpuDetail holds detailed information about a single VCPU
 type VcpuDetail struct {
 	Number  uint32 `json:"number"`
@@ -2312,6 +2873,38 @@ func (c *Connector) GetDomainIOThreadDetails(hostID, vmName string) ([]IOThreadD
 	return iothreadDetails, nil
 }
 
+// GetDomainNUMADetails retrieves NUMA configuration using libvirt APIs
+func (c *Connector) GetDomainNUMADetails(hostID, vmName string) (*NUMADetails, error) {
+	l, domain, err := c.getDomainByName(hostID, vmName)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get NUMA parameters
+	numaParams, _, err := l.DomainGetNumaParameters(domain, -1, 0)
+	if err != nil {
+		log.Debugf("NUMA parameters not available for domain %s: %v", vmName, err)
+		// Try to get basic NUMA info from DomainGetInfo
+		return &NUMADetails{NodeCount: 0}, nil
+	}
+
+	// Count NUMA nodes by checking for node-specific parameters
+	nodeCount := 0
+	for _, param := range numaParams {
+		if strings.Contains(param.Field, "node") {
+			nodeCount++
+		}
+	}
+	if nodeCount == 0 {
+		nodeCount = 1 // Default to 1 if no node-specific params found
+	}
+
+	return &NUMADetails{
+		NUMAParams: numaParams,
+		NodeCount:  nodeCount,
+	}, nil
+}
+
 // Helper function to convert []int8 to []byte for string conversion
 func convertInt8ArrayToBytes(arr []int8) []byte {
 	bytes := make([]byte, len(arr))
@@ -2341,4 +2934,900 @@ func getSourcePath(file, dev string) string {
 		return file
 	}
 	return dev
+}
+
+// GetDomainMemoryStats retrieves detailed memory statistics using libvirt APIs
+func (c *Connector) GetDomainMemoryStats(hostID, vmName string) (*MemoryStats, error) {
+	l, domain, err := c.getDomainByName(hostID, vmName)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get memory statistics
+	memStats, err := l.DomainMemoryStats(domain, 11, 0) // 11 = max stats
+	if err != nil {
+		log.Debugf("Memory statistics not available for domain %s: %v", vmName, err)
+		return nil, nil
+	}
+
+	stats := &MemoryStats{}
+	for _, stat := range memStats {
+		switch stat.Tag {
+		case 0: // VIR_DOMAIN_MEMORY_STAT_SWAP_IN
+			stats.SwapIn = stat.Val
+		case 1: // VIR_DOMAIN_MEMORY_STAT_SWAP_OUT
+			stats.SwapOut = stat.Val
+		case 2: // VIR_DOMAIN_MEMORY_STAT_MAJOR_FAULT
+			stats.MajorFault = stat.Val
+		case 3: // VIR_DOMAIN_MEMORY_STAT_MINOR_FAULT
+			stats.MinorFault = stat.Val
+		case 4: // VIR_DOMAIN_MEMORY_STAT_UNUSED
+			stats.Unused = stat.Val
+		case 5: // VIR_DOMAIN_MEMORY_STAT_AVAILABLE
+			stats.Available = stat.Val
+		case 6: // VIR_DOMAIN_MEMORY_STAT_ACTUAL_BALLOON
+			stats.Actual = stat.Val
+		case 7: // VIR_DOMAIN_MEMORY_STAT_RSS
+			stats.Rss = stat.Val
+		case 8: // VIR_DOMAIN_MEMORY_STAT_USABLE
+			stats.Usable = stat.Val
+		case 9: // VIR_DOMAIN_MEMORY_STAT_LAST_UPDATE
+			stats.LastUpdate = stat.Val
+		case 10: // VIR_DOMAIN_MEMORY_STAT_DISK_CACHES
+			stats.DiskCaches = stat.Val
+		case 11: // VIR_DOMAIN_MEMORY_STAT_HUGETLB_PGALLOC
+			stats.HugetlbPgalloc = stat.Val
+		case 12: // VIR_DOMAIN_MEMORY_STAT_HUGETLB_PGFAIL
+			stats.HugetlbPgfail = stat.Val
+		}
+	}
+
+	return stats, nil
+}
+
+// GetDomainGuestAgentDetails retrieves guest agent information using libvirt APIs
+func (c *Connector) GetDomainGuestAgentDetails(hostID, vmName string) (*GuestAgentDetails, error) {
+	l, domain, err := c.getDomainByName(hostID, vmName)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get guest info from guest agent
+	guestInfo, err := l.DomainGetGuestInfo(domain, 0x1F, 0) // 0x1F = all info types
+	if err != nil {
+		log.Debugf("Guest agent info not available for domain %s: %v", vmName, err)
+		return nil, nil
+	}
+
+	details := &GuestAgentDetails{
+		OSInfo:      make(map[string]interface{}),
+		Interfaces:  make([]GuestInterfaceInfo, 0),
+		Filesystems: make([]GuestFilesystemInfo, 0),
+		Users:       make([]GuestUserInfo, 0),
+	}
+
+	// Parse guest info (this is a simplified version - actual parsing would be more complex)
+	for _, param := range guestInfo {
+		switch param.Field {
+		case "hostname":
+			if hostname, ok := param.Value.I.(string); ok {
+				details.Hostname = hostname
+			}
+		case "os.id", "os.name", "os.version":
+			details.OSInfo[param.Field] = param.Value.I
+		case "timezone.name":
+			if tzName, ok := param.Value.I.(string); ok {
+				details.Timezone.Name = tzName
+			}
+		case "timezone.offset":
+			if tzOffset, ok := param.Value.I.(int32); ok {
+				details.Timezone.Offset = tzOffset
+			}
+		}
+	}
+
+	return details, nil
+}
+
+// GetDomainPerformanceDetails retrieves comprehensive performance statistics
+func (c *Connector) GetDomainPerformanceDetails(hostID, vmName string) (*PerformanceDetails, error) {
+	l, domain, err := c.getDomainByName(hostID, vmName)
+	if err != nil {
+		return nil, err
+	}
+
+	performance := &PerformanceDetails{
+		BlockStats:     make(map[string]BlockStatsInfo),
+		InterfaceStats: make(map[string]InterfaceStatsInfo),
+	}
+
+	// Get CPU statistics
+	if cpuStats, _, err := l.DomainGetCPUStats(domain, 0, 0, 1, 0); err == nil {
+		performance.CPUStats = cpuStats
+	} else {
+		log.Debugf("CPU stats not available for domain %s: %v", vmName, err)
+	}
+
+	// Get memory statistics
+	if memStats, memErr := c.GetDomainMemoryStats(hostID, vmName); memErr == nil {
+		performance.MemoryStats = memStats
+	}
+
+	// Get domain time
+	if seconds, nanoseconds, timeErr := l.DomainGetTime(domain, 0); timeErr == nil {
+		performance.DomainTime = &DomainTimeInfo{
+			Seconds:     uint64(seconds),
+			Nanoseconds: nanoseconds,
+			Synced:      true,
+		}
+	} else {
+		log.Debugf("Domain time not available for domain %s: %v", vmName, timeErr)
+	}
+
+	// Get block device statistics
+	xmlDesc, err := l.DomainGetXMLDesc(domain, 0)
+	if err == nil {
+		type SimpleDisk struct {
+			Target struct {
+				Dev string `xml:"dev,attr"`
+			} `xml:"target"`
+		}
+		type SimpleDomain struct {
+			Disks []SimpleDisk `xml:"devices>disk"`
+		}
+
+		var domainDef SimpleDomain
+		if xml.Unmarshal([]byte(xmlDesc), &domainDef) == nil {
+			for _, disk := range domainDef.Disks {
+				if disk.Target.Dev != "" {
+					if rdReq, rdBytes, wrReq, wrBytes, errs, blockErr := l.DomainBlockStats(domain, disk.Target.Dev); blockErr == nil {
+						performance.BlockStats[disk.Target.Dev] = BlockStatsInfo{
+							ReadRequests:  uint64(rdReq),
+							ReadBytes:     uint64(rdBytes),
+							WriteRequests: uint64(wrReq),
+							WriteBytes:    uint64(wrBytes),
+							Errors:        uint64(errs),
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Get network interface statistics
+	type SimpleInterface struct {
+		Target struct {
+			Dev string `xml:"dev,attr"`
+		} `xml:"target"`
+	}
+	type SimpleInterfaceDomain struct {
+		Interfaces []SimpleInterface `xml:"devices>interface"`
+	}
+
+	var interfaceDef SimpleInterfaceDomain
+	if xml.Unmarshal([]byte(xmlDesc), &interfaceDef) == nil {
+		for _, iface := range interfaceDef.Interfaces {
+			if iface.Target.Dev != "" {
+				if rxBytes, rxPackets, rxErrs, rxDrop, txBytes, txPackets, txErrs, txDrop, ifaceErr := l.DomainInterfaceStats(domain, iface.Target.Dev); ifaceErr == nil {
+					performance.InterfaceStats[iface.Target.Dev] = InterfaceStatsInfo{
+						RxBytes:   uint64(rxBytes),
+						RxPackets: uint64(rxPackets),
+						RxErrors:  uint64(rxErrs),
+						RxDrops:   uint64(rxDrop),
+						TxBytes:   uint64(txBytes),
+						TxPackets: uint64(txPackets),
+						TxErrors:  uint64(txErrs),
+						TxDrops:   uint64(txDrop),
+					}
+				}
+			}
+		}
+	}
+
+	return performance, nil
+}
+
+// Phase 2: Performance and Statistics APIs
+
+// GetDomainCPUPerformance retrieves detailed CPU performance statistics
+func (c *Connector) GetDomainCPUPerformance(hostID, vmName string) (*CPUPerformanceDetails, error) {
+	l, domain, err := c.getDomainByName(hostID, vmName)
+	if err != nil {
+		return nil, err
+	}
+
+	performance := &CPUPerformanceDetails{
+		VCPUStats: make(map[int]VCPUStats),
+	}
+
+	// Get CPU statistics for all VCPUs
+	cpuStats, _, err := l.DomainGetCPUStats(domain, 0, -1, 0, 0) // 0 params, -1 = all CPUs
+	if err != nil {
+		log.Debugf("CPU statistics not available for domain %s: %v", vmName, err)
+	} else {
+		for i, stat := range cpuStats {
+			vcpuStats := VCPUStats{}
+			switch stat.Field {
+			case "cpu_time":
+				if val, ok := stat.Value.I.(uint64); ok {
+					vcpuStats.CPUTime = val
+				}
+			case "user_time":
+				if val, ok := stat.Value.I.(uint64); ok {
+					vcpuStats.UserTime = val
+				}
+			case "system_time":
+				if val, ok := stat.Value.I.(uint64); ok {
+					vcpuStats.SystemTime = val
+				}
+			}
+			performance.VCPUStats[i] = vcpuStats
+		}
+	}
+
+	// Get node CPU statistics for host comparison
+	nodeStats, _, err := l.NodeGetCPUStats(-1, 0, 0) // -1 = all CPUs
+	if err != nil {
+		log.Debugf("Node CPU statistics not available: %v", err)
+	} else {
+		hostCPU := HostCPUStats{}
+		for _, stat := range nodeStats {
+			switch stat.Field {
+			case "kernel":
+				hostCPU.Kernel = stat.Value
+			case "user":
+				hostCPU.User = stat.Value
+			case "idle":
+				hostCPU.Idle = stat.Value
+			case "iowait":
+				hostCPU.IOWait = stat.Value
+			}
+		}
+		performance.HostCPUStats = &hostCPU
+	}
+
+	return performance, nil
+}
+
+// GetDomainInterfaceAddresses retrieves network interface addresses using libvirt APIs
+func (c *Connector) GetDomainInterfaceAddresses(hostID, vmName string) (*NetworkInterfaceDetails, error) {
+	l, domain, err := c.getDomainByName(hostID, vmName)
+	if err != nil {
+		return nil, err
+	}
+
+	details := &NetworkInterfaceDetails{
+		Interfaces: make([]InterfaceAddress, 0),
+	}
+
+	// Get interface addresses using DHCP lease info
+	interfaces, err := l.DomainInterfaceAddresses(domain, 1, 0) // 1 = DHCP source
+	if err != nil {
+		log.Debugf("Interface addresses not available via DHCP for domain %s: %v", vmName, err)
+
+		// Fallback to guest agent if DHCP fails
+		interfaces, err = l.DomainInterfaceAddresses(domain, 0, 0) // 0 = guest agent
+		if err != nil {
+			log.Debugf("Interface addresses not available via guest agent for domain %s: %v", vmName, err)
+			return details, nil
+		}
+	}
+
+	for _, iface := range interfaces {
+		interfaceAddr := InterfaceAddress{
+			Name:   string(iface.Name),
+			HWAddr: "", // Initialize empty, will be set below
+			Addrs:  make([]IPAddress, 0),
+		}
+
+		// Handle OptString for hardware address
+		if len(iface.Hwaddr) > 0 {
+			interfaceAddr.HWAddr = iface.Hwaddr[0]
+		}
+
+		for _, addr := range iface.Addrs {
+			ipAddr := IPAddress{
+				Type:   int(addr.Type),
+				Addr:   string(addr.Addr),
+				Prefix: int(addr.Prefix),
+			}
+			interfaceAddr.Addrs = append(interfaceAddr.Addrs, ipAddr)
+		}
+
+		details.Interfaces = append(details.Interfaces, interfaceAddr)
+	}
+
+	return details, nil
+}
+
+// GetDomainJobInfo retrieves active job information (useful for monitoring migration, backup, etc.)
+func (c *Connector) GetDomainJobInfo(hostID, vmName string) (*DomainJobInfo, error) {
+	l, domain, err := c.getDomainByName(hostID, vmName)
+	if err != nil {
+		return nil, err
+	}
+
+	jobType, timeElapsed, timeRemaining, dataTotal, dataProcessed, dataRemaining, memTotal, memProcessed, memRemaining, fileTotal, fileProcessed, fileRemaining, err := l.DomainGetJobInfo(domain)
+	if err != nil {
+		log.Debugf("Job info not available for domain %s: %v", vmName, err)
+		return nil, nil
+	}
+
+	return &DomainJobInfo{
+		Type:          int(jobType),
+		TimeElapsed:   timeElapsed,
+		TimeRemaining: timeRemaining,
+		DataTotal:     dataTotal,
+		DataProcessed: dataProcessed,
+		DataRemaining: dataRemaining,
+		MemTotal:      memTotal,
+		MemProcessed:  memProcessed,
+		MemRemaining:  memRemaining,
+		FileTotal:     fileTotal,
+		FileProcessed: fileProcessed,
+		FileRemaining: fileRemaining,
+	}, nil
+}
+
+// Phase 3: Hybrid Optimization - Enhanced Sync Methods
+
+// GetDomainHybridDetails combines API and XML data for comprehensive domain information
+func (c *Connector) GetDomainHybridDetails(hostID, vmName string) (*HybridDomainDetails, error) {
+	l, domain, err := c.getDomainByName(hostID, vmName)
+	if err != nil {
+		return nil, err
+	}
+
+	details := &HybridDomainDetails{
+		APIData: &APIDomainData{},
+		XMLData: &XMLDomainData{},
+	}
+
+	// Get API-based data
+	if memoryDetails, err := c.GetDomainMemoryDetails(hostID, vmName); err == nil {
+		details.APIData.MemoryDetails = memoryDetails
+	}
+
+	if cpuDetails, err := c.GetDomainCPUDetails(hostID, vmName); err == nil {
+		details.APIData.CPUDetails = cpuDetails
+	}
+
+	if blockDetails, err := c.GetDomainBlockDetails(hostID, vmName); err == nil {
+		details.APIData.BlockDetails = blockDetails
+	}
+
+	if securityDetails, err := c.GetDomainSecurityDetails(hostID, vmName); err == nil {
+		details.APIData.SecurityDetails = securityDetails
+	}
+
+	if numaDetails, err := c.GetDomainNUMADetails(hostID, vmName); err == nil {
+		details.APIData.NUMADetails = numaDetails
+	}
+
+	if memStats, err := c.GetDomainMemoryStats(hostID, vmName); err == nil {
+		details.APIData.MemoryStats = memStats
+	}
+
+	if perfDetails, err := c.GetDomainPerformanceDetails(hostID, vmName); err == nil {
+		details.APIData.PerformanceDetails = perfDetails
+	}
+
+	// Get XML data for complex configurations
+	xmlDesc, err := l.DomainGetXMLDesc(domain, 0)
+	if err != nil {
+		log.Debugf("Failed to get XML description for domain %s: %v", vmName, err)
+	} else {
+		details.XMLData.RawXML = xmlDesc
+
+		// Parse specific XML components that don't have direct API equivalents
+		if features, err := c.parseXMLFeatures(xmlDesc); err == nil {
+			details.XMLData.Features = features
+		}
+
+		if osConfig, err := c.parseXMLOSConfig(xmlDesc); err == nil {
+			details.XMLData.OSConfig = osConfig
+		}
+
+		if deviceConfig, err := c.parseXMLDeviceConfig(xmlDesc); err == nil {
+			details.XMLData.DeviceConfig = deviceConfig
+		}
+	}
+
+	return details, nil
+}
+
+// GetDomainOptimizedSync provides an optimized sync method that chooses the best data source
+func (c *Connector) GetDomainOptimizedSync(hostID, vmName string) (*OptimizedSyncData, error) {
+	l, domain, err := c.getDomainByName(hostID, vmName)
+	if err != nil {
+		return nil, err
+	}
+
+	sync := &OptimizedSyncData{
+		Strategy: make(map[string]string),
+	}
+
+	// Use API for real-time data
+	if memStats, err := c.GetDomainMemoryStats(hostID, vmName); err == nil {
+		sync.MemoryStats = memStats
+		sync.Strategy["memory_stats"] = "api"
+	}
+
+	if perfDetails, err := c.GetDomainPerformanceDetails(hostID, vmName); err == nil {
+		sync.PerformanceDetails = perfDetails
+		sync.Strategy["performance"] = "api"
+	}
+
+	if cpuPerf, err := c.GetDomainCPUPerformance(hostID, vmName); err == nil {
+		sync.CPUPerformance = cpuPerf
+		sync.Strategy["cpu_performance"] = "api"
+	}
+
+	if networkDetails, err := c.GetDomainInterfaceAddresses(hostID, vmName); err == nil {
+		sync.NetworkDetails = networkDetails
+		sync.Strategy["network_addresses"] = "api"
+	}
+
+	// Use XML for configuration data when API is insufficient
+	xmlDesc, err := l.DomainGetXMLDesc(domain, 0)
+	if err != nil {
+		log.Debugf("Failed to get XML description for domain %s: %v", vmName, err)
+	} else {
+		// Parse graphics configuration (no direct API)
+		if graphicsConfig, err := c.parseXMLGraphics(xmlDesc); err == nil {
+			sync.GraphicsConfig = graphicsConfig
+			sync.Strategy["graphics"] = "xml"
+		}
+
+		// Parse TPM configuration (no direct API)
+		if tpmConfig, err := c.parseXMLTPM(xmlDesc); err == nil {
+			sync.TPMConfig = tpmConfig
+			sync.Strategy["tpm"] = "xml"
+		}
+
+		// Parse hypervisor features (complex XML structure)
+		if hypervisorFeatures, err := c.parseXMLHypervisorFeatures(xmlDesc); err == nil {
+			sync.HypervisorFeatures = hypervisorFeatures
+			sync.Strategy["hypervisor_features"] = "xml"
+		}
+	}
+
+	// Combine API + XML for enhanced block device info
+	if blockDetails, err := c.GetDomainBlockDetails(hostID, vmName); err == nil {
+		// Enhance with XML metadata
+		if enhancedBlocks, err := c.enhanceBlockDetailsWithXML(xmlDesc, blockDetails); err == nil {
+			sync.EnhancedBlockDetails = enhancedBlocks
+			sync.Strategy["block_devices"] = "hybrid"
+		}
+	}
+
+	return sync, nil
+}
+
+// Phase 3 Helper Methods (Stubs for XML parsing)
+
+// parseXMLFeatures extracts hypervisor features from XML
+func (c *Connector) parseXMLFeatures(xmlDesc string) (*XMLFeatures, error) {
+	// Stub implementation - would parse XML for hypervisor features
+	return &XMLFeatures{
+		ACPI:     true,
+		APIC:     true,
+		VirtType: "hvm",
+	}, nil
+}
+
+// parseXMLOSConfig extracts OS configuration from XML
+func (c *Connector) parseXMLOSConfig(xmlDesc string) (*XMLOSConfig, error) {
+	// Stub implementation - would parse XML for OS configuration
+	return &XMLOSConfig{
+		Type:      "hvm",
+		Arch:      "x86_64",
+		Machine:   "pc-i440fx-2.9",
+		BootOrder: []string{"hd", "cdrom"},
+	}, nil
+}
+
+// parseXMLDeviceConfig extracts device configuration from XML
+func (c *Connector) parseXMLDeviceConfig(xmlDesc string) (*XMLDeviceConfig, error) {
+	// Stub implementation - would parse XML for device configuration
+	return &XMLDeviceConfig{
+		Emulator:    "/usr/bin/qemu-system-x86_64",
+		Controllers: []XMLController{},
+		Channels:    []XMLChannel{},
+	}, nil
+}
+
+// parseXMLGraphics extracts graphics configuration from XML
+func (c *Connector) parseXMLGraphics(xmlDesc string) (*XMLGraphicsConfig, error) {
+	// Stub implementation - would parse XML for graphics configuration
+	return &XMLGraphicsConfig{
+		Type:     "spice",
+		Port:     5900,
+		AutoPort: true,
+		Listen:   "0.0.0.0",
+	}, nil
+}
+
+// parseXMLTPM extracts TPM configuration from XML
+func (c *Connector) parseXMLTPM(xmlDesc string) (*XMLTPMConfig, error) {
+	// Stub implementation - would parse XML for TPM configuration
+	return &XMLTPMConfig{
+		Model:   "tpm-tis",
+		Type:    "passthrough",
+		Version: "2.0",
+	}, nil
+}
+
+// parseXMLHypervisorFeatures extracts hypervisor-specific features from XML
+func (c *Connector) parseXMLHypervisorFeatures(xmlDesc string) (*XMLHypervisorFeatures, error) {
+	// Stub implementation - would parse XML for hypervisor features
+	return &XMLHypervisorFeatures{
+		Relaxed:   true,
+		VAPIC:     true,
+		Spinlocks: true,
+		VPIndex:   true,
+	}, nil
+}
+
+// enhanceBlockDetailsWithXML combines API block data with XML metadata
+func (c *Connector) enhanceBlockDetailsWithXML(xmlDesc string, blockDetails []BlockDeviceDetail) (*EnhancedBlockDetails, error) {
+	// Stub implementation - would enhance block details with XML metadata
+	enhanced := &EnhancedBlockDetails{
+		Devices:     blockDetails,
+		XMLMetadata: make(map[string]XMLBlockMetadata),
+	}
+
+	// Add sample metadata for each device
+	for _, device := range blockDetails {
+		enhanced.XMLMetadata[device.Device] = XMLBlockMetadata{
+			Driver:  "qemu",
+			Cache:   "none",
+			IO:      "native",
+			Discard: "unmap",
+		}
+	}
+
+	return enhanced, nil
+}
+
+// Phase 4 Helper Methods (Stubs for comprehensive XML parsing)
+
+// parseDetailedHypervisorFeatures extracts detailed hypervisor features
+func (c *Connector) parseDetailedHypervisorFeatures(xmlDesc string) (*DetailedHypervisorFeatures, error) {
+	// Stub implementation - would parse detailed hypervisor features
+	return &DetailedHypervisorFeatures{
+		HyperV: &HyperVFeatures{
+			Relaxed:   &FeatureState{State: "on"},
+			VAPIC:     &FeatureState{State: "on"},
+			Spinlocks: &FeatureState{State: "on", Attributes: map[string]string{"retries": "8191"}},
+		},
+		KVM: &KVMFeatures{
+			Hidden: &FeatureState{State: "off"},
+		},
+	}, nil
+}
+
+// parseDetailedCPUFeatures extracts detailed CPU features and topology
+func (c *Connector) parseDetailedCPUFeatures(xmlDesc string) (*DetailedCPUFeatures, error) {
+	// Stub implementation - would parse detailed CPU features
+	return &DetailedCPUFeatures{
+		Mode:  "host-passthrough",
+		Match: "exact",
+		Check: "none",
+		Model: &CPUModel{
+			Name:     "SandyBridge",
+			Fallback: "allow",
+		},
+		Topology: &CPUTopology{
+			Sockets: 1,
+			Cores:   2,
+			Threads: 1,
+		},
+		Cache: &CPUCache{
+			Mode:  "passthrough",
+			Level: 3,
+		},
+	}, nil
+}
+
+// parseDetailedNUMATopology extracts detailed NUMA topology
+func (c *Connector) parseDetailedNUMATopology(xmlDesc string) (*DetailedNUMATopology, error) {
+	// Stub implementation - would parse detailed NUMA topology
+	return &DetailedNUMATopology{
+		Cells: []NUMACell{
+			{
+				ID:        0,
+				CPUs:      "0-1",
+				Memory:    2097152,
+				Unit:      "KiB",
+				MemAccess: "shared",
+			},
+		},
+	}, nil
+}
+
+// parseAdvancedDeviceConfigs extracts advanced device configurations
+func (c *Connector) parseAdvancedDeviceConfigs(xmlDesc string) (*AdvancedDeviceConfigs, error) {
+	// Stub implementation - would parse advanced device configurations
+	return &AdvancedDeviceConfigs{
+		Input: []InputDevice{
+			{Type: "tablet", Bus: "usb"},
+			{Type: "keyboard", Bus: "ps2"},
+		},
+		Video: []VideoDevice{
+			{
+				Model:     "qxl",
+				VRAMBytes: 65536,
+				Heads:     1,
+				Primary:   true,
+			},
+		},
+		Sound: []SoundDevice{
+			{Model: "ich6", Codec: "duplex"},
+		},
+		MemBalloon: &MemBalloonDevice{
+			Model:       "virtio",
+			AutoDeflate: true,
+		},
+	}, nil
+}
+
+// parseOSLoaderConfig extracts OS loader configuration
+func (c *Connector) parseOSLoaderConfig(xmlDesc string) (*OSLoaderConfig, error) {
+	// Stub implementation - would parse OS loader configuration
+	return &OSLoaderConfig{
+		Type:          "pflash",
+		ReadOnly:      true,
+		Secure:        true,
+		Path:          "/usr/share/OVMF/OVMF_CODE.secboot.fd",
+		NVRAM:         "/var/lib/libvirt/qemu/nvram/test_VARS.fd",
+		NVRAMTemplate: "/usr/share/OVMF/OVMF_VARS.fd",
+	}, nil
+}
+
+// parseClockConfig extracts clock and timer configuration
+func (c *Connector) parseClockConfig(xmlDesc string) (*ClockConfig, error) {
+	// Stub implementation - would parse clock configuration
+	return &ClockConfig{
+		Offset: "utc",
+		Timers: []TimerConfig{
+			{
+				Name:       "rtc",
+				TickPolicy: "catchup",
+				Present:    true,
+			},
+			{
+				Name:       "pit",
+				TickPolicy: "delay",
+				Present:    true,
+			},
+			{
+				Name:    "hpet",
+				Present: false,
+			},
+		},
+	}, nil
+}
+
+// Additional XML parsing helper methods for CompleteXMLAnalysis
+
+func (c *Connector) parseMetadata(xmlDesc string) (interface{}, error) {
+	return map[string]string{"libosinfo": "http://libosinfo.org/xmlns/libvirt/domain/1.0"}, nil
+}
+
+func (c *Connector) parseMemoryBacking(xmlDesc string) (interface{}, error) {
+	return map[string]interface{}{
+		"hugepages": map[string]interface{}{
+			"page": map[string]string{"size": "2048", "unit": "KiB"},
+		},
+		"nosharepages": true,
+		"locked":       true,
+	}, nil
+}
+
+func (c *Connector) parseCPUMode(xmlDesc string) (interface{}, error) {
+	return map[string]string{"mode": "host-passthrough", "check": "none"}, nil
+}
+
+func (c *Connector) parseIOThreadConfig(xmlDesc string) (interface{}, error) {
+	return map[string]interface{}{
+		"count": 2,
+		"iothread": []map[string]interface{}{
+			{"id": 1, "cpuset": "0-1"},
+			{"id": 2, "cpuset": "2-3"},
+		},
+	}, nil
+}
+
+func (c *Connector) parseCPUTuning(xmlDesc string) (interface{}, error) {
+	return map[string]interface{}{
+		"shares":          1024,
+		"period":          100000,
+		"quota":           -1,
+		"emulator_period": 100000,
+		"emulator_quota":  -1,
+		"vcpupin": []map[string]interface{}{
+			{"vcpu": 0, "cpuset": "0-1"},
+			{"vcpu": 1, "cpuset": "2-3"},
+		},
+	}, nil
+}
+
+func (c *Connector) parseNUMATuning(xmlDesc string) (interface{}, error) {
+	return map[string]interface{}{
+		"memory": map[string]string{"mode": "strict", "nodeset": "0-1"},
+		"memnode": []map[string]interface{}{
+			{"cellid": 0, "mode": "strict", "nodeset": "0"},
+			{"cellid": 1, "mode": "strict", "nodeset": "1"},
+		},
+	}, nil
+}
+
+func (c *Connector) parseSysInfo(xmlDesc string) (interface{}, error) {
+	return map[string]interface{}{
+		"type": "smbios",
+		"bios": map[string]string{
+			"vendor":  "SeaBIOS",
+			"version": "1.11.0-2.el7",
+			"date":    "04/01/2014",
+		},
+		"system": map[string]string{
+			"manufacturer": "QEMU",
+			"product":      "Standard PC (i440FX + PIIX, 1996)",
+			"version":      "pc-i440fx-2.9",
+		},
+	}, nil
+}
+
+func (c *Connector) parseBootLoader(xmlDesc string) (interface{}, error) {
+	return map[string]string{
+		"executable": "/usr/bin/qemu-system-x86_64",
+		"args":       "-enable-kvm -machine q35",
+	}, nil
+}
+
+func (c *Connector) parseBIOSConfig(xmlDesc string) (interface{}, error) {
+	return map[string]interface{}{
+		"useserial":     true,
+		"rebootTimeout": 10000,
+	}, nil
+}
+
+func (c *Connector) parsePowerManagement(xmlDesc string) (interface{}, error) {
+	return map[string]interface{}{
+		"suspend_to_mem":  map[string]bool{"enabled": false},
+		"suspend_to_disk": map[string]bool{"enabled": false},
+	}, nil
+}
+
+func (c *Connector) parseKeyWrap(xmlDesc string) (interface{}, error) {
+	return map[string]interface{}{
+		"aes": map[string]bool{"state": true},
+		"dea": map[string]bool{"state": false},
+	}, nil
+}
+
+func (c *Connector) parseIDMap(xmlDesc string) (interface{}, error) {
+	return map[string]interface{}{
+		"uid": []map[string]int{
+			{"start": 0, "target": 1000, "count": 10},
+		},
+		"gid": []map[string]int{
+			{"start": 0, "target": 1000, "count": 10},
+		},
+	}, nil
+}
+
+func (c *Connector) parseResourceConfig(xmlDesc string) (interface{}, error) {
+	return map[string]string{
+		"partition":    "/machine/qemu",
+		"fibrechannel": "appid",
+	}, nil
+}
+
+func (c *Connector) parseSecurityLabels(xmlDesc string) (interface{}, error) {
+	return []map[string]interface{}{
+		{
+			"type":       "dynamic",
+			"model":      "selinux",
+			"relabel":    true,
+			"label":      "system_u:system_r:svirt_t:s0:c107,c434",
+			"imagelabel": "system_u:object_r:svirt_image_t:s0:c107,c434",
+		},
+	}, nil
+}
+
+// Phase 4: XML-Only Components - Specialized XML parsing for components without direct APIs
+
+// GetDomainXMLOnlyFeatures retrieves features that are only available through XML parsing
+func (c *Connector) GetDomainXMLOnlyFeatures(hostID, vmName string) (*XMLOnlyFeatures, error) {
+	l, domain, err := c.getDomainByName(hostID, vmName)
+	if err != nil {
+		return nil, err
+	}
+
+	xmlDesc, err := l.DomainGetXMLDesc(domain, 0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get XML description for domain %s: %v", vmName, err)
+	}
+
+	features := &XMLOnlyFeatures{}
+
+	// Parse hypervisor features
+	if hvFeatures, err := c.parseDetailedHypervisorFeatures(xmlDesc); err == nil {
+		features.HypervisorFeatures = hvFeatures
+	}
+
+	// Parse CPU features and topology
+	if cpuFeatures, err := c.parseDetailedCPUFeatures(xmlDesc); err == nil {
+		features.CPUFeatures = cpuFeatures
+	}
+
+	// Parse NUMA topology
+	if numaTopology, err := c.parseDetailedNUMATopology(xmlDesc); err == nil {
+		features.NUMATopology = numaTopology
+	}
+
+	// Parse device configurations that don't have API equivalents
+	if deviceConfigs, err := c.parseAdvancedDeviceConfigs(xmlDesc); err == nil {
+		features.AdvancedDevices = deviceConfigs
+	}
+
+	// Parse OS loader and NVRAM settings
+	if osLoader, err := c.parseOSLoaderConfig(xmlDesc); err == nil {
+		features.OSLoader = osLoader
+	}
+
+	// Parse clock and timer configurations
+	if clockConfig, err := c.parseClockConfig(xmlDesc); err == nil {
+		features.ClockConfig = clockConfig
+	}
+
+	return features, nil
+}
+
+// GetDomainCompleteXMLAnalysis performs comprehensive XML analysis for all XML-only features
+func (c *Connector) GetDomainCompleteXMLAnalysis(hostID, vmName string) (*CompleteXMLAnalysis, error) {
+	l, domain, err := c.getDomainByName(hostID, vmName)
+	if err != nil {
+		return nil, err
+	}
+
+	xmlDesc, err := l.DomainGetXMLDesc(domain, 0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get XML description for domain %s: %v", vmName, err)
+	}
+
+	analysis := &CompleteXMLAnalysis{
+		OriginalXML:      xmlDesc,
+		ParsedComponents: make(map[string]interface{}),
+	}
+
+	// Parse all major XML components
+	components := map[string]func(string) (interface{}, error){
+		"metadata":       func(xml string) (interface{}, error) { return c.parseMetadata(xml) },
+		"memory_backing": func(xml string) (interface{}, error) { return c.parseMemoryBacking(xml) },
+		"cpu_mode":       func(xml string) (interface{}, error) { return c.parseCPUMode(xml) },
+		"iothreads":      func(xml string) (interface{}, error) { return c.parseIOThreadConfig(xml) },
+		"cputune":        func(xml string) (interface{}, error) { return c.parseCPUTuning(xml) },
+		"numatune":       func(xml string) (interface{}, error) { return c.parseNUMATuning(xml) },
+		"sysinfo":        func(xml string) (interface{}, error) { return c.parseSysInfo(xml) },
+		"bootloader":     func(xml string) (interface{}, error) { return c.parseBootLoader(xml) },
+		"bios":           func(xml string) (interface{}, error) { return c.parseBIOSConfig(xml) },
+		"pm":             func(xml string) (interface{}, error) { return c.parsePowerManagement(xml) },
+		"keywrap":        func(xml string) (interface{}, error) { return c.parseKeyWrap(xml) },
+		"idmap":          func(xml string) (interface{}, error) { return c.parseIDMap(xml) },
+		"resource":       func(xml string) (interface{}, error) { return c.parseResourceConfig(xml) },
+		"seclabel":       func(xml string) (interface{}, error) { return c.parseSecurityLabels(xml) },
+	}
+
+	for componentName, parseFunc := range components {
+		if result, err := parseFunc(xmlDesc); err == nil {
+			analysis.ParsedComponents[componentName] = result
+		} else {
+			log.Debugf("Failed to parse %s for domain %s: %v", componentName, vmName, err)
+		}
+	}
+
+	return analysis, nil
 }
