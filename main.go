@@ -105,6 +105,19 @@ func main() {
 		r.Get("/hosts/{hostID}/ports", apiHandler.ListHostPorts)
 		r.Get("/hosts/{hostID}/vms/{vmName}/port-attachments", apiHandler.ListVMPortAttachments)
 
+		// Storage routes
+		r.Get("/storage/pools", apiHandler.ListStoragePools)
+		r.Get("/storage/volumes", apiHandler.ListStorageVolumes)
+		r.Get("/storage/disk-attachments", apiHandler.ListDiskAttachments)
+		r.Get("/hosts/{hostID}/storage/pools", apiHandler.ListHostStoragePools)
+		r.Get("/hosts/{hostID}/storage/volumes", apiHandler.ListHostStorageVolumes)
+
+		// Network routes
+		r.Get("/networks", apiHandler.ListNetworks)
+		r.Get("/ports", apiHandler.ListPorts)
+		r.Get("/port-attachments", apiHandler.ListPortAttachments)
+		r.Get("/hosts/{hostID}/networks", apiHandler.ListHostNetworks)
+
 		// Video / GPU routes
 		r.Get("/video/models", apiHandler.ListVideoModels)
 		r.Get("/hosts/{hostID}/video/devices", apiHandler.ListHostVideoDevices)

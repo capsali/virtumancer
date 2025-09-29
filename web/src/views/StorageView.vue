@@ -144,8 +144,8 @@
               </div>
               <p class="text-sm text-slate-400 mb-2">{{ pool.path }}</p>
               <div class="flex items-center justify-between text-xs">
-                <span class="text-slate-500">Capacity: {{ formatBytes(pool.capacity || 0) }}</span>
-                <span class="text-slate-500">Available: {{ formatBytes(pool.available || 0) }}</span>
+                <span class="text-slate-500">Capacity: {{ formatBytes(pool.capacity_bytes || 0) }}</span>
+                <span class="text-slate-500">Available: {{ formatBytes((pool.capacity_bytes || 0) - (pool.allocation_bytes || 0)) }}</span>
               </div>
             </div>
           </div>
@@ -182,10 +182,10 @@
                 <h4 class="font-semibold text-white">{{ volume.name }}</h4>
                 <span class="text-xs px-2 py-1 rounded-full bg-green-500/20 text-green-400">{{ volume.format }}</span>
               </div>
-              <p class="text-sm text-slate-400 mb-2">{{ volume.path }}</p>
+              <p class="text-sm text-slate-400 mb-2">{{ volume.type }}</p>
               <div class="flex items-center justify-between text-xs">
                 <span class="text-slate-500">Pool: {{ volume.pool_name }}</span>
-                <span class="text-slate-500">Size: {{ formatBytes(volume.capacity || 0) }}</span>
+                <span class="text-slate-500">Size: {{ formatBytes(volume.capacity_bytes || 0) }}</span>
               </div>
             </div>
           </div>
@@ -287,18 +287,40 @@ const loadStorageData = async (): Promise<void> => {
   loading.value = true;
   
   try {
-    // For now, show placeholder data since storage API endpoints need to be implemented
-    // TODO: Implement storage API endpoints in the backend
-    storagePools.value = [];
-    volumes.value = [];
-    diskAttachments.value = [];
+    // Fetch storage data from API endpoints
+    const [poolsResponse, volumesResponse, attachmentsResponse] = await Promise.all([
+      fetch('/api/v1/storage/pools'),
+      fetch('/api/v1/storage/volumes'),
+      fetch('/api/v1/storage/disk-attachments')
+    ]);
+
+    if (poolsResponse.ok) {
+      storagePools.value = await poolsResponse.json();
+    } else {
+      console.error('Failed to fetch storage pools:', poolsResponse.statusText);
+      storagePools.value = [];
+    }
+
+    if (volumesResponse.ok) {
+      volumes.value = await volumesResponse.json();
+    } else {
+      console.error('Failed to fetch volumes:', volumesResponse.statusText);
+      volumes.value = [];
+    }
+
+    if (attachmentsResponse.ok) {
+      diskAttachments.value = await attachmentsResponse.json();
+    } else {
+      console.error('Failed to fetch disk attachments:', attachmentsResponse.statusText);
+      diskAttachments.value = [];
+    }
 
     // Calculate stats
     stats.value = {
       storagePools: storagePools.value.length,
       volumes: volumes.value.length,
       disks: diskAttachments.value.length,
-      totalCapacity: storagePools.value.reduce((total, pool) => total + (pool.capacity || 0), 0)
+      totalCapacity: storagePools.value.reduce((total, pool) => total + (pool.capacity_bytes || 0), 0)
     };
     
   } catch (error) {

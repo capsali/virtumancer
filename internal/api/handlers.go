@@ -1100,3 +1100,276 @@ func (h *APIHandler) UpdateMetricsSettings(w http.ResponseWriter, r *http.Reques
 
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// --- Storage Endpoints ---
+
+// ListStoragePools returns all storage pools across all hosts.
+func (h *APIHandler) ListStoragePools(w http.ResponseWriter, r *http.Request) {
+	var pools []storage.StoragePool
+	if err := h.DB.Find(&pools).Error; err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Ensure we return an empty array instead of null
+	if pools == nil {
+		pools = []storage.StoragePool{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(pools)
+}
+
+// ListStorageVolumes returns all storage volumes across all hosts.
+func (h *APIHandler) ListStorageVolumes(w http.ResponseWriter, r *http.Request) {
+	var volumes []storage.Volume
+	if err := h.DB.Find(&volumes).Error; err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Transform to include pool name for easier frontend consumption
+	type VolumeResponse struct {
+		storage.Volume
+		PoolName string `json:"pool_name"`
+	}
+
+	var response = make([]VolumeResponse, 0)
+	for _, vol := range volumes {
+		resp := VolumeResponse{
+			Volume:   vol,
+			PoolName: "unknown",
+		}
+
+		// Get pool name
+		var pool storage.StoragePool
+		if err := h.DB.Where("id = ?", vol.StoragePoolID).First(&pool).Error; err == nil {
+			resp.PoolName = pool.Name
+		}
+
+		response = append(response, resp)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+// ListDiskAttachments returns all disk attachments across all VMs.
+func (h *APIHandler) ListDiskAttachments(w http.ResponseWriter, r *http.Request) {
+	var attachments []storage.DiskAttachment
+	if err := h.DB.Preload("Disk").Find(&attachments).Error; err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Transform to include VM name and other useful info
+	type DiskAttachmentResponse struct {
+		storage.DiskAttachment
+		VMName     string `json:"vm_name"`
+		DeviceType string `json:"device_type"`
+		CapacityGB uint64 `json:"capacity_gb"`
+		TargetDev  string `json:"target_dev"`
+		Format     string `json:"format"`
+	}
+
+	var response = make([]DiskAttachmentResponse, 0)
+	for _, att := range attachments {
+		resp := DiskAttachmentResponse{
+			DiskAttachment: att,
+			VMName:         "unknown",
+			DeviceType:     "disk",
+			CapacityGB:     0,
+			TargetDev:      att.DeviceName,
+			Format:         "unknown",
+		}
+
+		// Get VM name
+		var vm storage.VirtualMachine
+		if err := h.DB.Where("uuid = ?", att.VMUUID).First(&vm).Error; err == nil {
+			resp.VMName = vm.Name
+		}
+
+		// Get disk details
+		if att.Disk.CapacityBytes > 0 {
+			resp.CapacityGB = att.Disk.CapacityBytes / (1024 * 1024 * 1024)
+		}
+		resp.Format = att.Disk.Format
+
+		response = append(response, resp)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+// ListHostStoragePools returns storage pools for a specific host.
+func (h *APIHandler) ListHostStoragePools(w http.ResponseWriter, r *http.Request) {
+	hostID := chi.URLParam(r, "hostID")
+
+	var pools []storage.StoragePool
+	if err := h.DB.Where("host_id = ?", hostID).Find(&pools).Error; err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Ensure we return an empty array instead of null
+	if pools == nil {
+		pools = []storage.StoragePool{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(pools)
+}
+
+// ListHostStorageVolumes returns storage volumes for a specific host.
+func (h *APIHandler) ListHostStorageVolumes(w http.ResponseWriter, r *http.Request) {
+	hostID := chi.URLParam(r, "hostID")
+
+	var volumes []storage.Volume
+	query := h.DB.Joins("JOIN storage_pools ON volumes.storage_pool_id = storage_pools.id").
+		Where("storage_pools.host_id = ?", hostID)
+
+	if err := query.Find(&volumes).Error; err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Transform to include pool name
+	type VolumeResponse struct {
+		storage.Volume
+		PoolName string `json:"pool_name"`
+	}
+
+	var response = make([]VolumeResponse, 0)
+	for _, vol := range volumes {
+		resp := VolumeResponse{
+			Volume:   vol,
+			PoolName: "unknown",
+		}
+
+		// Get pool name
+		var pool storage.StoragePool
+		if err := h.DB.Where("id = ?", vol.StoragePoolID).First(&pool).Error; err == nil {
+			resp.PoolName = pool.Name
+		}
+
+		response = append(response, resp)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+// --- Network Endpoints ---
+
+// ListNetworks returns all networks across all hosts.
+func (h *APIHandler) ListNetworks(w http.ResponseWriter, r *http.Request) {
+	var networks []storage.Network
+	if err := h.DB.Find(&networks).Error; err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Ensure we return an empty array instead of null
+	if networks == nil {
+		networks = []storage.Network{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(networks)
+}
+
+// ListPorts returns all ports across all hosts.
+func (h *APIHandler) ListPorts(w http.ResponseWriter, r *http.Request) {
+	var ports []storage.Port
+	if err := h.DB.Find(&ports).Error; err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Ensure we return an empty array instead of null
+	if ports == nil {
+		ports = []storage.Port{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(ports)
+}
+
+// ListPortAttachments returns all port attachments across all VMs.
+func (h *APIHandler) ListPortAttachments(w http.ResponseWriter, r *http.Request) {
+	var attachments []storage.PortAttachment
+	if err := h.DB.Preload("Port").Find(&attachments).Error; err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Transform to include VM name and additional useful info
+	type PortAttachmentResponse struct {
+		storage.PortAttachment
+		VMName      string `json:"vm_name"`
+		MacAddress  string `json:"mac_address"`
+		ModelName   string `json:"model_name"`
+		NetworkName string `json:"network_name,omitempty"`
+	}
+
+	var response = make([]PortAttachmentResponse, 0)
+	for _, att := range attachments {
+		resp := PortAttachmentResponse{
+			PortAttachment: att,
+			VMName:         "unknown",
+			MacAddress:     att.MACAddress,
+			ModelName:      att.ModelName,
+		}
+
+		// Use port MAC if attachment doesn't override
+		if resp.MacAddress == "" && att.Port.MACAddress != "" {
+			resp.MacAddress = att.Port.MACAddress
+		}
+
+		// Use port model if attachment doesn't override
+		if resp.ModelName == "" && att.Port.ModelName != "" {
+			resp.ModelName = att.Port.ModelName
+		}
+
+		// Get VM name
+		var vm storage.VirtualMachine
+		if err := h.DB.Where("uuid = ?", att.VMUUID).First(&vm).Error; err == nil {
+			resp.VMName = vm.Name
+		}
+
+		// Get network name through port binding
+		var binding storage.PortBinding
+		if err := h.DB.Preload("Network").Where("port_id = ?", att.PortID).First(&binding).Error; err == nil {
+			resp.NetworkName = binding.Network.Name
+		}
+
+		response = append(response, resp)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+// ListHostNetworks returns networks for a specific host.
+func (h *APIHandler) ListHostNetworks(w http.ResponseWriter, r *http.Request) {
+	hostID := chi.URLParam(r, "hostID")
+
+	var networks []storage.Network
+	if err := h.DB.Where("host_id = ?", hostID).Find(&networks).Error; err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Ensure we return an empty array instead of null
+	if networks == nil {
+		networks = []storage.Network{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(networks)
+}
+
+// --- Network Endpoints ---
+
+// ListNetworks returns all networks across all hosts.

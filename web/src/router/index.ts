@@ -33,8 +33,8 @@ const routes: RouteRecordRaw[] = [
   },
   {
     path: '/network',
-    name: 'network-topology',
-    component: () => import('@/views/NetworkTopologyView.vue')
+    name: 'networks',
+    component: () => import('@/views/NetworksView.vue')
   },
   {
     path: '/hosts',

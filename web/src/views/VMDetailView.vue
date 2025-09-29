@@ -64,7 +64,7 @@
             <FButton
               variant="ghost"
               size="sm"
-              @click="handleVMAction('shutdown')"
+              @click="showPowerConfirmation('shutdown')"
               :disabled="!!vm.taskState"
               class="px-3 py-2"
               title="Shutdown VM"
@@ -77,7 +77,7 @@
             <FButton
               variant="ghost"
               size="sm"
-              @click="handleVMAction('reboot')"
+              @click="showPowerConfirmation('reboot')"
               :disabled="!!vm.taskState"
               class="px-3 py-2"
               title="Reboot VM"
@@ -93,7 +93,7 @@
               @click="showPowerConfirmation('forceOff')"
               :disabled="!!vm.taskState"
               class="px-3 py-2 text-orange-400 hover:bg-orange-500/10"
-              title="Force Off VM"
+              title="Force Power Off VM"
             >
               <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636m12.728 12.728L18 12M6 6l12 12"/>
@@ -109,7 +109,7 @@
               title="Force Reset VM"
             >
               <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
               </svg>
             </FButton>
             
@@ -520,9 +520,9 @@
         
         <!-- Expanded Details Section -->
         <div v-show="vmDetailsExpanded" class="mt-8 pt-6 border-t border-slate-700/50">
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
             <!-- Basic Information -->
-            <div class="space-y-4">
+            <FCard class="p-6 card-glow">
               <h4 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
                 <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
@@ -539,12 +539,24 @@
                   <span class="col-span-2 text-white font-mono text-xs break-all">{{ vm.uuid }}</span>
                 </div>
                 <div class="grid grid-cols-3 gap-4 text-sm">
+                  <span class="text-slate-400 font-medium">Domain UUID:</span>
+                  <span class="col-span-2 text-white font-mono text-xs break-all">{{ vm.domainUuid || 'Unknown' }}</span>
+                </div>
+                <div class="grid grid-cols-3 gap-4 text-sm">
+                  <span class="text-slate-400 font-medium">Title:</span>
+                  <span class="col-span-2 text-white">{{ vm.title || vm.name }}</span>
+                </div>
+                <div class="grid grid-cols-3 gap-4 text-sm">
                   <span class="text-slate-400 font-medium">Description:</span>
                   <span class="col-span-2 text-white">{{ vm.description || 'No description' }}</span>
                 </div>
                 <div class="grid grid-cols-3 gap-4 text-sm">
                   <span class="text-slate-400 font-medium">Source:</span>
                   <span class="col-span-2 text-white capitalize">{{ vm.source || 'Unknown' }}</span>
+                </div>
+                <div class="grid grid-cols-3 gap-4 text-sm">
+                  <span class="text-slate-400 font-medium">Template:</span>
+                  <span class="col-span-2 text-white">{{ vm.isTemplate ? 'Yes' : 'No' }}</span>
                 </div>
                 <div class="grid grid-cols-3 gap-4 text-sm">
                   <span class="text-slate-400 font-medium">Created:</span>
@@ -555,58 +567,152 @@
                   <span class="col-span-2 text-white text-xs">{{ vm.updatedAt ? new Date(vm.updatedAt).toLocaleString() : 'Unknown' }}</span>
                 </div>
               </div>
-            </div>
+            </FCard>
 
-            <!-- Hardware Configuration -->
-            <div class="space-y-4">
+            <!-- CPU & Compute Configuration -->
+            <FCard class="p-6 card-glow">
               <h4 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
                 <svg class="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/>
                 </svg>
-                Hardware Configuration
+                CPU & Compute
               </h4>
               <div class="space-y-3">
                 <div class="grid grid-cols-3 gap-4 text-sm">
-                  <span class="text-slate-400 font-medium">CPU Cores:</span>
+                  <span class="text-slate-400 font-medium">vCPUs:</span>
                   <span class="col-span-2 text-white">{{ vm.vcpuCount || 0 }}</span>
                 </div>
                 <div class="grid grid-cols-3 gap-4 text-sm">
-                  <span class="text-slate-400 font-medium">Memory:</span>
-                  <span class="col-span-2 text-white">{{ formatBytes((vm.memoryMB || 0) * 1024 * 1024) }}</span>
+                  <span class="text-slate-400 font-medium">CPU Model:</span>
+                  <span class="col-span-2 text-white">{{ vm.cpuModel || 'host-passthrough' }}</span>
                 </div>
+                <div class="grid grid-cols-3 gap-4 text-sm" v-if="vm.cpuTopologyJson">
+                  <span class="text-slate-400 font-medium">Topology:</span>
+                  <span class="col-span-2 text-white text-xs">{{ formatCPUTopology(vm.cpuTopologyJson) }}</span>
+                </div>
+                <div class="grid grid-cols-3 gap-4 text-sm">
+                  <span class="text-slate-400 font-medium">Hypervisor:</span>
+                  <span class="col-span-2 text-white">KVM/QEMU</span>
+                </div>
+                <div class="grid grid-cols-3 gap-4 text-sm">
+                  <span class="text-slate-400 font-medium">Architecture:</span>
+                  <span class="col-span-2 text-white">x86_64</span>
+                </div>
+                <div class="grid grid-cols-3 gap-4 text-sm">
+                  <span class="text-slate-400 font-medium">Machine Type:</span>
+                  <span class="col-span-2 text-white">pc-q35</span>
+                </div>
+              </div>
+            </FCard>
+
+            <!-- Memory Configuration -->
+            <FCard class="p-6 card-glow">
+              <h4 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"/>
+                </svg>
+                Memory
+              </h4>
+              <div class="space-y-3">
+                <div class="grid grid-cols-3 gap-4 text-sm">
+                  <span class="text-slate-400 font-medium">Max Memory:</span>
+                  <span class="col-span-2 text-white">{{ formatBytes(vm.memoryBytes || 0) }}</span>
+                </div>
+                <div class="grid grid-cols-3 gap-4 text-sm">
+                  <span class="text-slate-400 font-medium">Current:</span>
+                  <span class="col-span-2 text-white">{{ formatBytes(vm.currentMemory || vm.memoryBytes || 0) }}</span>
+                </div>
+                <div class="grid grid-cols-3 gap-4 text-sm">
+                  <span class="text-slate-400 font-medium">Unit:</span>
+                  <span class="col-span-2 text-white">KiB</span>
+                </div>
+                <div class="grid grid-cols-3 gap-4 text-sm">
+                  <span class="text-slate-400 font-medium">Balloon:</span>
+                  <span class="col-span-2 text-white">Enabled</span>
+                </div>
+                <div class="grid grid-cols-3 gap-4 text-sm">
+                  <span class="text-slate-400 font-medium">Hugepages:</span>
+                  <span class="col-span-2 text-white">Auto</span>
+                </div>
+              </div>
+            </FCard>
+
+            <!-- Storage Configuration -->
+            <FCard class="p-6 card-glow">
+              <h4 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                <svg class="w-5 h-5 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+                </svg>
+                Storage
+              </h4>
+              <div class="space-y-3">
                 <div class="grid grid-cols-3 gap-4 text-sm">
                   <span class="text-slate-400 font-medium">Disk Size:</span>
                   <span class="col-span-2 text-white">{{ vm.diskSizeGB || 0 }} GB</span>
-                </div>
-                <div class="grid grid-cols-3 gap-4 text-sm">
-                  <span class="text-slate-400 font-medium">CPU Model:</span>
-                  <span class="col-span-2 text-white">{{ vm.cpuModel || 'Default' }}</span>
                 </div>
                 <div class="grid grid-cols-3 gap-4 text-sm">
                   <span class="text-slate-400 font-medium">Boot Device:</span>
                   <span class="col-span-2 text-white">{{ vm.bootDevice || 'hd' }}</span>
                 </div>
                 <div class="grid grid-cols-3 gap-4 text-sm">
-                  <span class="text-slate-400 font-medium">Network:</span>
+                  <span class="text-slate-400 font-medium">Bus Type:</span>
+                  <span class="col-span-2 text-white">VirtIO</span>
+                </div>
+                <div class="grid grid-cols-3 gap-4 text-sm">
+                  <span class="text-slate-400 font-medium">Cache Mode:</span>
+                  <span class="col-span-2 text-white">None</span>
+                </div>
+                <div class="grid grid-cols-3 gap-4 text-sm">
+                  <span class="text-slate-400 font-medium">IO Mode:</span>
+                  <span class="col-span-2 text-white">Native</span>
+                </div>
+                <div class="grid grid-cols-3 gap-4 text-sm">
+                  <span class="text-slate-400 font-medium">Discard:</span>
+                  <span class="col-span-2 text-white">Unmap</span>
+                </div>
+              </div>
+            </FCard>
+
+            <!-- Network Configuration -->
+            <FCard class="p-6 card-glow">
+              <h4 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                <svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"/>
+                </svg>
+                Network
+              </h4>
+              <div class="space-y-3">
+                <div class="grid grid-cols-3 gap-4 text-sm">
+                  <span class="text-slate-400 font-medium">Interface:</span>
                   <span class="col-span-2 text-white">{{ vm.networkInterface || 'default' }}</span>
                 </div>
                 <div class="grid grid-cols-3 gap-4 text-sm" v-if="vm.portGroup">
                   <span class="text-slate-400 font-medium">Port Group:</span>
                   <span class="col-span-2 text-white">{{ vm.portGroup }}</span>
                 </div>
+                <div class="grid grid-cols-3 gap-4 text-sm">
+                  <span class="text-slate-400 font-medium">Model:</span>
+                  <span class="col-span-2 text-white">VirtIO</span>
+                </div>
+                <div class="grid grid-cols-3 gap-4 text-sm">
+                  <span class="text-slate-400 font-medium">Link State:</span>
+                  <span class="col-span-2 text-white">Up</span>
+                </div>
+                <div class="grid grid-cols-3 gap-4 text-sm">
+                  <span class="text-slate-400 font-medium">MAC Address:</span>
+                  <span class="col-span-2 text-white font-mono text-xs">Auto-generated</span>
+                </div>
               </div>
-            </div>
-          </div>
+            </FCard>
 
-          <!-- System Status -->
-          <div class="mt-6 pt-6 border-t border-slate-700/50">
-            <h4 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-              <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
-              </svg>
-              System Status
-            </h4>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <!-- System & Status -->
+            <FCard class="p-6 card-glow">
+              <h4 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                </svg>
+                System & Status
+              </h4>
               <div class="space-y-3">
                 <div class="flex items-center justify-between">
                   <span class="text-slate-400 font-medium">Current State:</span>
@@ -618,6 +724,17 @@
                     'bg-yellow-500/20 text-yellow-400'
                   ]">
                     {{ vm.state }}
+                  </span>
+                </div>
+                <div class="flex items-center justify-between">
+                  <span class="text-slate-400 font-medium">Libvirt State:</span>
+                  <span :class="[
+                    'px-2 py-1 rounded-full text-xs font-medium',
+                    vm.libvirtState === 'ACTIVE' ? 'bg-green-500/20 text-green-400' :
+                    vm.libvirtState === 'STOPPED' ? 'bg-red-500/20 text-red-400' :
+                    'bg-yellow-500/20 text-yellow-400'
+                  ]">
+                    {{ vm.libvirtState || 'Unknown' }}
                   </span>
                 </div>
                 <div class="flex items-center justify-between">
@@ -645,28 +762,49 @@
                     </FButton>
                   </div>
                 </div>
-              </div>
-              <div class="space-y-3">
-                <div class="flex items-center justify-between">
+                <div class="grid grid-cols-3 gap-4 text-sm">
                   <span class="text-slate-400 font-medium">Task State:</span>
-                  <span class="text-white">{{ vm.taskState || 'None' }}</span>
+                  <span class="col-span-2 text-white">{{ vm.taskState || 'None' }}</span>
                 </div>
-                <div class="flex items-center justify-between">
+                <div class="grid grid-cols-3 gap-4 text-sm">
                   <span class="text-slate-400 font-medium">OS Type:</span>
-                  <span class="text-white">{{ vm.osType || 'Unknown' }}</span>
+                  <span class="col-span-2 text-white">{{ vm.osType || 'Unknown' }}</span>
                 </div>
-              </div>
-              <div class="space-y-3">
-                <div class="flex items-center justify-between">
+                <div class="grid grid-cols-3 gap-4 text-sm">
                   <span class="text-slate-400 font-medium">Host ID:</span>
-                  <span class="text-white">{{ vm.hostId }}</span>
+                  <span class="col-span-2 text-white font-mono text-xs">{{ vm.hostId }}</span>
                 </div>
-                <div class="flex items-center justify-between">
+                <div class="grid grid-cols-3 gap-4 text-sm">
                   <span class="text-slate-400 font-medium">Graphics:</span>
-                  <span class="text-white">{{ vm.graphics || 'None' }}</span>
+                  <span class="col-span-2 text-white">{{ vm.graphics || 'SPICE' }}</span>
                 </div>
               </div>
-            </div>
+            </FCard>
+          </div>
+
+          <!-- Advanced XML Metadata -->
+          <div v-if="vm.metadata" class="mt-6 pt-6 border-t border-slate-700/50">
+            <FCard class="p-6 card-glow">
+              <div class="flex items-center justify-between mb-4">
+                <h4 class="text-lg font-semibold text-white flex items-center gap-2">
+                  <svg class="w-5 h-5 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
+                  </svg>
+                  XML Metadata
+                </h4>
+                <FButton 
+                  variant="ghost" 
+                  size="sm" 
+                  @click="showExtendedHardwareModal = true"
+                  class="text-xs"
+                >
+                  View Full Hardware
+                </FButton>
+              </div>
+              <div class="bg-slate-900/50 rounded-lg p-4 border border-slate-700/50">
+                <pre class="text-xs text-slate-300 whitespace-pre-wrap font-mono overflow-x-auto">{{ vm.metadata }}</pre>
+              </div>
+            </FCard>
           </div>
         </div>
       </div>
@@ -775,16 +913,21 @@
         <!-- Header -->
         <div class="p-6 border-b border-slate-700/50">
           <div class="flex items-center gap-4">
-            <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-red-500 to-orange-500 flex items-center justify-center shadow-xl">
+            <div :class="[
+              'w-12 h-12 rounded-xl flex items-center justify-center shadow-xl',
+              pendingPowerAction === 'shutdown' || pendingPowerAction === 'reboot' ? 
+                'bg-gradient-to-br from-blue-500 to-cyan-500' :
+                'bg-gradient-to-br from-red-500 to-orange-500'
+            ]">
               <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/>
               </svg>
             </div>
             <div>
               <h3 class="text-xl font-bold text-white">
-                Confirm {{ pendingPowerAction === 'forceOff' ? 'Force Off' : 'Force Reset' }}
+                Confirm {{ getActionDisplayName(pendingPowerAction) }}
               </h3>
-              <p class="text-sm text-slate-400">This action cannot be undone</p>
+              <p class="text-sm text-slate-400">{{ getActionDescription(pendingPowerAction) }}</p>
             </div>
           </div>
         </div>
@@ -792,24 +935,41 @@
         <!-- Content -->
         <div class="p-6">
           <div class="space-y-4">
-            <p class="text-slate-300">
-              Are you sure you want to {{ pendingPowerAction === 'forceOff' ? 'force off' : 'force reset' }} this virtual machine?
-              <span class="text-orange-400 font-medium">This may cause data loss.</span>
-            </p>
-            <div class="p-4 bg-orange-500/10 border border-orange-500/20 rounded-lg">
-              <div class="flex items-start gap-3">
-                <svg class="w-5 h-5 text-orange-400 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/>
+            <div class="bg-slate-900/50 rounded-lg p-4 border border-slate-700/50">
+              <div class="flex items-center gap-3 mb-3">
+                <div class="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center">
+                  <svg class="w-4 h-4 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />
+                  </svg>
+                </div>
+                <span class="text-blue-400 font-medium">VM Information</span>
+              </div>
+              <div class="space-y-2 text-sm">
+                <div class="flex justify-between">
+                  <span class="text-slate-400">Name:</span>
+                  <span class="text-white">{{ vm?.name }}</span>
+                </div>
+                <div class="flex justify-between">
+                  <span class="text-slate-400">Current State:</span>
+                  <span :class="getVMStateBadgeClass(vm?.state || '')">{{ vm?.state }}</span>
+                </div>
+              </div>
+            </div>
+            
+            <div v-if="pendingPowerAction === 'forceOff' || pendingPowerAction === 'forceReset'" 
+                 class="bg-amber-500/10 border border-amber-400/20 rounded-lg p-4">
+              <div class="flex items-center gap-3">
+                <svg class="w-5 h-5 text-amber-400" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
                 </svg>
-                <div class="text-sm text-orange-300">
-                  <p class="font-medium mb-1">Warning:</p>
-                  <p>{{ pendingPowerAction === 'forceOff' ? 'Forcing off will immediately terminate the VM without graceful shutdown.' : 'Force reset will immediately restart the VM without graceful shutdown.' }}</p>
+                <div>
+                  <p class="text-amber-400 font-medium">Forced Action Warning</p>
+                  <p class="text-amber-300 text-sm mt-1">This action bypasses the guest OS and may cause data loss.</p>
                 </div>
               </div>
             </div>
           </div>
         </div>
-        
         <!-- Actions -->
         <div class="flex justify-end gap-3 p-6 border-t border-slate-700/50">
           <FButton
@@ -819,14 +979,14 @@
             Cancel
           </FButton>
           <FButton
-            variant="danger"
+            :variant="pendingPowerAction === 'forceOff' || pendingPowerAction === 'forceReset' ? 'danger' : 'primary'"
             @click="confirmPowerAction"
             :disabled="!!vm?.taskState"
           >
             <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/>
             </svg>
-            {{ pendingPowerAction === 'forceOff' ? 'Force Off' : 'Force Reset' }}
+            {{ getActionDisplayName(pendingPowerAction) }}
           </FButton>
         </div>
       </FCard>
@@ -1389,6 +1549,38 @@ const formatUptime = (seconds: number): string => {
     return `${hours}h ${minutes}m`;
   } else {
     return `${minutes}m`;
+  }
+};
+
+const formatCPUTopology = (topologyJson: string): string => {
+  try {
+    const topology = JSON.parse(topologyJson);
+    if (topology.sockets && topology.cores && topology.threads) {
+      return `${topology.sockets}s × ${topology.cores}c × ${topology.threads}t`;
+    }
+    return 'Unknown';
+  } catch {
+    return 'Parse error';
+  }
+};
+
+const getActionDisplayName = (action: string): string => {
+  switch (action) {
+    case 'shutdown': return 'Shutdown';
+    case 'reboot': return 'Reboot';
+    case 'forceOff': return 'Force Power Off';
+    case 'forceReset': return 'Force Reset';
+    default: return action;
+  }
+};
+
+const getActionDescription = (action: string): string => {
+  switch (action) {
+    case 'shutdown': return 'Graceful shutdown through guest OS';
+    case 'reboot': return 'Graceful restart through guest OS';
+    case 'forceOff': return 'This action bypasses the guest OS';
+    case 'forceReset': return 'This action bypasses the guest OS';
+    default: return 'This action cannot be undone';
   }
 };
 

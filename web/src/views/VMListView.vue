@@ -522,6 +522,16 @@
       <h3 class="text-xl font-semibold text-white mb-2">No Virtual Machines Found</h3>
       <p class="text-slate-400">No virtual machines match your current filters.</p>
     </div>
+
+    <!-- VM Configuration Modal -->
+    <VMConfigurationModal
+      :show="showVMConfigModal"
+      :host-id="selectedVMForEdit?.hostId"
+      :vm-data="selectedVMForEdit"
+      :edit-mode="true"
+      @close="closeVMConfigModal"
+      @vm-updated="handleVMUpdated"
+    />
   </div>
 </template>
 
@@ -534,6 +544,7 @@ import { useUserPreferences } from '@/composables/useUserPreferences'
 import FCard from '@/components/ui/FCard.vue'
 import FButton from '@/components/ui/FButton.vue'
 import FBreadcrumbs from '@/components/ui/FBreadcrumbs.vue'
+import VMConfigurationModal from '@/components/modals/VMConfigurationModalSimple.vue'
 import { getConsoleRoute } from '@/utils/console'
 
 const router = useRouter()
@@ -546,6 +557,10 @@ const searchQuery = ref('')
 const statusFilter = ref('all')
 const hostFilter = ref('all')
 const activeDropdown = ref<string | null>(null)
+
+// VM Configuration Modal state
+const showVMConfigModal = ref(false)
+const selectedVMForEdit = ref<any>(null)
 
 // Use preferences for persistent state
 const viewMode = computed({
@@ -698,8 +713,8 @@ const viewVMDetails = (vm: any) => {
 
 const editVM = (vm: any) => {
   activeDropdown.value = null
-  // TODO: Implement edit VM functionality
-  console.log('Edit VM:', vm.name)
+  selectedVMForEdit.value = vm
+  showVMConfigModal.value = true
 }
 
 const cloneVM = (vm: any) => {
@@ -724,6 +739,24 @@ const deleteVM = async (vm: any) => {
     } catch (error) {
       console.error('Failed to delete VM:', error)
     }
+  }
+}
+
+// VM Configuration Modal handlers
+const closeVMConfigModal = () => {
+  showVMConfigModal.value = false
+  selectedVMForEdit.value = null
+}
+
+const handleVMUpdated = async (updatedConfig: any) => {
+  try {
+    // TODO: Implement VM configuration update API call
+    console.log('VM configuration updated:', updatedConfig)
+    // Refresh VMs after update
+    await fetchVMsForAllHosts()
+    closeVMConfigModal()
+  } catch (error) {
+    console.error('Failed to update VM configuration:', error)
   }
 }
 

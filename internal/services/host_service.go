@@ -806,7 +806,7 @@ func (s *HostService) GetVMsForHostFromDB(hostID string) ([]VMView, error) {
 	//     hostConnected = true
 	// }
 
-	var vmViews []VMView
+	var vmViews = make([]VMView, 0)
 	for _, dbVM := range dbVMs {
 		var graphics libvirt.GraphicsInfo // Default to false
 		var liveData libvirt.VMInfo

@@ -64,6 +64,7 @@
                   <FButton
                     variant="ghost"
                     @click="handleCancel"
+                    :disabled="cancelDisabled"
                     class="button-glow cancel"
                     tabindex="98"
                   >
@@ -107,6 +108,7 @@ interface Props {
   confirmText?: string
   confirmVariant?: 'primary' | 'danger' | 'outline' | 'accent' | 'secondary' | 'ghost' | 'neon'
   confirmDisabled?: boolean
+  cancelDisabled?: boolean
   closeOnBackdrop?: boolean
 }
 
