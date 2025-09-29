@@ -156,6 +156,10 @@ type DiskInfo struct {
 		File string `xml:"file,attr" json:"file"`
 		Dev  string `xml:"dev,attr" json:"dev"`
 	} `xml:"source" json:"source"`
+	Capacity struct {
+		Value uint64 `xml:",chardata" json:"value"`
+		Unit  string `xml:"unit,attr" json:"unit"`
+	} `xml:"capacity" json:"capacity"`
 	Path      string `json:"path"`
 	Name      string `json:"name"`
 	ReadOnly  bool   `xml:"readonly" json:"readonly"`

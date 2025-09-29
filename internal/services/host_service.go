@@ -1932,7 +1932,26 @@ func (s *HostService) syncVMHardware(tx *gorm.DB, vmUUID string, hostID string, 
 		updates["path"] = path
 		updates["format"] = disk.Driver.Type
 		updates["driver_json"] = string(driverJSON)
-		// TODO: Add capacity, serial, etc. if available
+
+		// Extract capacity if available
+		if disk.Capacity.Value > 0 {
+			var capacityBytes uint64
+			if disk.Capacity.Unit == "bytes" {
+				capacityBytes = disk.Capacity.Value
+			} else if disk.Capacity.Unit == "KB" || disk.Capacity.Unit == "KiB" {
+				capacityBytes = disk.Capacity.Value * 1024
+			} else if disk.Capacity.Unit == "MB" || disk.Capacity.Unit == "MiB" {
+				capacityBytes = disk.Capacity.Value * 1024 * 1024
+			} else if disk.Capacity.Unit == "GB" || disk.Capacity.Unit == "GiB" {
+				capacityBytes = disk.Capacity.Value * 1024 * 1024 * 1024
+			} else if disk.Capacity.Unit == "TB" || disk.Capacity.Unit == "TiB" {
+				capacityBytes = disk.Capacity.Value * 1024 * 1024 * 1024 * 1024
+			} else {
+				// Default to bytes if unit is not specified or unknown
+				capacityBytes = disk.Capacity.Value
+			}
+			updates["capacity_bytes"] = capacityBytes
+		}
 
 		var diskResList []storage.Disk
 		tx.Where("name = ?", diskName).Limit(1).Find(&diskResList)
@@ -1950,6 +1969,10 @@ func (s *HostService) syncVMHardware(tx *gorm.DB, vmUUID string, hostID string, 
 					diskRes.Format = v.(string)
 				case "driver_json":
 					diskRes.DriverJSON = v.(string)
+				case "capacity_bytes":
+					if cb, ok := v.(uint64); ok {
+						diskRes.CapacityBytes = cb
+					}
 				}
 			}
 			if err := tx.Create(&diskRes).Error; err != nil {
