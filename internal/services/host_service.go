@@ -38,6 +38,10 @@ type VMView struct {
 	DriftDetails string             `json:"drift_details"`
 	NeedsRebuild bool               `json:"needs_rebuild"`
 
+	// Timestamps from gorm.Model
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+
 	// From Libvirt or DB cache
 	State        storage.VMState       `json:"state"`
 	LibvirtState storage.VMState       `json:"libvirtState"` // Observed state from libvirt
@@ -852,6 +856,9 @@ func (s *HostService) GetVMsForHostFromDB(hostID string) ([]VMView, error) {
 			SyncStatus:      dbVM.SyncStatus,
 			DriftDetails:    dbVM.DriftDetails,
 			NeedsRebuild:    dbVM.NeedsRebuild,
+			// Timestamps
+			CreatedAt: dbVM.CreatedAt,
+			UpdatedAt: dbVM.UpdatedAt,
 			// Live data
 			Uptime: liveData.Uptime,
 			// Computed fields
@@ -862,13 +869,25 @@ func (s *HostService) GetVMsForHostFromDB(hostID string) ([]VMView, error) {
 	return vmViews, nil
 }
 
-// calculateVMDiskSize calculates the total disk size in GB for a VM based on volume attachments
+// calculateVMDiskSize calculates the total disk size in GB for a VM based on disk attachments
 func (s *HostService) calculateVMDiskSize(vmUUID string) float64 {
 	var totalSizeBytes uint64 = 0
 
+	// Try disk attachments first (newer schema)
+	var diskAttachments []storage.DiskAttachment
+	if err := s.db.Preload("Disk").Where("vm_uuid = ?", vmUUID).Find(&diskAttachments).Error; err == nil {
+		for _, attachment := range diskAttachments {
+			totalSizeBytes += attachment.Disk.CapacityBytes
+		}
+		if totalSizeBytes > 0 {
+			return float64(totalSizeBytes) / (1024 * 1024 * 1024)
+		}
+	}
+
+	// Fallback to volume attachments (legacy schema)
 	var volumeAttachments []storage.VolumeAttachment
 	if err := s.db.Preload("Volume").Where("vm_uuid = ?", vmUUID).Find(&volumeAttachments).Error; err != nil {
-		log.Verbosef("Failed to get volume attachments for VM %s: %v", vmUUID, err)
+		log.Verbosef("Failed to get storage attachments for VM %s: %v", vmUUID, err)
 		return 0
 	}
 
@@ -982,7 +1001,9 @@ func (s *HostService) getVMHardwareFromDB(hostID, vmName string) (*libvirt.Hardw
 						Address: mac,
 					},
 					Source: struct {
-						Bridge string `xml:"bridge,attr" json:"bridge"`
+						Bridge    string `xml:"bridge,attr" json:"bridge"`
+						Network   string `xml:"network,attr" json:"network"`
+						PortGroup string `xml:"portgroup,attr" json:"portgroup"`
 					}{
 						Bridge: binding.Network.BridgeName,
 					},
@@ -1743,8 +1764,10 @@ func (s *HostService) syncVMHardware(tx *gorm.DB, vmUUID string, hostID string, 
 
 			// Create the port resource (unattached) and then attach it to the VM
 			newPort := storage.Port{
-				MACAddress: net.Mac.Address, ModelName: net.Model.Type,
-				HostID: hostID,
+				MACAddress: net.Mac.Address,
+				ModelName:  net.Model.Type,
+				HostID:     hostID,
+				PortGroup:  net.Source.PortGroup,
 			}
 			if err := tx.Create(&newPort).Error; err != nil {
 				return false, err

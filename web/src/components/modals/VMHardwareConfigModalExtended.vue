@@ -1,9 +1,14 @@
 <template>
   <FModal :show="show" @close="handleClose" size="full">
-    <div class="space-y-4">
+    <FCard class="space-y-6 h-full">
       <!-- Header -->
-      <div class="border-b border-gray-700 pb-4">
-        <h3 class="text-lg font-semibold text-white">
+      <div class="border-b border-slate-700/50 pb-6">
+        <h3 class="text-xl font-semibold text-white flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center shadow-lg">
+            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+            </svg>
+          </div>
           VM Hardware Configuration - {{ vmName }}
         </h3>
       </div>
@@ -11,17 +16,17 @@
       <!-- Body -->
       <div class="flex h-[80vh]">
         <!-- Sidebar with Hardware Categories -->
-        <div class="w-64 bg-gray-900/50 border-r border-gray-700 p-4 overflow-y-auto">
+        <div class="w-64 bg-slate-900/30 backdrop-blur-sm border-r border-slate-700/50 p-4 overflow-y-auto">
           <div class="space-y-2">
             <button
               v-for="tab in tabs"
               :key="tab.id"
               @click="activeTab = tab.id"
               :class="{
-                'bg-blue-500/20 text-blue-400 border border-blue-500/30': activeTab === tab.id,
-                'hover:bg-gray-800 text-gray-300': activeTab !== tab.id
+                'bg-blue-500/20 text-blue-400 border border-blue-500/30 shadow-lg shadow-blue-500/10': activeTab === tab.id,
+                'hover:bg-slate-800/50 text-slate-300 hover:shadow-md': activeTab !== tab.id
               }"
-              class="w-full flex items-center justify-between p-3 rounded-lg transition-colors"
+              class="w-full flex items-center justify-between p-3 rounded-lg transition-all duration-200 backdrop-blur-sm"
             >
               <div class="flex items-center space-x-3">
                 <div 
@@ -46,17 +51,17 @@
           </div>
 
           <!-- Actions -->
-          <div class="mt-6 pt-6 border-t border-gray-700 space-y-2">
+          <div class="mt-6 pt-6 border-t border-slate-700/50 space-y-2">
             <button
               @click="refreshData"
               :disabled="isLoading"
-              class="w-full p-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded text-sm transition-colors disabled:opacity-50"
+              class="w-full p-2 bg-slate-800/50 hover:bg-slate-700/60 text-slate-300 rounded-lg text-sm transition-all duration-200 disabled:opacity-50 backdrop-blur-sm border border-slate-700/30 hover:border-slate-600/50"
             >
               {{ isLoading ? 'Refreshing...' : 'Refresh Data' }}
             </button>
             <button
               @click="exportConfiguration"
-              class="w-full p-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm transition-colors"
+              class="w-full p-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-lg text-sm transition-all duration-200 shadow-lg shadow-blue-500/20 hover:shadow-blue-500/30"
             >
               Export Config
             </button>
@@ -64,24 +69,29 @@
         </div>
 
         <!-- Main Content Area -->
-        <div class="flex-1 p-6 overflow-y-auto">
+        <div class="flex-1 p-6 overflow-y-auto bg-slate-900/20 backdrop-blur-sm">
           <!-- Loading State -->
           <div v-if="isLoading" class="flex items-center justify-center h-64">
-            <div class="text-center">
-              <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
-              <p class="text-gray-300">Loading extended hardware configuration...</p>
-              <p class="text-sm text-gray-500">Fetching data from {{ Object.keys(allHardwareEntities).length }}+ database entities</p>
+            <div class="text-center p-8 rounded-2xl bg-slate-800/30 backdrop-blur-sm border border-slate-700/50 shadow-2xl">
+              <div class="animate-spin rounded-full h-12 w-12 border-2 border-blue-500/30 border-t-blue-500 mb-4 mx-auto"></div>
+              <p class="text-slate-200 font-medium">Loading extended hardware configuration...</p>
+              <p class="text-sm text-slate-400 mt-2">Fetching data from {{ Object.keys(allHardwareEntities).length }}+ database entities</p>
             </div>
           </div>
 
           <!-- Error State -->
           <div v-else-if="error" class="flex items-center justify-center h-64">
             <div class="text-center">
-              <div class="p-4 bg-red-500/10 border border-red-500/20 rounded-lg max-w-md">
-                <p class="text-red-400 mb-4">{{ error }}</p>
+              <div class="p-6 bg-red-500/10 border border-red-500/20 rounded-2xl max-w-md backdrop-blur-sm shadow-2xl">
+                <div class="w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center mx-auto mb-4">
+                  <svg class="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                  </svg>
+                </div>
+                <p class="text-red-300 mb-4 font-medium">{{ error }}</p>
                 <button
                   @click="loadExtendedHardwareConfig"
-                  class="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded transition-colors"
+                  class="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg transition-all duration-200 border border-red-500/30 hover:border-red-500/50"
                 >
                   Retry
                 </button>
@@ -92,24 +102,27 @@
           <!-- Content -->
           <div v-else>
             <!-- Data Summary -->
-            <div class="mb-6 p-4 bg-gray-800/50 rounded-lg border border-gray-700">
-              <h4 class="text-sm font-medium text-white mb-2">Hardware Configuration Summary</h4>
-              <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
-                <div>
-                  <span class="text-gray-400">Database Entities:</span>
-                  <span class="text-white ml-1">{{ Object.keys(allHardwareEntities).length }}</span>
+            <div class="mb-6 p-6 bg-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-700/50 shadow-xl card-glow">
+              <h4 class="text-sm font-semibold text-white mb-4 flex items-center gap-2">
+                <div class="w-2 h-2 rounded-full bg-gradient-to-r from-blue-400 to-purple-400"></div>
+                Hardware Configuration Summary
+              </h4>
+              <div class="grid grid-cols-2 md:grid-cols-4 gap-6 text-xs">
+                <div class="p-3 rounded-lg bg-slate-700/30 border border-slate-600/30">
+                  <div class="text-slate-400 text-xs mb-1">Database Entities</div>
+                  <div class="text-white font-semibold">{{ Object.keys(allHardwareEntities).length }}</div>
                 </div>
-                <div>
-                  <span class="text-gray-400">Storage Devices:</span>
-                  <span class="text-white ml-1">{{ (extendedHardware?.disk_attachments?.length || 0) + (extendedHardware?.filesystem_attachments?.length || 0) }}</span>
+                <div class="p-3 rounded-lg bg-slate-700/30 border border-slate-600/30">
+                  <div class="text-slate-400 text-xs mb-1">Storage Devices</div>
+                  <div class="text-white font-semibold">{{ (extendedHardware?.disk_attachments?.length || 0) + (extendedHardware?.filesystem_attachments?.length || 0) }}</div>
                 </div>
-                <div>
-                  <span class="text-gray-400">Network Interfaces:</span>
-                  <span class="text-white ml-1">{{ extendedHardware?.port_attachments?.length || 0 }}</span>
+                <div class="p-3 rounded-lg bg-slate-700/30 border border-slate-600/30">
+                  <div class="text-slate-400 text-xs mb-1">Network Interfaces</div>
+                  <div class="text-white font-semibold">{{ extendedHardware?.port_attachments?.length || 0 }}</div>
                 </div>
-                <div>
-                  <span class="text-gray-400">Last Updated:</span>
-                  <span class="text-white ml-1">{{ formatTimestamp(extendedHardware?.vm_info?.updatedAt) }}</span>
+                <div class="p-3 rounded-lg bg-slate-700/30 border border-slate-600/30">
+                  <div class="text-slate-400 text-xs mb-1">Last Updated</div>
+                  <div class="text-white font-semibold text-xs">{{ formatTimestamp(extendedHardware?.vm_info?.updatedAt) }}</div>
                 </div>
               </div>
             </div>
@@ -210,7 +223,7 @@
           </div>
         </div>
       </div>
-    </div>
+    </FCard>
   </FModal>
 </template>
 

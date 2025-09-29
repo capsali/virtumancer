@@ -169,6 +169,7 @@ type Port struct {
 	HostID              string `gorm:"index"`     // optional host scoping for unattached ports
 	SourceType          string `gorm:"size:32"`   // 'network'|'bridge'|'hostdev'|'vhostuser'|'null'|'vdpa'
 	SourceRef           string `gorm:"type:text"` // network name, hostdev address, or vhost socket path
+	PortGroup           string `gorm:"type:text"` // portgroup name for network sources
 	VirtualPortJSON     string `gorm:"type:text"` // serialized <virtualport> subelements
 	FilterRefJSON       string `gorm:"type:text"` // serialized <filterref> subelements
 	VlanTagsJSON        string `gorm:"type:text"` // serialized VLAN tags / metadata

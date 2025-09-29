@@ -20,6 +20,10 @@ Virtumancer is a modern, web-based virtualization management platform designed f
 * **Real-Time Monitoring**: Live-stream CPU, memory, and I/O statistics for running VMs directly to the UI.  
 * **Normalized Datastore**: VM hardware configurations are discovered and stored in a structured, relational database, enabling powerful future features.  
 * **Automatic Discovery & Sync**: Automatically synchronizes the state of all VMs with the central database.
+* **Advanced Network Support**: Full portgroup support for OpenVSwitch and bridged networks with VLAN configuration.
+* **Enhanced Disk Management**: Accurate disk size calculation with dual-table support for legacy and current disk attachment schemas.
+* **Improved Timestamp Handling**: Proper GORM-managed timestamps for VM creation and modification tracking.
+* **UI Consistency**: Unified FCard-based modal design with glassmorphism effects throughout the interface.
 
 ## **Step-by-Step Tutorial & Setup**
 
@@ -141,3 +145,35 @@ Comprehensive tools for managing multiple unmanaged VMs discovered on hosts:
 - Responsive layout for all device sizes
 - Smooth animations and transitions
 - Dark theme optimized for extended use
+
+## **Recent Improvements**
+
+### **Enhanced Network Infrastructure Support**
+- **Portgroup Integration**: Full support for OpenVSwitch portgroups in network interfaces
+- **Database Schema Extension**: Added `port_group` field to the `ports` table for network policy management
+- **Frontend Display**: Portgroup information now displayed in VM network interface sections
+- **API Documentation**: Complete API coverage for portgroup data in network responses
+
+### **Improved Storage Management**
+- **Dual-Table Disk Size Calculation**: Supports both current `disk_attachments` and legacy `volume_attachments` tables
+- **Accurate Size Reporting**: Disk sizes now properly calculated and displayed instead of showing 0 bytes
+- **Enhanced Storage Schema**: New `disk_attachments` table with GORM timestamps and size tracking
+- **Backend Service Updates**: Comprehensive disk size calculation in `calculateVMDiskSize()` function
+
+### **Timestamp and Data Integrity**
+- **GORM Timestamp Integration**: Proper `created_at` and `updated_at` timestamps for VMs using `gorm.Model`
+- **Frontend Display**: VM timestamps now show actual creation/modification dates instead of "unknown"
+- **Database Consistency**: All VM records properly track creation and modification times
+- **API Response Updates**: Timestamp fields included in all VM API responses
+
+### **UI/UX Consistency Improvements**
+- **FCard Modal Design**: All modals converted to unified FCard component for consistent glassmorphism
+- **Sync Modal Enhancement**: VM sync confirmation dialog now uses FCard with proper styling
+- **Hardware Configuration Modal**: Consistent FCard wrapper for hardware configuration interface
+- **Removed Legacy UI Elements**: Cleaned up outdated important notices from VM detail views
+
+### **TypeScript Type System**
+- **Complete Type Definitions**: Comprehensive TypeScript interfaces for all API responses and frontend data
+- **Enhanced Type Safety**: Full type coverage for VirtualMachine, Host, VMStats, and WebSocket messages
+- **Frontend Stability**: Resolved rendering issues with complete type system rebuild
+- **Developer Experience**: Improved IDE support and compile-time error detection

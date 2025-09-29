@@ -129,6 +129,8 @@
             
             <div class="w-px h-6 bg-slate-600 mx-1"></div>
             
+
+            
             <FButton
               variant="ghost"
               size="sm"
@@ -588,6 +590,10 @@
                   <span class="text-slate-400 font-medium">Network:</span>
                   <span class="col-span-2 text-white">{{ vm.networkInterface || 'default' }}</span>
                 </div>
+                <div class="grid grid-cols-3 gap-4 text-sm" v-if="vm.portGroup">
+                  <span class="text-slate-400 font-medium">Port Group:</span>
+                  <span class="col-span-2 text-white">{{ vm.portGroup }}</span>
+                </div>
               </div>
             </div>
           </div>
@@ -616,14 +622,28 @@
                 </div>
                 <div class="flex items-center justify-between">
                   <span class="text-slate-400 font-medium">Sync Status:</span>
-                  <span :class="[
-                    'px-2 py-1 rounded-full text-xs font-medium',
-                    vm.syncStatus === 'SYNCED' ? 'bg-green-500/20 text-green-400' : 
-                    vm.syncStatus === 'DRIFTED' ? 'bg-yellow-500/20 text-yellow-400' : 
-                    'bg-gray-500/20 text-gray-400'
-                  ]">
-                    {{ vm.syncStatus }}
-                  </span>
+                  <div class="flex items-center gap-2">
+                    <span :class="[
+                      'px-2 py-1 rounded-full text-xs font-medium',
+                      vm.syncStatus === 'SYNCED' ? 'bg-green-500/20 text-green-400' : 
+                      vm.syncStatus === 'DRIFTED' ? 'bg-yellow-500/20 text-yellow-400' : 
+                      'bg-gray-500/20 text-gray-400'
+                    ]">
+                      {{ vm.syncStatus }}
+                    </span>
+                    <FButton
+                      variant="ghost"
+                      size="xs"
+                      @click="showSyncConfirmModal = true"
+                      :disabled="!!vm.taskState"
+                      class="px-2 py-1 text-xs"
+                      title="Sync VM from libvirt"
+                    >
+                      <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                      </svg>
+                    </FButton>
+                  </div>
                 </div>
               </div>
               <div class="space-y-3">
@@ -696,6 +716,55 @@
       @saved="loadVM"
     />
 
+    <!-- Sync Confirmation Modal -->
+    <FModal
+      :show="showSyncConfirmModal"
+      @close="showSyncConfirmModal = false"
+      size="md"
+    >
+      <FCard class="space-y-6">
+        <!-- Header -->
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center shadow-lg">
+            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+            </svg>
+          </div>
+          <div>
+            <h3 class="text-xl font-semibold text-white">Sync VM from Libvirt</h3>
+            <p class="text-sm text-slate-400">{{ vm?.name }}</p>
+          </div>
+        </div>
+        
+        <!-- Content -->
+        <div class="space-y-4">
+          <p class="text-slate-300">
+            This will synchronize the VM configuration from libvirt, updating the database with the current running state.
+          </p>
+        </div>
+        
+        <!-- Actions -->
+        <div class="flex justify-end gap-3 pt-4 border-t border-slate-700/50">
+          <FButton
+            variant="ghost"
+            @click="showSyncConfirmModal = false"
+          >
+            Cancel
+          </FButton>
+          <FButton
+            variant="primary"
+            @click="confirmSync"
+            :disabled="!!vm?.taskState"
+          >
+            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+            </svg>
+            Sync from Libvirt
+          </FButton>
+        </div>
+      </FCard>
+    </FModal>
+
   </div>
 </template>
 
@@ -739,6 +808,7 @@ const showExtendedHardwareModal = ref(false);
 const showMetricSettings = ref(false);
 const showHardwareConfig = ref(false);
 const vmDetailsExpanded = ref(false);
+const showSyncConfirmModal = ref(false);
 
 // Console preview state
 const consoleConnected = ref(false);
@@ -1147,9 +1217,7 @@ const handleVMAction = async (action: string): Promise<void> => {
       case 'forceReset':
         await vmStore.forceResetVM(props.hostId, vm.value.name);
         break;
-      case 'sync':
-        await vmStore.syncVM(props.hostId, vm.value.name);
-        break;
+
       case 'rebuild':
         await vmStore.rebuildVM(props.hostId, vm.value.name);
         break;
@@ -1171,6 +1239,21 @@ const openConsole = (): void => {
     router.push(consoleRoute);
   } else {
     uiStore.addToast('No console available for this VM', 'warning');
+  }
+};
+
+// Confirm sync from libvirt
+const confirmSync = async (): Promise<void> => {
+  if (!vm.value) return;
+  
+  try {
+    showSyncConfirmModal.value = false;
+    await vmStore.syncVM(props.hostId, vm.value.name);
+    await loadVM();
+    uiStore.addToast('VM synchronized from libvirt successfully', 'success');
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : 'Failed to sync VM from libvirt';
+    uiStore.addToast('Failed to sync VM from libvirt', 'error');
   }
 };
 

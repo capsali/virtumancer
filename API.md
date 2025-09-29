@@ -145,9 +145,13 @@ Base URL: /api/v1
       "graphics": {  
         "vnc": true,  
         "spice": false  
-      }  
+      },
+      "created\_at": "2023-10-27T10:30:00Z",
+      "updated\_at": "2023-10-27T15:45:00Z"
     }  
   \]
+
+*Note: The `created_at` and `updated_at` timestamps are now properly managed by GORM and correctly displayed in the frontend UI. These timestamps track when VM records are created and last modified in the database.*
 
 #### **GET /api/v1/hosts/:hostId/vms/:vmName/hardware**
 
@@ -163,17 +167,22 @@ Base URL: /api/v1
         "device": "disk",  
         "driver": { "driver\_name": "qemu", "type": "qcow2" },  
         "path": "/path/to/disk.qcow2",  
-        "target": { "dev": "vda", "bus": "virtio" }  
+        "target": { "dev": "vda", "bus": "virtio" },
+        "size\_bytes": 21474836480  
       }  
-    \],  
+    \],
+
+*Note: The `size_bytes` field provides the actual disk size in bytes for display purposes. The system calculates this from both current disk_attachments and legacy volume_attachments tables for comprehensive coverage.*  
     "networks": \[  
       {  
         "type": "bridge",  
         "mac": { "address": "52:54:00:11:22:33" },  
-        "source": { "bridge": "br0" },  
+        "source": { "bridge": "br0", "portgroup": "vlan100" },  
         "model": { "model\_type": "virtio" }  
       }  
-    \]  
+    \]
+
+*Note: The `portgroup` field in the source object is optional and indicates the OpenVSwitch portgroup or bridge VLAN configuration for the network interface. This field is used for network policy and VLAN segmentation.*  
   }
 
 #### **POST /api/v1/hosts/:hostId/vms/:vmName/action**

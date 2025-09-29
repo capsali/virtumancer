@@ -16,6 +16,7 @@ Stores the connection details for each managed libvirt host.
 | task_state | TEXT |  | The current task state if a connection/disconnection operation is in progress. |
 | auto_reconnect_disabled | BOOLEAN | DEFAULT false | If true, prevents automatic reconnection to this host. Set when user manually disconnects. |
 | created\_at | DATETIME |  | Timestamp of creation. |
+| updated\_at | DATETIME |  | Timestamp of last update. |
 
 ### **virtual\_machines**
 
@@ -34,6 +35,10 @@ The central table for virtual machines, caching their basic state and configurat
 | is\_template | BOOLEAN |  | (Future Use) If the VM is a template. |
 | cpu\_model | TEXT |  | (Future Use) The configured CPU model. |
 | cpu\_topology\_json | TEXT |  | (Future Use) JSON blob for sockets, cores, threads. |
+| created\_at | DATETIME |  | Timestamp when the VM record was created. |
+| updated\_at | DATETIME |  | Timestamp when the VM record was last updated. |
+
+*Note: All timestamps are managed by GORM's automatic timestamping feature and are properly displayed in the frontend UI.*
 
 ### **volumes**
 
@@ -46,9 +51,9 @@ Represents storage volumes (virtual disks, ISOs).
 | type | TEXT |  | The type of volume, e.g., DISK, ISO. |
 | format | TEXT |  | The disk format, e.g., qcow2, raw. |
 
-### **volume\_attachments**
+### **volume\_attachments** (Legacy)
 
-A join table linking virtual\_machines to volumes.
+A join table linking virtual\_machines to volumes. This table is maintained for backward compatibility with older data.
 
 | Column | Type | Constraints | Description |
 | :---- | :---- | :---- | :---- |
@@ -57,6 +62,23 @@ A join table linking virtual\_machines to volumes.
 | volume\_id | INTEGER |  | Foreign key to volumes. |
 | device\_name | TEXT |  | The device name inside the guest, e.g., vda. |
 | bus\_type | TEXT |  | The bus type, e.g., virtio, sata. |
+
+### **disk\_attachments** (Current)
+
+The current table for linking virtual machines to disk storage with enhanced metadata.
+
+| Column | Type | Constraints | Description |
+| :---- | :---- | :---- | :---- |
+| id | INTEGER | PRIMARY KEY | Auto-incrementing primary key with GORM timestamps. |
+| vm\_id | INTEGER |  | Foreign key to virtual\_machines. |
+| volume\_id | INTEGER |  | Foreign key to volumes. |
+| device\_name | TEXT |  | The device name inside the guest, e.g., vda. |
+| bus\_type | TEXT |  | The bus type, e.g., virtio, sata. |
+| size\_bytes | INTEGER |  | The size of the disk in bytes for display and management purposes. |
+| created\_at | DATETIME |  | Timestamp when the attachment was created. |
+| updated\_at | DATETIME |  | Timestamp when the attachment was last updated. |
+
+*Note: The system supports dual-table disk size calculation, checking both disk\_attachments and volume\_attachments for comprehensive size reporting.*
 
 ### **networks**
 
@@ -83,6 +105,7 @@ Represents a virtual network interface (vNIC).
 | vm\_id | INTEGER |  | Foreign key to virtual\_machines. |
 | mac\_address | TEXT | UNIQUE | The unique MAC address of the vNIC. |
 | model\_name | TEXT |  | The vNIC model, e.g., virtio. |
+| port\_group | TEXT |  | The portgroup name for OpenVSwitch or bridged networks. Used for network policy and VLAN configuration. |
 
 ### **port\_bindings**
 

@@ -173,7 +173,9 @@ type NetworkInfo struct {
 		Address string `xml:"address,attr" json:"address"`
 	} `xml:"mac" json:"mac"`
 	Source struct {
-		Bridge string `xml:"bridge,attr" json:"bridge"`
+		Bridge    string `xml:"bridge,attr" json:"bridge"`
+		Network   string `xml:"network,attr" json:"network"`
+		PortGroup string `xml:"portgroup,attr" json:"portgroup"`
 	} `xml:"source" json:"source"`
 	Model struct {
 		Type string `xml:"type,attr" json:"type"`
