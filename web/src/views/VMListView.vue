@@ -22,7 +22,7 @@
     </div>
 
     <!-- Filters and Search -->
-    <FCard class="p-6 card-glow">
+    <FGlassCard variant="strong" padding="lg" glow>
       <div class="flex items-center justify-between mb-4">
         <div class="flex items-center gap-3">
           <h2 class="text-lg font-semibold text-white">Search & Filters</h2>
@@ -50,56 +50,17 @@
               <div class="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
                 <div class="relative">
                   <button
-                    @click="showFilterDropdown = !showFilterDropdown"
-                    class="p-1.5 text-slate-400 hover:text-white transition-colors rounded"
+                    @click.stop="toggleFilterDropdown"
+                    :class="[
+                      'p-1.5 text-slate-400 hover:text-white transition-colors rounded',
+                      showFilterDropdown ? 'text-blue-400 bg-blue-500/10' : ''
+                    ]"
                     title="Filter options"
                   >
                     <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                       <path fill-rule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 011 1v3a1 1 0 01-.293.707L12 11.414V15a1 1 0 01-.293.707l-2 2A1 1 0 018 17v-5.586L3.293 6.707A1 1 0 013 6V3z" clip-rule="evenodd" />
                     </svg>
                   </button>
-                  <!-- Filter Dropdown Menu -->
-                  <div v-if="showFilterDropdown" v-click-away="() => showFilterDropdown = false" class="absolute right-0 top-full mt-2 w-64 bg-slate-800 border border-slate-600 rounded-lg shadow-xl z-50">
-                    <div class="p-4 space-y-4">
-                      <div>
-                        <label class="block text-sm font-medium text-slate-300 mb-2">State</label>
-                        <select
-                          v-model="statusFilter"
-                          class="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        >
-                          <option value="all">All States</option>
-                          <option value="ACTIVE">Active</option>
-                          <option value="STOPPED">Stopped</option>
-                          <option value="PAUSED">Paused</option>
-                          <option value="ERROR">Error</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label class="block text-sm font-medium text-slate-300 mb-2">Host</label>
-                        <select
-                          v-model="hostFilter"
-                          class="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        >
-                          <option value="all">All Hosts</option>
-                          <option v-for="host in hosts" :key="host.id" :value="host.id">{{ host.name || host.uri }}</option>
-                        </select>
-                      </div>
-                      <div class="flex justify-between pt-2 border-t border-slate-600">
-                        <button
-                          @click="clearAllFilters"
-                          class="px-3 py-1.5 text-sm text-slate-400 hover:text-white transition-colors"
-                        >
-                          Clear All
-                        </button>
-                        <button
-                          @click="showFilterDropdown = false"
-                          class="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors"
-                        >
-                          Apply
-                        </button>
-                      </div>
-                    </div>
-                  </div>
                 </div>
                 <button
                   @click="showFilterHelp = !showFilterHelp"
@@ -123,13 +84,161 @@
                 <div><code class="text-blue-400">name:web</code> - VMs with 'web' in name</div>
               </div>
             </div>
+
+            <!-- Expandable Filter Section -->
+            <div v-if="showFilterDropdown" class="mt-4 space-y-6 p-6 bg-slate-800/30 rounded-lg border border-slate-600/30 animate-in slide-in-from-top-1">
+              <!-- Quick Filter Toggles -->
+              <div>
+                <h4 class="text-sm font-medium text-slate-300 mb-3 flex items-center gap-2">
+                  <svg class="w-4 h-4 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 011 1v3a1 1 0 01-.293.707L12 11.414V15a1 1 0 01-.293.707l-2 2A1 1 0 018 17v-5.586L3.293 6.707A1 1 0 013 6V3z" clip-rule="evenodd" />
+                  </svg>
+                  Quick Filters
+                </h4>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+                  <button
+                    @click.stop="quickFilter('running')"
+                    :class="[
+                      'px-3 py-2 text-xs rounded-lg transition-all hover:scale-105',
+                      statusFilter === 'ACTIVE' ? 'bg-green-500/20 text-green-400 border border-green-500/30 shadow-lg' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                    ]"
+                  >
+                    🟢 Running
+                  </button>
+                  <button
+                    @click.stop="quickFilter('stopped')"
+                    :class="[
+                      'px-3 py-2 text-xs rounded-lg transition-all hover:scale-105',
+                      statusFilter === 'STOPPED' ? 'bg-red-500/20 text-red-400 border border-red-500/30 shadow-lg' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                    ]"
+                  >
+                    🔴 Stopped
+                  </button>
+                  <button
+                    @click.stop="quickFilter('paused')"
+                    :class="[
+                      'px-3 py-2 text-xs rounded-lg transition-all hover:scale-105',
+                      statusFilter === 'PAUSED' ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 shadow-lg' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                    ]"
+                  >
+                    ⏸️ Paused
+                  </button>
+                  <button
+                    @click.stop="quickFilter('error')"
+                    :class="[
+                      'px-3 py-2 text-xs rounded-lg transition-all hover:scale-105',
+                      statusFilter === 'ERROR' ? 'bg-red-500/20 text-red-400 border border-red-500/30 shadow-lg' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                    ]"
+                  >
+                    ❌ Error
+                  </button>
+                </div>
+              </div>
+
+              <!-- Detailed Filters -->
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label class="block text-sm font-medium text-slate-300 mb-2">State</label>
+                  <select
+                    v-model="statusFilter"
+                    class="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                  >
+                    <option value="all">All States</option>
+                    <option value="ACTIVE">Active</option>
+                    <option value="STOPPED">Stopped</option>
+                    <option value="PAUSED">Paused</option>
+                    <option value="ERROR">Error</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-slate-300 mb-2">Host</label>
+                  <select
+                    v-model="hostFilter"
+                    class="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                  >
+                    <option value="all">All Hosts</option>
+                    <option v-for="host in hosts" :key="host.id" :value="host.id">{{ host.name || host.uri }}</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-slate-300 mb-2">Operating System</label>
+                  <select
+                    v-model="osTypeFilter"
+                    class="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                  >
+                    <option value="all">All OS Types</option>
+                    <option value="linux">Linux</option>
+                    <option value="windows">Windows</option>
+                    <option value="macos">macOS</option>
+                    <option value="freebsd">FreeBSD</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Resource Filters -->
+              <div>
+                <h5 class="text-sm font-medium text-slate-300 mb-3 flex items-center gap-2">
+                  <svg class="w-4 h-4 text-purple-400" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z" />
+                  </svg>
+                  Resource Limits
+                </h5>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label class="block text-xs text-slate-400 mb-1">Minimum CPU Cores</label>
+                    <input
+                      v-model.number="minCpuCores"
+                      type="number"
+                      min="1"
+                      max="64"
+                      class="w-full px-3 py-2 text-sm bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                      placeholder="Any number of cores"
+                    />
+                  </div>
+                  <div>
+                    <label class="block text-xs text-slate-400 mb-1">Minimum Memory (GB)</label>
+                    <input
+                      v-model.number="minMemoryGb"
+                      type="number"
+                      min="1"
+                      max="1024"
+                      class="w-full px-3 py-2 text-sm bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                      placeholder="Any amount of RAM"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <!-- Actions -->
+              <div class="flex flex-col sm:flex-row gap-3 pt-4 border-t border-slate-600/50">
+                <button
+                  @click.stop="clearAllFilters"
+                  class="flex-1 px-4 py-2 text-sm text-slate-400 hover:text-white transition-all rounded-lg hover:bg-slate-700 border border-slate-600 hover:border-slate-500"
+                >
+                  <svg class="w-4 h-4 inline mr-2" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+                  </svg>
+                  Clear All Filters
+                </button>
+                <button
+                  @click.stop="showFilterDropdown = false"
+                  class="flex-1 px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all shadow-lg hover:shadow-xl"
+                >
+                  <svg class="w-4 h-4 inline mr-2" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+                  </svg>
+                  Apply Filters
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
-    </FCard>
+    </FGlassCard>
 
     <!-- VM List Card with Tabs and Content -->
-    <FCard class="card-glow">
+    <FGlassCard variant="default" glow>
       <!-- Tab Navigation with Controls -->
       <div class="border-b border-slate-700/50">
         <div class="flex items-center justify-between px-6 pt-6 pb-4">
@@ -160,83 +269,64 @@
           
           <!-- Controls Row -->
           <div class="flex items-center gap-4">
-            <!-- Pagination Controls -->
-            <div class="flex items-center gap-2">
-              <span class="text-sm text-slate-400">Show:</span>
-              <div class="relative">
-                <select
-                  v-model="itemsPerPage"
-                  class="px-3 py-1.5 bg-slate-800 border border-slate-600 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 pr-8 appearance-none"
-                >
-                  <option value="10">10</option>
-                  <option value="25">25</option>
-                  <option value="50">50</option>
-                  <option value="100">100</option>
-                  <option value="all">All</option>
-                </select>
-                <svg class="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400 pointer-events-none" fill="currentColor" viewBox="0 0 20 20">
-                  <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
-                </svg>
-              </div>
-            </div>
-            
-            <!-- View Settings Dropdown (only for managed VMs) -->
-            <div v-if="activeTab === 'managed'" class="relative">
+            <!-- View Settings (only for managed VMs) -->
+            <div v-if="activeTab === 'managed'">
               <button
-                @click="showViewDropdown = !showViewDropdown"
-                class="flex items-center gap-2 px-3 py-1.5 bg-slate-800 border border-slate-600 rounded text-white text-sm hover:bg-slate-700 transition-colors"
+                @click="cycleViewMode"
+                class="p-2 text-slate-400 hover:text-white transition-all duration-200 rounded hover:bg-slate-700/50 hover:ring-1 hover:ring-slate-600"
+                :title="`Current view: ${viewMode === 'grid' ? 'Cards' : viewMode === 'list' ? 'List' : 'Compact'}. Click to change.`"
               >
-                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <!-- Grid/Cards View Icon -->
+                <svg v-if="viewMode === 'grid'" class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
                   <path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM11 13a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
                 </svg>
-                <span>{{ viewMode === 'grid' ? 'Cards' : viewMode === 'list' ? 'List' : 'Compact' }}</span>
-                <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                  <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
+                <!-- List View Icon -->
+                <svg v-else-if="viewMode === 'list'" class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd" />
+                </svg>
+                <!-- Compact View Icon (2 thicker lines) -->
+                <svg v-else class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M3 7a1.5 1.5 0 011.5-1.5h11a1.5 1.5 0 110 3h-11A1.5 1.5 0 013 7zM3 13a1.5 1.5 0 011.5-1.5h11a1.5 1.5 0 110 3h-11A1.5 1.5 0 013 13z" />
                 </svg>
               </button>
-              
-              <!-- View Dropdown Menu -->
-              <div v-if="showViewDropdown" v-click-away="() => showViewDropdown = false" class="absolute right-0 top-full mt-2 w-40 bg-slate-800 border border-slate-600 rounded-lg shadow-xl z-50">
-                <div class="py-2">
-                  <button
-                    @click="setViewMode('grid')"
-                    :class="[
-                      'w-full flex items-center gap-3 px-4 py-2 text-sm transition-colors',
-                      viewMode === 'grid' ? 'text-blue-400 bg-blue-500/10' : 'text-slate-300 hover:text-white hover:bg-slate-700'
-                    ]"
-                  >
-                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                      <path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM11 13a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
-                    </svg>
-                    Cards
-                  </button>
-                  <button
-                    @click="setViewMode('list')"
-                    :class="[
-                      'w-full flex items-center gap-3 px-4 py-2 text-sm transition-colors',
-                      viewMode === 'list' ? 'text-blue-400 bg-blue-500/10' : 'text-slate-300 hover:text-white hover:bg-slate-700'
-                    ]"
-                  >
-                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                      <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd" />
-                    </svg>
-                    List
-                  </button>
-                  <button
-                    @click="setViewMode('compact')"
-                    :class="[
-                      'w-full flex items-center gap-3 px-4 py-2 text-sm transition-colors',
-                      viewMode === 'compact' ? 'text-blue-400 bg-blue-500/10' : 'text-slate-300 hover:text-white hover:bg-slate-700'
-                    ]"
-                  >
-                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                      <path d="M2 4a1 1 0 011-1h14a1 1 0 110 2H3a1 1 0 01-1-1zM2 8a1 1 0 011-1h14a1 1 0 110 2H3a1 1 0 01-1-1zM2 12a1 1 0 011-1h14a1 1 0 110 2H3a1 1 0 01-1-1zM2 16a1 1 0 011-1h14a1 1 0 110 2H3a1 1 0 01-1-1z" />
-                    </svg>
-                    Compact
-                  </button>
+            </div>
+            
+            <!-- Pagination Controls -->
+            <div class="flex items-center gap-2">
+              <div class="relative">
+                <button
+                  @click.stop="toggleItemsDropdown"
+                  class="px-3 py-2 bg-slate-800/70 border border-slate-600/50 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 backdrop-blur-sm transition-all duration-200 hover:bg-slate-700/70 hover:border-slate-500 min-w-[70px] flex items-center justify-between gap-2"
+                  :class="{ 'ring-2 ring-blue-500/30': showItemsDropdown }"
+                >
+                  <span>{{ itemsPerPage === 'all' ? 'All' : itemsPerPage }}</span>
+                  <svg class="w-3 h-3 text-slate-400 transition-transform duration-200" :class="{ 'rotate-180': showItemsDropdown }" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
+                  </svg>
+                </button>
+                
+                <!-- Custom Dropdown Menu -->
+                <div v-if="showItemsDropdown" v-click-away="() => showItemsDropdown = false" class="absolute top-full mt-2 left-0 w-full bg-slate-800/90 border border-slate-600/50 rounded-lg shadow-xl z-[50] backdrop-blur-sm animate-in slide-in-from-top-1">
+                  <div class="py-1">
+                    <button
+                      v-for="option in itemsPerPageOptions"
+                      :key="option.value"
+                      @click.stop="setItemsPerPage(option.value)"
+                      :class="[
+                        'w-full text-left px-3 py-2 text-sm transition-colors flex items-center justify-between',
+                        itemsPerPage === option.value ? 'text-blue-400 bg-blue-500/10' : 'text-slate-300 hover:text-white hover:bg-slate-700/50'
+                      ]"
+                    >
+                      <span>{{ option.label }}</span>
+                      <svg v-if="itemsPerPage === option.value" class="w-3 h-3 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+                      </svg>
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
+
             
             <!-- Discovered VMs Actions (icon-only buttons) -->
             <div v-if="activeTab === 'discovered'" class="flex items-center gap-2">
@@ -277,8 +367,406 @@
 
       <!-- Tab Content -->
       <div class="p-6">
+        <!-- Managed VMs Tab Content -->
+        <div v-if="activeTab === 'managed'">
+          <!-- VM Grid View -->
+          <div v-if="filteredVMs.length > 0 && viewMode === 'grid'" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <FGlassCard
+              v-for="vm in filteredVMs"
+              :key="vm.uuid"
+              variant="default"
+              padding="lg"
+              glow
+              class="cursor-pointer transition-all duration-300 hover:scale-[1.02]"
+              @click="$router.push(`/hosts/${vm.hostId}/vms/${vm.name}`)"
+            >
+              <div class="space-y-4">
+                <!-- VM Header -->
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-3">
+                    <div :class="[
+                      'w-4 h-4 rounded-full',
+                      getVMStatusColor(vm.state)
+                    ]"></div>
+                    <div>
+                      <h3 class="text-lg font-semibold text-white">{{ vm.name }}</h3>
+                      <p class="text-sm text-slate-400">{{ vm.osType || 'Unknown OS' }}</p>
+                    </div>
+                  </div>
+                  <div class="text-right">
+                    <div class="text-sm text-slate-400">{{ vm.hostName || 'Unknown Host' }}</div>
+                  </div>
+                </div>
+
+                <!-- VM Stats -->
+                <div class="grid grid-cols-2 gap-4">
+                  <div class="text-center">
+                    <div class="text-lg font-semibold text-white">{{ vm.vcpuCount || 'N/A' }}</div>
+                    <div class="text-xs text-slate-400">vCPUs</div>
+                  </div>
+                  <div class="text-center">
+                    <div class="text-lg font-semibold text-white">{{ vm.memoryMB ? `${Math.round(vm.memoryMB / 1024)}GB` : 'N/A' }}</div>
+                    <div class="text-xs text-slate-400">Memory</div>
+                  </div>
+                </div>
+
+                <!-- Actions -->
+                <div class="flex gap-2">
+                  <FButton
+                    variant="ghost"
+                    size="sm"
+                    @click.stop="handleVMAction(vm, 'start')"
+                    :disabled="vm.state === 'ACTIVE' || !!vm.taskState"
+                    class="flex items-center gap-2"
+                  >
+                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                      <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" />
+                    </svg>
+                    Start
+                  </FButton>
+                  <FButton
+                    variant="ghost"
+                    size="sm"
+                    @click.stop="handleVMAction(vm, 'stop')"
+                    :disabled="vm.state === 'STOPPED' || !!vm.taskState"
+                    class="flex items-center gap-2"
+                  >
+                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                      <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clip-rule="evenodd" />
+                    </svg>
+                    Stop
+                  </FButton>
+                  <FButton
+                    variant="outline"
+                    size="sm"
+                    @click.stop="openVMConsole(vm)"
+                    :disabled="vm.state !== 'ACTIVE'"
+                    class="flex items-center gap-2"
+                  >
+                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                      <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm0 4a1 1 0 011-1h12a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1V8zm8 2a1 1 0 100 2h2a1 1 0 100-2h-2z" clip-rule="evenodd" />
+                    </svg>
+                    Console
+                  </FButton>
+                </div>
+              </div>
+            </FGlassCard>
+          </div>
+
+          <!-- VM List View -->
+          <div v-else-if="filteredVMs.length > 0 && viewMode === 'list'" class="overflow-x-auto">
+            <table class="w-full">
+              <thead class="border-b border-slate-700/50">
+                <tr class="text-left">
+                  <th 
+                    class="px-6 py-3 text-sm font-medium text-slate-300 cursor-pointer hover:text-white transition-colors select-none"
+                    @click="handleSort('name')"
+                  >
+                    <div class="flex items-center gap-2">
+                      Name
+                      <span class="text-xs opacity-70">{{ getSortIcon('name') }}</span>
+                    </div>
+                  </th>
+                  <th 
+                    class="px-6 py-3 text-sm font-medium text-slate-300 cursor-pointer hover:text-white transition-colors select-none"
+                    @click="handleSort('host')"
+                  >
+                    <div class="flex items-center gap-2">
+                      Host
+                      <span class="text-xs opacity-70">{{ getSortIcon('host') }}</span>
+                    </div>
+                  </th>
+                  <th 
+                    class="px-6 py-3 text-sm font-medium text-slate-300 cursor-pointer hover:text-white transition-colors select-none"
+                    @click="handleSort('status')"
+                  >
+                    <div class="flex items-center gap-2">
+                      Status
+                      <span class="text-xs opacity-70">{{ getSortIcon('status') }}</span>
+                    </div>
+                  </th>
+                  <th 
+                    class="px-6 py-3 text-sm font-medium text-slate-300 text-center cursor-pointer hover:text-white transition-colors select-none"
+                    @click="handleSort('vcpus')"
+                  >
+                    <div class="flex items-center justify-center gap-2">
+                      vCPUs
+                      <span class="text-xs opacity-70">{{ getSortIcon('vcpus') }}</span>
+                    </div>
+                  </th>
+                  <th 
+                    class="px-6 py-3 text-sm font-medium text-slate-300 cursor-pointer hover:text-white transition-colors select-none"
+                    @click="handleSort('memory')"
+                  >
+                    <div class="flex items-center gap-2">
+                      Memory
+                      <span class="text-xs opacity-70">{{ getSortIcon('memory') }}</span>
+                    </div>
+                  </th>
+                  <th class="px-6 py-3 text-sm font-medium text-slate-300">Actions</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-700/30">
+                <tr
+                  v-for="vm in filteredVMs"
+                  :key="vm.uuid"
+                  class="group hover:bg-slate-800/30 transition-colors duration-200 cursor-pointer"
+                  @click="$router.push(`/hosts/${vm.hostId}/vms/${vm.name}`)"
+                >
+                  <!-- Name Column -->
+                  <td class="px-6 py-3">
+                    <div class="flex items-center gap-3">
+                      <div :class="[
+                        'w-3 h-3 rounded-full flex-shrink-0',
+                        getVMStatusColor(vm.state)
+                      ]"></div>
+                      <div class="min-w-0">
+                        <div class="text-white font-medium truncate">{{ vm.name }}</div>
+                        <div class="text-xs text-slate-400 truncate">{{ vm.osType || 'Unknown OS' }}</div>
+                      </div>
+                    </div>
+                  </td>
+                  
+                  <!-- Host Column -->
+                  <td class="px-6 py-3 text-slate-300">{{ vm.hostName || 'Unknown Host' }}</td>
+                  
+                  <!-- Status Column -->
+                  <td class="px-6 py-3">
+                    <span :class="[
+                      'px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap',
+                      vm.state === 'ACTIVE' ? 'bg-green-500/20 text-green-400' :
+                      vm.state === 'STOPPED' ? 'bg-red-500/20 text-red-400' :
+                      vm.state === 'ERROR' ? 'bg-red-600/20 text-red-300' :
+                      'bg-yellow-500/20 text-yellow-400'
+                    ]">
+                      {{ vm.state }}
+                    </span>
+                  </td>
+                  
+                  <!-- vCPUs Column -->
+                  <td class="px-6 py-3 text-slate-300 text-center">{{ vm.vcpuCount || 'N/A' }}</td>
+                  
+                  <!-- Memory Column -->
+                  <td class="px-6 py-3 text-slate-300">{{ vm.memoryMB ? `${Math.round(vm.memoryMB / 1024)}GB` : 'N/A' }}</td>
+                  
+                  <!-- Actions Column -->
+                  <td class="px-6 py-3">
+                    <div class="flex items-center gap-2">
+                    <FButton
+                      variant="ghost"
+                      size="sm"
+                      @click.stop="handleVMAction(vm, 'start')"
+                      :disabled="vm.state === 'ACTIVE' || !!vm.taskState"
+                      class="p-2"
+                      title="Start VM"
+                    >
+                      <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" />
+                      </svg>
+                    </FButton>
+                    <FButton
+                      variant="ghost"
+                      size="sm"
+                      @click.stop="handleVMAction(vm, 'stop')"
+                      :disabled="vm.state === 'STOPPED' || !!vm.taskState"
+                      class="p-2"
+                      title="Stop VM"
+                    >
+                      <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clip-rule="evenodd" />
+                      </svg>
+                    </FButton>
+                    <FButton
+                      variant="outline"
+                      size="sm"
+                      @click.stop="openVMConsole(vm)"
+                      :disabled="vm.state !== 'ACTIVE'"
+                      class="p-2"
+                      title="Open Console"
+                    >
+                      <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm0 4a1 1 0 011-1h12a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1V8zm8 2a1 1 0 100 2h2a1 1 0 100-2h-2z" clip-rule="evenodd" />
+                      </svg>
+                    </FButton>
+                    <!-- View Details button - moved from dropdown -->
+                    <FButton
+                      variant="ghost"
+                      size="sm"
+                      @click.stop="viewVMDetails(vm)"
+                      class="p-2 hidden lg:flex"
+                      title="View Details"
+                    >
+                      <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M2 10a8 8 0 018-8v8h8a8 8 0 11-16 0z" />
+                        <path d="M12 2.252A8.014 8.014 0 0117.748 8H12V2.252z" />
+                      </svg>
+                    </FButton>
+                    <!-- Dropdown Menu -->
+                    <div class="relative">
+                      <FButton
+                        variant="ghost"
+                        size="sm"
+                        @click.stop="toggleDropdown(vm.uuid)"
+                        class="p-2"
+                        title="More Actions"
+                      >
+                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                          <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+                        </svg>
+                      </FButton>
+                      <div 
+                        v-if="activeDropdown === vm.uuid"
+                        class="absolute right-0 top-full mt-1 w-48 bg-slate-800 border border-slate-600/50 rounded-lg shadow-lg z-50 card-glow"
+                      >
+                        <div class="py-1">
+                          <!-- Show View Details only on smaller screens -->
+                          <button
+                            @click.stop="viewVMDetails(vm)"
+                            class="w-full px-4 py-2 text-left text-sm text-slate-300 hover:bg-slate-700/50 hover:text-white transition-colors flex items-center gap-3 lg:hidden"
+                          >
+                            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                              <path d="M2 10a8 8 0 018-8v8h8a8 8 0 11-16 0z" />
+                              <path d="M12 2.252A8.014 8.014 0 0117.748 8H12V2.252z" />
+                            </svg>
+                            View Details
+                          </button>
+                          <button
+                            @click.stop="cloneVM(vm)"
+                            class="w-full px-4 py-2 text-left text-sm text-slate-300 hover:bg-slate-700/50 hover:text-white transition-colors flex items-center gap-3"
+                          >
+                            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                              <path d="M8 2a1 1 0 000 2h2a1 1 0 100-2H8z" />
+                              <path d="M3 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v6h-4.586l1.293-1.293a1 1 0 00-1.414-1.414l-3 3a1 1 0 000 1.414l3 3a1 1 0 001.414-1.414L10.414 13H15v3a2 2 0 01-2 2H5a2 2 0 01-2-2V5zM15 11.586l-3-3a1 1 0 00-1.414 1.414L11.586 11H9a1 1 0 100 2h2.586l-1 1a1 1 0 001.414 1.414l3-3z" />
+                            </svg>
+                            Clone VM
+                          </button>
+                          <button
+                            @click.stop="exportVM(vm)"
+                            class="w-full px-4 py-2 text-left text-sm text-slate-300 hover:bg-slate-700/50 hover:text-white transition-colors flex items-center gap-3"
+                          >
+                            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                              <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd" />
+                            </svg>
+                            Export
+                          </button>
+                          <hr class="border-slate-600/50 my-1">
+                          <button
+                            @click.stop="deleteVM(vm)"
+                            class="w-full px-4 py-2 text-left text-sm text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-colors flex items-center gap-3"
+                          >
+                            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                              <path fill-rule="evenodd" d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" clip-rule="evenodd" />
+                              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+                            </svg>
+                            Delete VM
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- VM Compact View -->
+          <div v-else-if="filteredVMs.length > 0 && viewMode === 'compact'" class="space-y-1">
+            <div
+              v-for="vm in filteredVMs"
+              :key="vm.uuid"
+              class="group hover:bg-slate-800/30 rounded-lg transition-colors duration-200"
+            >
+              <div class="p-3 cursor-pointer" @click="$router.push(`/hosts/${vm.hostId}/vms/${vm.name}`)">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-3 min-w-0 flex-1">
+                    <div :class="[
+                      'w-2 h-2 rounded-full flex-shrink-0',
+                      getVMStatusColor(vm.state)
+                    ]"></div>
+                    <div class="min-w-0 flex-1">
+                      <div class="flex items-center gap-2">
+                        <span class="text-white font-medium truncate">{{ vm.name }}</span>
+                        <span :class="[
+                          'px-1.5 py-0.5 rounded text-xs font-medium flex-shrink-0',
+                          vm.state === 'ACTIVE' ? 'bg-green-500/20 text-green-400' :
+                          vm.state === 'STOPPED' ? 'bg-red-500/20 text-red-400' :
+                          vm.state === 'ERROR' ? 'bg-red-600/20 text-red-300' :
+                          'bg-yellow-500/20 text-yellow-400'
+                        ]">
+                          {{ vm.state }}
+                        </span>
+                      </div>
+                      <div class="text-xs text-slate-400 truncate">
+                        {{ vm.hostName }} • {{ vm.vcpuCount || 'N/A' }} vCPUs • {{ vm.memoryMB ? `${Math.round(vm.memoryMB / 1024)}GB` : 'N/A' }}
+                      </div>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-1 ml-2">
+                    <FButton
+                      variant="ghost"
+                      size="sm"
+                      @click.stop="handleVMAction(vm, 'start')"
+                      :disabled="vm.state === 'ACTIVE' || !!vm.taskState"
+                      class="text-xs p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                      title="Start VM"
+                    >
+                      <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" />
+                      </svg>
+                    </FButton>
+                    <FButton
+                      variant="ghost"
+                      size="sm"
+                      @click.stop="handleVMAction(vm, 'stop')"
+                      :disabled="vm.state === 'STOPPED' || !!vm.taskState"
+                      class="text-xs p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                      title="Stop VM"
+                    >
+                      <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clip-rule="evenodd" />
+                      </svg>
+                    </FButton>
+                    <FButton
+                      variant="outline"
+                      size="sm"
+                      @click.stop="openVMConsole(vm)"
+                      :disabled="vm.state !== 'ACTIVE'"
+                      class="text-xs p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                      title="Console"
+                    >
+                      <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm0 4a1 1 0 011-1h12a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1V8zm8 2a1 1 0 100 2h2a1 1 0 100-2h-2z" clip-rule="evenodd" />
+                      </svg>
+                    </FButton>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Empty State for Managed VMs -->
+          <div v-else-if="filteredVMs.length === 0" class="text-center py-12">
+            <div class="flex justify-center mb-4">
+              <svg class="w-16 h-16 text-slate-600" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm0 4a1 1 0 011-1h12a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1V8zm8 2a1 1 0 100 2h2a1 1 0 100-2h-2z" clip-rule="evenodd" />
+              </svg>
+            </div>
+            <h3 class="text-xl font-semibold text-white mb-2">No Virtual Machines Found</h3>
+            <p class="text-slate-400 mb-4">No virtual machines match your current filters.</p>
+            <div class="space-y-2 text-sm text-slate-500">
+              <p>Try:</p>
+              <ul class="list-disc list-inside space-y-1">
+                <li>Clearing your search filters</li>
+                <li>Checking different host connections</li>
+                <li>Switching to the "Discovered VMs" tab to import new VMs</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
         <!-- Discovered VMs Tab Content -->
-        <div v-if="activeTab === 'discovered'">
+        <div v-else-if="activeTab === 'discovered'">
           <div v-if="filteredDiscoveredVMs.length === 0" class="text-center py-8 text-slate-400">
             <svg class="w-12 h-12 mx-auto mb-4 opacity-50" fill="currentColor" viewBox="0 0 20 20">
               <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h4a1 1 0 010 2H6.414l2.293 2.293a1 1 0 01-1.414 1.414L5 6.414V8a1 1 0 01-2 0V4zm9 1a1 1 0 010-2h4a1 1 0 011 1v4a1 1 0 01-2 0V6.414l-2.293 2.293a1 1 0 11-1.414-1.414L13.586 5H12z" clip-rule="evenodd" />
@@ -385,403 +873,7 @@
           </div>
         </div>
       </div>
-    </FCard>
-
-    <!-- Managed VMs Content (Outside Card) -->
-    <div v-if="activeTab === 'managed' && filteredVMs.length > 0 && viewMode === 'grid'" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-      <FCard
-        v-for="vm in filteredVMs"
-        :key="vm.uuid"
-        class="p-6 card-glow cursor-pointer transition-all duration-300 hover:scale-[1.02]"
-        @click="$router.push(`/hosts/${vm.hostId}/vms/${vm.name}`)"
-      >
-        <div class="space-y-4">
-          <!-- VM Header -->
-          <div class="flex items-center justify-between">
-            <div class="flex items-center gap-3">
-              <div :class="[
-                'w-4 h-4 rounded-full',
-                getVMStatusColor(vm.state)
-              ]"></div>
-              <div>
-                <h3 class="text-lg font-semibold text-white">{{ vm.name }}</h3>
-                <p class="text-sm text-slate-400">{{ vm.osType || 'Unknown OS' }}</p>
-              </div>
-            </div>
-            <div class="text-right">
-              <div class="text-sm text-slate-400">{{ vm.hostName || 'Unknown Host' }}</div>
-            </div>
-          </div>
-
-          <!-- VM Stats -->
-          <div class="grid grid-cols-2 gap-4">
-            <div class="text-center">
-              <div class="text-lg font-semibold text-white">{{ vm.vcpuCount || 'N/A' }}</div>
-              <div class="text-xs text-slate-400">vCPUs</div>
-            </div>
-            <div class="text-center">
-              <div class="text-lg font-semibold text-white">{{ vm.memoryMB ? `${Math.round(vm.memoryMB / 1024)}GB` : 'N/A' }}</div>
-              <div class="text-xs text-slate-400">Memory</div>
-            </div>
-          </div>
-
-          <!-- Actions -->
-          <div class="flex gap-2">
-            <FButton
-              variant="ghost"
-              size="sm"
-              @click.stop="handleVMAction(vm, 'start')"
-              :disabled="vm.state === 'ACTIVE' || !!vm.taskState"
-              class="flex items-center gap-2"
-            >
-              <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" />
-              </svg>
-              Start
-            </FButton>
-            <FButton
-              variant="ghost"
-              size="sm"
-              @click.stop="handleVMAction(vm, 'stop')"
-              :disabled="vm.state === 'STOPPED' || !!vm.taskState"
-              class="flex items-center gap-2"
-            >
-              <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clip-rule="evenodd" />
-              </svg>
-              Stop
-            </FButton>
-            <FButton
-              variant="outline"
-              size="sm"
-              @click.stop="openVMConsole(vm)"
-              :disabled="vm.state !== 'ACTIVE'"
-              class="flex items-center gap-2"
-            >
-              <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm0 4a1 1 0 011-1h12a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1V8zm8 2a1 1 0 100 2h2a1 1 0 100-2h-2z" clip-rule="evenodd" />
-              </svg>
-              Console
-            </FButton>
-          </div>
-        </div>
-      </FCard>
-    </div>
-
-    <!-- VM List View -->
-    <div v-if="activeTab === 'managed' && filteredVMs.length > 0 && viewMode === 'list'" class="overflow-x-auto">
-      <FCard class="card-glow overflow-hidden">
-        <table class="w-full">
-          <thead class="border-b border-slate-700/50">
-            <tr class="text-left">
-              <th 
-                class="px-6 py-3 text-sm font-medium text-slate-300 cursor-pointer hover:text-white transition-colors select-none"
-                @click="handleSort('name')"
-              >
-                <div class="flex items-center gap-2">
-                  Name
-                  <span class="text-xs opacity-70">{{ getSortIcon('name') }}</span>
-                </div>
-              </th>
-              <th 
-                class="px-6 py-3 text-sm font-medium text-slate-300 cursor-pointer hover:text-white transition-colors select-none"
-                @click="handleSort('host')"
-              >
-                <div class="flex items-center gap-2">
-                  Host
-                  <span class="text-xs opacity-70">{{ getSortIcon('host') }}</span>
-                </div>
-              </th>
-              <th 
-                class="px-6 py-3 text-sm font-medium text-slate-300 cursor-pointer hover:text-white transition-colors select-none"
-                @click="handleSort('status')"
-              >
-                <div class="flex items-center gap-2">
-                  Status
-                  <span class="text-xs opacity-70">{{ getSortIcon('status') }}</span>
-                </div>
-              </th>
-              <th 
-                class="px-6 py-3 text-sm font-medium text-slate-300 text-center cursor-pointer hover:text-white transition-colors select-none"
-                @click="handleSort('vcpus')"
-              >
-                <div class="flex items-center justify-center gap-2">
-                  vCPUs
-                  <span class="text-xs opacity-70">{{ getSortIcon('vcpus') }}</span>
-                </div>
-              </th>
-              <th 
-                class="px-6 py-3 text-sm font-medium text-slate-300 cursor-pointer hover:text-white transition-colors select-none"
-                @click="handleSort('memory')"
-              >
-                <div class="flex items-center gap-2">
-                  Memory
-                  <span class="text-xs opacity-70">{{ getSortIcon('memory') }}</span>
-                </div>
-              </th>
-              <th class="px-6 py-3 text-sm font-medium text-slate-300">Actions</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-slate-700/30">
-            <tr
-              v-for="vm in filteredVMs"
-              :key="vm.uuid"
-              class="group hover:bg-slate-800/30 transition-colors duration-200 cursor-pointer"
-              @click="$router.push(`/hosts/${vm.hostId}/vms/${vm.name}`)"
-            >
-              <!-- Name Column -->
-              <td class="px-6 py-3">
-                <div class="flex items-center gap-3">
-                  <div :class="[
-                    'w-3 h-3 rounded-full flex-shrink-0',
-                    getVMStatusColor(vm.state)
-                  ]"></div>
-                  <div class="min-w-0">
-                    <div class="text-white font-medium truncate">{{ vm.name }}</div>
-                    <div class="text-xs text-slate-400 truncate">{{ vm.osType || 'Unknown OS' }}</div>
-                  </div>
-                </div>
-              </td>
-              
-              <!-- Host Column -->
-              <td class="px-6 py-3 text-slate-300">{{ vm.hostName || 'Unknown Host' }}</td>
-              
-              <!-- Status Column -->
-              <td class="px-6 py-3">
-                <span :class="[
-                  'px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap',
-                  vm.state === 'ACTIVE' ? 'bg-green-500/20 text-green-400' :
-                  vm.state === 'STOPPED' ? 'bg-red-500/20 text-red-400' :
-                  vm.state === 'ERROR' ? 'bg-red-600/20 text-red-300' :
-                  'bg-yellow-500/20 text-yellow-400'
-                ]">
-                  {{ vm.state }}
-                </span>
-              </td>
-              
-              <!-- vCPUs Column -->
-              <td class="px-6 py-3 text-slate-300 text-center">{{ vm.vcpuCount || 'N/A' }}</td>
-              
-              <!-- Memory Column -->
-              <td class="px-6 py-3 text-slate-300">{{ vm.memoryMB ? `${Math.round(vm.memoryMB / 1024)}GB` : 'N/A' }}</td>
-              
-              <!-- Actions Column -->
-              <td class="px-6 py-3">
-                <div class="flex items-center gap-2">
-                <FButton
-                  variant="ghost"
-                  size="sm"
-                  @click.stop="handleVMAction(vm, 'start')"
-                  :disabled="vm.state === 'ACTIVE' || !!vm.taskState"
-                  class="p-2"
-                  title="Start VM"
-                >
-                  <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" />
-                  </svg>
-                </FButton>
-                <FButton
-                  variant="ghost"
-                  size="sm"
-                  @click.stop="handleVMAction(vm, 'stop')"
-                  :disabled="vm.state === 'STOPPED' || !!vm.taskState"
-                  class="p-2"
-                  title="Stop VM"
-                >
-                  <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clip-rule="evenodd" />
-                  </svg>
-                </FButton>
-                <FButton
-                  variant="outline"
-                  size="sm"
-                  @click.stop="openVMConsole(vm)"
-                  :disabled="vm.state !== 'ACTIVE'"
-                  class="p-2"
-                  title="Open Console"
-                >
-                  <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                    <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm0 4a1 1 0 011-1h12a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1V8zm8 2a1 1 0 100 2h2a1 1 0 100-2h-2z" clip-rule="evenodd" />
-                  </svg>
-                </FButton>
-                <!-- View Details button - moved from dropdown -->
-                <FButton
-                  variant="ghost"
-                  size="sm"
-                  @click.stop="viewVMDetails(vm)"
-                  class="p-2 hidden lg:flex"
-                  title="View Details"
-                >
-                  <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                    <path d="M2 10a8 8 0 018-8v8h8a8 8 0 11-16 0z" />
-                    <path d="M12 2.252A8.014 8.014 0 0117.748 8H12V2.252z" />
-                  </svg>
-                </FButton>
-                <!-- Dropdown Menu -->
-                <div class="relative">
-                  <FButton
-                    variant="ghost"
-                    size="sm"
-                    @click.stop="toggleDropdown(vm.uuid)"
-                    class="p-2"
-                    title="More Actions"
-                  >
-                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                      <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
-                    </svg>
-                  </FButton>
-                  <div 
-                    v-if="activeDropdown === vm.uuid"
-                    class="absolute right-0 top-full mt-1 w-48 bg-slate-800 border border-slate-600/50 rounded-lg shadow-lg z-50 card-glow"
-                  >
-                    <div class="py-1">
-                      <!-- Show View Details only on smaller screens -->
-                      <button
-                        @click.stop="viewVMDetails(vm)"
-                        class="w-full px-4 py-2 text-left text-sm text-slate-300 hover:bg-slate-700/50 hover:text-white transition-colors flex items-center gap-3 lg:hidden"
-                      >
-                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                          <path d="M2 10a8 8 0 018-8v8h8a8 8 0 11-16 0z" />
-                          <path d="M12 2.252A8.014 8.014 0 0117.748 8H12V2.252z" />
-                        </svg>
-                        View Details
-                      </button>
-                      <button
-                        @click.stop="cloneVM(vm)"
-                        class="w-full px-4 py-2 text-left text-sm text-slate-300 hover:bg-slate-700/50 hover:text-white transition-colors flex items-center gap-3"
-                      >
-                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                          <path d="M8 2a1 1 0 000 2h2a1 1 0 100-2H8z" />
-                          <path d="M3 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v6h-4.586l1.293-1.293a1 1 0 00-1.414-1.414l-3 3a1 1 0 000 1.414l3 3a1 1 0 001.414-1.414L10.414 13H15v3a2 2 0 01-2 2H5a2 2 0 01-2-2V5zM15 11.586l-3-3a1 1 0 00-1.414 1.414L11.586 11H9a1 1 0 100 2h2.586l-1 1a1 1 0 001.414 1.414l3-3z" />
-                        </svg>
-                        Clone VM
-                      </button>
-                      <button
-                        @click.stop="exportVM(vm)"
-                        class="w-full px-4 py-2 text-left text-sm text-slate-300 hover:bg-slate-700/50 hover:text-white transition-colors flex items-center gap-3"
-                      >
-                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                          <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd" />
-                        </svg>
-                        Export
-                      </button>
-                      <hr class="border-slate-600/50 my-1">
-                      <button
-                        @click.stop="deleteVM(vm)"
-                        class="w-full px-4 py-2 text-left text-sm text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-colors flex items-center gap-3"
-                      >
-                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                          <path fill-rule="evenodd" d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" clip-rule="evenodd" />
-                          <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
-                        </svg>
-                        Delete VM
-                      </button>
-                    </div>
-                  </div>
-                </div>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </FCard>
-    </div>
-
-    <!-- VM Compact View -->
-    <div v-if="activeTab === 'managed' && filteredVMs.length > 0 && viewMode === 'compact'" class="space-y-1">
-      <div
-        v-for="vm in filteredVMs"
-        :key="vm.uuid"
-        class="group hover:bg-slate-800/30 rounded-lg transition-colors duration-200"
-      >
-        <FCard class="p-3 card-glow cursor-pointer" @click="$router.push(`/hosts/${vm.hostId}/vms/${vm.name}`)">
-          <div class="flex items-center justify-between">
-            <div class="flex items-center gap-3 min-w-0 flex-1">
-              <div :class="[
-                'w-2 h-2 rounded-full flex-shrink-0',
-                getVMStatusColor(vm.state)
-              ]"></div>
-              <div class="min-w-0 flex-1">
-                <div class="flex items-center gap-2">
-                  <span class="text-white font-medium truncate">{{ vm.name }}</span>
-                  <span :class="[
-                    'px-1.5 py-0.5 rounded text-xs font-medium flex-shrink-0',
-                    vm.state === 'ACTIVE' ? 'bg-green-500/20 text-green-400' :
-                    vm.state === 'STOPPED' ? 'bg-red-500/20 text-red-400' :
-                    vm.state === 'ERROR' ? 'bg-red-600/20 text-red-300' :
-                    'bg-yellow-500/20 text-yellow-400'
-                  ]">
-                    {{ vm.state }}
-                  </span>
-                </div>
-                <div class="text-xs text-slate-400 truncate">
-                  {{ vm.hostName }} • {{ vm.vcpuCount || 'N/A' }} vCPUs • {{ vm.memoryMB ? `${Math.round(vm.memoryMB / 1024)}GB` : 'N/A' }}
-                </div>
-              </div>
-            </div>
-            <div class="flex items-center gap-1 ml-2">
-              <FButton
-                variant="ghost"
-                size="sm"
-                @click.stop="handleVMAction(vm, 'start')"
-                :disabled="vm.state === 'ACTIVE' || !!vm.taskState"
-                class="text-xs p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                title="Start VM"
-              >
-                <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                  <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" />
-                </svg>
-              </FButton>
-              <FButton
-                variant="ghost"
-                size="sm"
-                @click.stop="handleVMAction(vm, 'stop')"
-                :disabled="vm.state === 'STOPPED' || !!vm.taskState"
-                class="text-xs p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                title="Stop VM"
-              >
-                <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                  <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clip-rule="evenodd" />
-                </svg>
-              </FButton>
-              <FButton
-                variant="outline"
-                size="sm"
-                @click.stop="openVMConsole(vm)"
-                :disabled="vm.state !== 'ACTIVE'"
-                class="text-xs p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                title="Console"
-              >
-                <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                  <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm0 4a1 1 0 011-1h12a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1V8zm8 2a1 1 0 100 2h2a1 1 0 100-2h-2z" clip-rule="evenodd" />
-                </svg>
-              </FButton>
-            </div>
-          </div>
-        </FCard>
-      </div>
-    </div>
-
-
-
-    <!-- Empty State for Managed VMs -->
-    <div v-else-if="activeTab === 'managed' && filteredVMs.length === 0" class="text-center py-12">
-      <div class="flex justify-center mb-4">
-        <svg class="w-16 h-16 text-slate-600" fill="currentColor" viewBox="0 0 20 20">
-          <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm0 4a1 1 0 011-1h12a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1V8zm8 2a1 1 0 100 2h2a1 1 0 100-2h-2z" clip-rule="evenodd" />
-        </svg>
-      </div>
-      <h3 class="text-xl font-semibold text-white mb-2">No Virtual Machines Found</h3>
-      <p class="text-slate-400 mb-4">No virtual machines match your current filters.</p>
-      <div class="space-y-2 text-sm text-slate-500">
-        <p>Try:</p>
-        <ul class="list-disc list-inside space-y-1">
-          <li>Clearing your search filters</li>
-          <li>Checking different host connections</li>
-          <li>Switching to the "Discovered VMs" tab to import new VMs</li>
-        </ul>
-      </div>
-    </div>
+    </FGlassCard>
 
   </div>
 </template>
@@ -792,11 +884,12 @@ import { useRouter } from 'vue-router'
 import { useHostStore } from '@/stores/hostStore'
 import { useVMStore } from '@/stores/vmStore'
 import { useUserPreferences } from '@/composables/useUserPreferences'
-import FCard from '@/components/ui/FCard.vue'
+import FGlassCard from '@/components/ui/FGlassCard.vue'
 import FButton from '@/components/ui/FButton.vue'
 import FBreadcrumbs from '@/components/ui/FBreadcrumbs.vue'
 import { getConsoleRoute } from '@/utils/console'
 import DiscoveredVMBulkManager from '@/components/vm/DiscoveredVMBulkManager.vue'
+import { vClickAway } from '@/directives/clickAway'
 
 const router = useRouter()
 const hostStore = useHostStore()
@@ -807,16 +900,31 @@ const { vmListPreferences } = useUserPreferences()
 const searchQuery = ref('')
 const statusFilter = ref('all')
 const hostFilter = ref('all')
+const osTypeFilter = ref('all')
+const minCpuCores = ref<number | null>(null)
+const minMemoryGb = ref<number | null>(null)
 const activeDropdown = ref<string | null>(null)
 const activeTab = ref<'managed' | 'discovered'>('managed')
 
 // Filter UI state
 const showFilterHelp = ref(false)
 const showFilterDropdown = ref(false)
-const showViewDropdown = ref(false)
+
+// Element refs
+// const viewButtonRef = ref<HTMLElement>() // Removed - no longer needed with select element
 
 // Pagination state  
-const itemsPerPage = ref(25)
+const itemsPerPage = ref<number | 'all'>(25)
+const showItemsDropdown = ref(false)
+
+// Items per page options
+const itemsPerPageOptions = [
+  { label: '10', value: 10 },
+  { label: '25', value: 25 },
+  { label: '50', value: 50 },
+  { label: '100', value: 100 },
+  { label: 'All', value: 'all' as const }
+]
 
 // Discovered VMs state
 const selectedDiscoveredVMs = ref<string[]>([])
@@ -863,7 +971,38 @@ const filteredVMs = computed(() => {
     if (!searchQuery.value) {
       const matchesStatus = statusFilter.value === 'all' || vm.state === statusFilter.value
       const matchesHost = hostFilter.value === 'all' || vm.hostId === hostFilter.value
-      return matchesStatus && matchesHost
+      
+      // OS Type filter
+      let matchesOsType = true
+      if (osTypeFilter.value !== 'all') {
+        const osType = vm.osType?.toLowerCase() || 'other'
+        if (osTypeFilter.value === 'linux') {
+          matchesOsType = osType.includes('linux') || osType.includes('ubuntu') || osType.includes('debian') || osType.includes('centos') || osType.includes('rhel')
+        } else if (osTypeFilter.value === 'windows') {
+          matchesOsType = osType.includes('windows') || osType.includes('win')
+        } else if (osTypeFilter.value === 'macos') {
+          matchesOsType = osType.includes('macos') || osType.includes('mac') || osType.includes('darwin')
+        } else if (osTypeFilter.value === 'freebsd') {
+          matchesOsType = osType.includes('freebsd') || osType.includes('bsd')
+        } else {
+          matchesOsType = osTypeFilter.value === 'other'
+        }
+      }
+      
+      // CPU filter
+      let matchesCpu = true
+      if (minCpuCores.value && minCpuCores.value > 0) {
+        matchesCpu = (vm.vcpuCount || 0) >= minCpuCores.value
+      }
+      
+      // Memory filter
+      let matchesMemory = true
+      if (minMemoryGb.value && minMemoryGb.value > 0) {
+        const vmMemGb = (vm.memoryMB || 0) / 1024
+        matchesMemory = vmMemGb >= minMemoryGb.value
+      }
+      
+      return matchesStatus && matchesHost && matchesOsType && matchesCpu && matchesMemory
     }
     
     // Parse advanced search filters
@@ -917,7 +1056,35 @@ const filteredVMs = computed(() => {
     const matchesStatus = statusFilter.value === 'all' || vm.state === statusFilter.value
     const matchesHost = hostFilter.value === 'all' || vm.hostId === hostFilter.value
     
-    return matchesStatus && matchesHost
+    // Also apply the new filters
+    let matchesOsType = true
+    if (osTypeFilter.value !== 'all') {
+      const osType = vm.osType?.toLowerCase() || 'other'
+      if (osTypeFilter.value === 'linux') {
+        matchesOsType = osType.includes('linux') || osType.includes('ubuntu') || osType.includes('debian') || osType.includes('centos') || osType.includes('rhel')
+      } else if (osTypeFilter.value === 'windows') {
+        matchesOsType = osType.includes('windows') || osType.includes('win')
+      } else if (osTypeFilter.value === 'macos') {
+        matchesOsType = osType.includes('macos') || osType.includes('mac') || osType.includes('darwin')
+      } else if (osTypeFilter.value === 'freebsd') {
+        matchesOsType = osType.includes('freebsd') || osType.includes('bsd')
+      } else {
+        matchesOsType = osTypeFilter.value === 'other'
+      }
+    }
+    
+    let matchesCpu = true
+    if (minCpuCores.value && minCpuCores.value > 0) {
+      matchesCpu = (vm.vcpuCount || 0) >= minCpuCores.value
+    }
+    
+    let matchesMemory = true
+    if (minMemoryGb.value && minMemoryGb.value > 0) {
+      const vmMemGb = (vm.memoryMB || 0) / 1024
+      matchesMemory = vmMemGb >= minMemoryGb.value
+    }
+    
+    return matchesStatus && matchesHost && matchesOsType && matchesCpu && matchesMemory
   })
 
   // Apply sorting
@@ -971,6 +1138,9 @@ const activeFiltersCount = computed(() => {
   if (searchQuery.value) count++
   if (statusFilter.value !== 'all') count++
   if (hostFilter.value !== 'all') count++
+  if (osTypeFilter.value !== 'all') count++
+  if (minCpuCores.value && minCpuCores.value > 0) count++
+  if (minMemoryGb.value && minMemoryGb.value > 0) count++
   return count
 })
 
@@ -1207,18 +1377,52 @@ const fetchVMsForAllHosts = async () => {
 }
 
 // Filter methods
+const quickFilter = (type: string) => {
+  switch (type) {
+    case 'running':
+      statusFilter.value = 'ACTIVE'
+      break
+    case 'stopped':
+      statusFilter.value = 'STOPPED'
+      break
+    case 'paused':
+      statusFilter.value = 'PAUSED'
+      break
+    case 'error':
+      statusFilter.value = 'ERROR'
+      break
+  }
+}
+
 const clearAllFilters = () => {
   searchQuery.value = ''
   statusFilter.value = 'all'
   hostFilter.value = 'all'
+  osTypeFilter.value = 'all'
+  minCpuCores.value = null
+  minMemoryGb.value = null
   showFilterHelp.value = false
   showFilterDropdown.value = false
+  showItemsDropdown.value = false
 }
 
 // View mode methods
-const setViewMode = (mode: 'grid' | 'list' | 'compact') => {
-  viewMode.value = mode
-  showViewDropdown.value = false
+const cycleViewMode = () => {
+  const modes: ('grid' | 'list' | 'compact')[] = ['grid', 'list', 'compact']
+  const currentIndex = modes.indexOf(viewMode.value)
+  const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % modes.length
+  viewMode.value = modes[nextIndex]!
+}
+
+// Items per page dropdown methods
+const toggleItemsDropdown = () => {
+  showFilterDropdown.value = false
+  showItemsDropdown.value = !showItemsDropdown.value
+}
+
+const setItemsPerPage = (value: number | 'all') => {
+  itemsPerPage.value = value
+  showItemsDropdown.value = false
 }
 
 // Sorting methods
@@ -1237,6 +1441,13 @@ const getSortIcon = (column: string) => {
 }
 
 // Dropdown methods
+const toggleFilterDropdown = () => {
+  showItemsDropdown.value = false
+  showFilterDropdown.value = !showFilterDropdown.value
+}
+
+// toggleViewDropdown removed - now using select element
+
 const toggleDropdown = (vmUuid: string) => {
   activeDropdown.value = activeDropdown.value === vmUuid ? null : vmUuid
 }
@@ -1256,13 +1467,11 @@ const viewVMDetails = (vm: any) => {
 const cloneVM = (vm: any) => {
   activeDropdown.value = null
   // TODO: Implement clone VM functionality
-  console.log('Clone VM:', vm.name)
 }
 
 const exportVM = (vm: any) => {
   activeDropdown.value = null
   // TODO: Implement export VM functionality
-  console.log('Export VM:', vm.name)
 }
 
 const deleteVM = async (vm: any) => {
@@ -1271,7 +1480,6 @@ const deleteVM = async (vm: any) => {
   if (confirm(`Are you sure you want to delete VM "${vm.name}"?`)) {
     try {
       // TODO: Implement delete VM functionality
-      console.log('Delete VM:', vm.name)
     } catch (error) {
       console.error('Failed to delete VM:', error)
     }
@@ -1281,6 +1489,8 @@ const deleteVM = async (vm: any) => {
 // Close dropdown when clicking outside
 const handleClickOutside = () => {
   activeDropdown.value = null
+  showFilterDropdown.value = false
+  showItemsDropdown.value = false
 }
 
 // Lifecycle
