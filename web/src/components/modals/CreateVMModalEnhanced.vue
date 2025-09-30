@@ -239,6 +239,82 @@
                   />
                 </div>
               </div>
+
+              <!-- Advanced CPU Features -->
+              <div class="space-y-4">
+                <h4 class="text-sm font-medium text-slate-300">CPU Features & Cache</h4>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label class="block text-sm font-medium text-white mb-2">
+                      CPU Cache Mode
+                    </label>
+                    <select
+                      v-model="formData.cpuCacheMode"
+                      class="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent transition-all"
+                    >
+                      <option value="passthrough">Passthrough (Default)</option>
+                      <option value="emulate">Emulate</option>
+                      <option value="disable">Disable</option>
+                    </select>
+                    <p class="text-xs text-slate-400 mt-1">CPU cache configuration for performance tuning</p>
+                  </div>
+
+                  <div>
+                    <label class="block text-sm font-medium text-white mb-2">
+                      NUMA Configuration
+                    </label>
+                    <select
+                      v-model="formData.numaMode"
+                      class="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent transition-all"
+                    >
+                      <option value="auto">Auto</option>
+                      <option value="strict">Strict</option>
+                      <option value="preferred">Preferred</option>
+                      <option value="interleave">Interleave</option>
+                    </select>
+                    <p class="text-xs text-slate-400 mt-1">Non-Uniform Memory Access topology</p>
+                  </div>
+                </div>
+
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div class="flex items-center gap-2">
+                    <input
+                      v-model="formData.cpuFeatures.pae"
+                      type="checkbox"
+                      id="cpu-pae"
+                      class="w-4 h-4 text-primary-600 bg-white/10 border-white/20 rounded focus:ring-primary-400"
+                    />
+                    <label for="cpu-pae" class="text-xs text-white">PAE</label>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <input
+                      v-model="formData.cpuFeatures.acpi"
+                      type="checkbox"
+                      id="cpu-acpi"
+                      class="w-4 h-4 text-primary-600 bg-white/10 border-white/20 rounded focus:ring-primary-400"
+                    />
+                    <label for="cpu-acpi" class="text-xs text-white">ACPI</label>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <input
+                      v-model="formData.cpuFeatures.apic"
+                      type="checkbox"
+                      id="cpu-apic"
+                      class="w-4 h-4 text-primary-600 bg-white/10 border-white/20 rounded focus:ring-primary-400"
+                    />
+                    <label for="cpu-apic" class="text-xs text-white">APIC</label>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <input
+                      v-model="formData.cpuFeatures.hyperv"
+                      type="checkbox"
+                      id="cpu-hyperv"
+                      class="w-4 h-4 text-primary-600 bg-white/10 border-white/20 rounded focus:ring-primary-400"
+                    />
+                    <label for="cpu-hyperv" class="text-xs text-white">Hyper-V</label>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <!-- Step 3: Memory Configuration -->
@@ -291,6 +367,38 @@
 
               <div class="space-y-4">
                 <h4 class="text-sm font-medium text-slate-300">Memory Features</h4>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label class="block text-sm font-medium text-white mb-2">
+                      Memory Backing
+                    </label>
+                    <select
+                      v-model="formData.memoryBacking"
+                      class="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent transition-all"
+                    >
+                      <option value="standard">Standard Pages</option>
+                      <option value="hugepages">Hugepages (2MB)</option>
+                      <option value="hugepages-1g">Hugepages (1GB)</option>
+                      <option value="file">File-backed</option>
+                    </select>
+                    <p class="text-xs text-slate-400 mt-1">Memory allocation strategy</p>
+                  </div>
+
+                  <div>
+                    <label class="block text-sm font-medium text-white mb-2">
+                      Memory Access
+                    </label>
+                    <select
+                      v-model="formData.memoryAccess"
+                      class="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent transition-all"
+                    >
+                      <option value="private">Private</option>
+                      <option value="shared">Shared</option>
+                    </select>
+                    <p class="text-xs text-slate-400 mt-1">Memory sharing mode</p>
+                  </div>
+                </div>
+
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div class="flex items-center gap-2">
                     <input
@@ -305,13 +413,35 @@
                   </div>
                   <div class="flex items-center gap-2">
                     <input
-                      v-model="formData.hugepages"
+                      v-model="formData.memoryLocking"
                       type="checkbox"
-                      id="hugepages"
+                      id="memory-locking"
                       class="w-4 h-4 text-primary-600 bg-white/10 border-white/20 rounded focus:ring-primary-400"
                     />
-                    <label for="hugepages" class="text-sm text-white">
-                      Use Hugepages
+                    <label for="memory-locking" class="text-sm text-white">
+                      Lock Memory in RAM
+                    </label>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <input
+                      v-model="formData.memoryHotplug"
+                      type="checkbox"
+                      id="memory-hotplug"
+                      class="w-4 h-4 text-primary-600 bg-white/10 border-white/20 rounded focus:ring-primary-400"
+                    />
+                    <label for="memory-hotplug" class="text-sm text-white">
+                      Enable Memory Hotplug
+                    </label>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <input
+                      v-model="formData.memoryDiscard"
+                      type="checkbox"
+                      id="memory-discard"
+                      class="w-4 h-4 text-primary-600 bg-white/10 border-white/20 rounded focus:ring-primary-400"
+                    />
+                    <label for="memory-discard" class="text-sm text-white">
+                      Enable Memory Discard
                     </label>
                   </div>
                 </div>
@@ -383,6 +513,8 @@
                         <option value="qcow2">QCOW2 (Recommended)</option>
                         <option value="raw">RAW</option>
                         <option value="vmdk">VMDK</option>
+                        <option value="vdi">VDI</option>
+                        <option value="vhd">VHD</option>
                       </select>
                     </div>
                     <div>
@@ -395,6 +527,7 @@
                         <option value="sata">SATA</option>
                         <option value="ide">IDE</option>
                         <option value="scsi">SCSI</option>
+                        <option value="nvme">NVMe</option>
                       </select>
                     </div>
                     <div>
@@ -406,7 +539,92 @@
                         <option value="none">None</option>
                         <option value="writethrough">Write Through</option>
                         <option value="writeback">Write Back</option>
+                        <option value="unsafe">Unsafe (Fastest)</option>
+                        <option value="directsync">Direct Sync</option>
                       </select>
+                    </div>
+                  </div>
+
+                  <!-- Advanced Storage Options -->
+                  <div class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label class="block text-xs font-medium text-slate-300 mb-1">I/O Mode</label>
+                      <select
+                        v-model="disk.ioMode"
+                        class="w-full px-2 py-1 text-sm bg-slate-700 border border-slate-600 rounded text-white"
+                      >
+                        <option value="threads">Threads</option>
+                        <option value="native">Native (Linux AIO)</option>
+                        <option value="io_uring">io_uring</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label class="block text-xs font-medium text-slate-300 mb-1">Discard</label>
+                      <select
+                        v-model="disk.discard"
+                        class="w-full px-2 py-1 text-sm bg-slate-700 border border-slate-600 rounded text-white"
+                      >
+                        <option value="ignore">Ignore</option>
+                        <option value="unmap">Unmap (TRIM/UNMAP)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label class="block text-xs font-medium text-slate-300 mb-1">Detect Zeroes</label>
+                      <select
+                        v-model="disk.detectZeroes"
+                        class="w-full px-2 py-1 text-sm bg-slate-700 border border-slate-600 rounded text-white"
+                      >
+                        <option value="off">Off</option>
+                        <option value="on">On</option>
+                        <option value="unmap">Unmap</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <!-- QoS Settings -->
+                  <div class="mt-4">
+                    <h5 class="text-xs font-medium text-slate-300 mb-2">QoS Limits (Optional)</h5>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div>
+                        <label class="block text-xs text-slate-400 mb-1">Read IOPS</label>
+                        <input
+                          v-model.number="disk.qos.readIops"
+                          type="number"
+                          min="0"
+                          placeholder="Unlimited"
+                          class="w-full px-2 py-1 text-xs bg-slate-700 border border-slate-600 rounded text-white"
+                        />
+                      </div>
+                      <div>
+                        <label class="block text-xs text-slate-400 mb-1">Write IOPS</label>
+                        <input
+                          v-model.number="disk.qos.writeIops"
+                          type="number"
+                          min="0"
+                          placeholder="Unlimited"
+                          class="w-full px-2 py-1 text-xs bg-slate-700 border border-slate-600 rounded text-white"
+                        />
+                      </div>
+                      <div>
+                        <label class="block text-xs text-slate-400 mb-1">Read BW (MB/s)</label>
+                        <input
+                          v-model.number="disk.qos.readBandwidth"
+                          type="number"
+                          min="0"
+                          placeholder="Unlimited"
+                          class="w-full px-2 py-1 text-xs bg-slate-700 border border-slate-600 rounded text-white"
+                        />
+                      </div>
+                      <div>
+                        <label class="block text-xs text-slate-400 mb-1">Write BW (MB/s)</label>
+                        <input
+                          v-model.number="disk.qos.writeBandwidth"
+                          type="number"
+                          min="0"
+                          placeholder="Unlimited"
+                          class="w-full px-2 py-1 text-xs bg-slate-700 border border-slate-600 rounded text-white"
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -469,6 +687,8 @@
                         <option value="bridge">Bridge</option>
                         <option value="nat">NAT</option>
                         <option value="host-only">Host Only</option>
+                        <option value="macvtap">MacVTap</option>
+                        <option value="sr-iov">SR-IOV</option>
                       </select>
                     </div>
                     <div>
@@ -479,7 +699,11 @@
                       >
                         <option value="virtio">VirtIO (Recommended)</option>
                         <option value="e1000">Intel e1000</option>
+                        <option value="e1000e">Intel e1000e</option>
+                        <option value="vmxnet3">VMware vmxnet3</option>
                         <option value="rtl8139">Realtek RTL8139</option>
+                        <option value="ne2k_pci">NE2000 PCI</option>
+                        <option value="pcnet">AMD PCnet</option>
                       </select>
                     </div>
                     <div>
@@ -490,6 +714,97 @@
                         placeholder="Auto-generate"
                         class="w-full px-2 py-1 text-sm bg-slate-700 border border-slate-600 rounded text-white placeholder-slate-400"
                       />
+                    </div>
+                  </div>
+
+                  <!-- Advanced Network Options -->
+                  <div class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label class="block text-xs font-medium text-slate-300 mb-1">Link State</label>
+                      <select
+                        v-model="nic.linkState"
+                        class="w-full px-2 py-1 text-sm bg-slate-700 border border-slate-600 rounded text-white"
+                      >
+                        <option value="up">Up</option>
+                        <option value="down">Down</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label class="block text-xs font-medium text-slate-300 mb-1">Queue Count</label>
+                      <input
+                        v-model.number="nic.queues"
+                        type="number"
+                        min="1"
+                        max="16"
+                        placeholder="Auto"
+                        class="w-full px-2 py-1 text-sm bg-slate-700 border border-slate-600 rounded text-white"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-xs font-medium text-slate-300 mb-1">MTU Size</label>
+                      <input
+                        v-model.number="nic.mtu"
+                        type="number"
+                        min="68"
+                        max="9000"
+                        placeholder="1500"
+                        class="w-full px-2 py-1 text-sm bg-slate-700 border border-slate-600 rounded text-white"
+                      />
+                    </div>
+                  </div>
+
+                  <!-- VLAN Configuration -->
+                  <div v-if="nic.network === 'bridge'" class="mt-4">
+                    <h5 class="text-xs font-medium text-slate-300 mb-2">VLAN Configuration</h5>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label class="block text-xs text-slate-400 mb-1">VLAN ID</label>
+                        <input
+                          v-model.number="nic.vlanId"
+                          type="number"
+                          min="1"
+                          max="4094"
+                          placeholder="Untagged"
+                          class="w-full px-2 py-1 text-xs bg-slate-700 border border-slate-600 rounded text-white"
+                        />
+                      </div>
+                      <div>
+                        <label class="block text-xs text-slate-400 mb-1">Native VLAN</label>
+                        <select
+                          v-model="nic.nativeVlan"
+                          class="w-full px-2 py-1 text-xs bg-slate-700 border border-slate-600 rounded text-white"
+                        >
+                          <option value="tagged">Tagged</option>
+                          <option value="untagged">Untagged</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- SR-IOV Configuration -->
+                  <div v-if="nic.network === 'sr-iov'" class="mt-4">
+                    <h5 class="text-xs font-medium text-slate-300 mb-2">SR-IOV Configuration</h5>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label class="block text-xs text-slate-400 mb-1">PF Device</label>
+                        <input
+                          v-model="nic.pfDevice"
+                          type="text"
+                          placeholder="eth0"
+                          class="w-full px-2 py-1 text-xs bg-slate-700 border border-slate-600 rounded text-white"
+                        />
+                      </div>
+                      <div>
+                        <label class="block text-xs text-slate-400 mb-1">VF Number</label>
+                        <input
+                          v-model.number="nic.vfNumber"
+                          type="number"
+                          min="0"
+                          max="63"
+                          placeholder="Auto"
+                          class="w-full px-2 py-1 text-xs bg-slate-700 border border-slate-600 rounded text-white"
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -583,8 +898,289 @@
               </div>
             </div>
 
-            <!-- Step 7: Boot & Advanced Configuration -->
+            <!-- Step 7: Security Configuration -->
             <div v-if="currentStep === 7" class="space-y-6">
+              <div class="flex items-center gap-3 mb-4">
+                <div class="w-8 h-8 bg-yellow-600 rounded-full flex items-center justify-center">
+                  <svg class="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001zm11.541 3.708a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/>
+                  </svg>
+                </div>
+                <h3 class="text-lg font-medium text-white">Security Configuration</h3>
+              </div>
+              
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label class="block text-sm font-medium text-white mb-2">
+                    Secure Boot
+                  </label>
+                  <select
+                    v-model="formData.secureBoot"
+                    class="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent transition-all"
+                  >
+                    <option value="disabled">Disabled</option>
+                    <option value="required">Required</option>
+                    <option value="optional">Optional</option>
+                  </select>
+                  <p class="text-xs text-slate-400 mt-1">Secure Boot helps ensure bootloader integrity</p>
+                </div>
+
+                <div>
+                  <label class="block text-sm font-medium text-white mb-2">
+                    TPM Module
+                  </label>
+                  <select
+                    v-model="formData.tpmVersion"
+                    class="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent transition-all"
+                  >
+                    <option value="none">Disabled</option>
+                    <option value="1.2">TPM 1.2</option>
+                    <option value="2.0">TPM 2.0 (Recommended)</option>
+                  </select>
+                  <p class="text-xs text-slate-400 mt-1">Virtual Trusted Platform Module for enhanced security</p>
+                </div>
+
+                <div>
+                  <label class="block text-sm font-medium text-white mb-2">
+                    Memory Encryption
+                  </label>
+                  <select
+                    v-model="formData.memoryEncryption"
+                    class="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent transition-all"
+                  >
+                    <option value="none">Disabled</option>
+                    <option value="sev">AMD SEV</option>
+                    <option value="sev-es">AMD SEV-ES</option>
+                    <option value="sev-snp">AMD SEV-SNP</option>
+                  </select>
+                  <p class="text-xs text-slate-400 mt-1">Memory encryption (requires AMD EPYC processor)</p>
+                </div>
+
+                <div>
+                  <label class="block text-sm font-medium text-white mb-2">
+                    Random Number Generator
+                  </label>
+                  <select
+                    v-model="formData.rngDevice"
+                    class="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent transition-all"
+                  >
+                    <option value="none">Disabled</option>
+                    <option value="virtio">VirtIO RNG</option>
+                    <option value="egd">EGD Socket</option>
+                  </select>
+                  <p class="text-xs text-slate-400 mt-1">Hardware random number generator for cryptographic operations</p>
+                </div>
+              </div>
+
+              <div class="space-y-4">
+                <h4 class="text-sm font-medium text-slate-300">Security Features</h4>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div class="flex items-center gap-2">
+                    <input
+                      v-model="formData.enableSMM"
+                      type="checkbox"
+                      id="enable-smm"
+                      class="w-4 h-4 text-primary-600 bg-white/10 border-white/20 rounded focus:ring-primary-400"
+                    />
+                    <label for="enable-smm" class="text-sm text-white">
+                      Enable SMM (System Management Mode)
+                    </label>
+                  </div>
+
+                  <div class="flex items-center gap-2">
+                    <input
+                      v-model="formData.enableIOMMU"
+                      type="checkbox"
+                      id="enable-iommu"
+                      class="w-4 h-4 text-primary-600 bg-white/10 border-white/20 rounded focus:ring-primary-400"
+                    />
+                    <label for="enable-iommu" class="text-sm text-white">
+                      Enable IOMMU Protection
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Step 8: Advanced Configuration -->
+            <div v-if="currentStep === 8" class="space-y-6">
+              <div class="flex items-center gap-3 mb-4">
+                <div class="w-8 h-8 bg-purple-600 rounded-full flex items-center justify-center">
+                  <svg class="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z"/>
+                    <path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 000-2H5z"/>
+                  </svg>
+                </div>
+                <h3 class="text-lg font-medium text-white">Advanced Configuration</h3>
+              </div>
+              
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label class="block text-sm font-medium text-white mb-2">
+                    Resource Class
+                  </label>
+                  <select
+                    v-model="formData.resourceClass"
+                    class="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent transition-all"
+                  >
+                    <option value="standard">Standard</option>
+                    <option value="compute-optimized">Compute Optimized</option>
+                    <option value="memory-optimized">Memory Optimized</option>
+                    <option value="storage-optimized">Storage Optimized</option>
+                    <option value="gpu-accelerated">GPU Accelerated</option>
+                    <option value="custom">Custom</option>
+                  </select>
+                  <p class="text-xs text-slate-400 mt-1">Predefined resource allocation templates</p>
+                </div>
+
+                <div>
+                  <label class="block text-sm font-medium text-white mb-2">
+                    QEMU Guest Agent
+                  </label>
+                  <select
+                    v-model="formData.qemuGuestAgent"
+                    class="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent transition-all"
+                  >
+                    <option value="enabled">Enabled</option>
+                    <option value="disabled">Disabled</option>
+                    <option value="auto">Auto-detect</option>
+                  </select>
+                  <p class="text-xs text-slate-400 mt-1">Enable guest-host communication channel</p>
+                </div>
+
+                <div>
+                  <label class="block text-sm font-medium text-white mb-2">
+                    Placement Policy
+                  </label>
+                  <select
+                    v-model="formData.placementPolicy"
+                    class="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent transition-all"
+                  >
+                    <option value="automatic">Automatic</option>
+                    <option value="performance">Performance</option>
+                    <option value="balanced">Balanced</option>
+                    <option value="power-saving">Power Saving</option>
+                  </select>
+                  <p class="text-xs text-slate-400 mt-1">VM placement and scheduling policy</p>
+                </div>
+
+                <div>
+                  <label class="block text-sm font-medium text-white mb-2">
+                    Watchdog Timer
+                  </label>
+                  <select
+                    v-model="formData.watchdogTimer"
+                    class="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent transition-all"
+                  >
+                    <option value="none">Disabled</option>
+                    <option value="i6300esb">i6300ESB</option>
+                    <option value="ib700">IB700</option>
+                    <option value="diag288">DIAG288 (s390)</option>
+                  </select>
+                  <p class="text-xs text-slate-400 mt-1">Hardware watchdog for system monitoring</p>
+                </div>
+              </div>
+
+              <!-- Required Traits Section -->
+              <div class="space-y-4">
+                <h4 class="text-sm font-medium text-slate-300">Required Hardware Traits</h4>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div class="flex items-center gap-2">
+                    <input
+                      v-model="formData.requiredTraits.avx2"
+                      type="checkbox"
+                      id="trait-avx2"
+                      class="w-4 h-4 text-primary-600 bg-white/10 border-white/20 rounded focus:ring-primary-400"
+                    />
+                    <label for="trait-avx2" class="text-xs text-white">AVX2</label>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <input
+                      v-model="formData.requiredTraits.ssd"
+                      type="checkbox"
+                      id="trait-ssd"
+                      class="w-4 h-4 text-primary-600 bg-white/10 border-white/20 rounded focus:ring-primary-400"
+                    />
+                    <label for="trait-ssd" class="text-xs text-white">SSD Storage</label>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <input
+                      v-model="formData.requiredTraits.sriovNic"
+                      type="checkbox"
+                      id="trait-sriov"
+                      class="w-4 h-4 text-primary-600 bg-white/10 border-white/20 rounded focus:ring-primary-400"
+                    />
+                    <label for="trait-sriov" class="text-xs text-white">SR-IOV NIC</label>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <input
+                      v-model="formData.requiredTraits.gpuAccel"
+                      type="checkbox"
+                      id="trait-gpu"
+                      class="w-4 h-4 text-primary-600 bg-white/10 border-white/20 rounded focus:ring-primary-400"
+                    />
+                    <label for="trait-gpu" class="text-xs text-white">GPU Accel</label>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Performance Tuning -->
+              <div class="space-y-4">
+                <h4 class="text-sm font-medium text-slate-300">Performance Tuning</h4>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div class="flex items-center gap-2">
+                    <input
+                      v-model="formData.enableNestedVirt"
+                      type="checkbox"
+                      id="nested-virt"
+                      class="w-4 h-4 text-primary-600 bg-white/10 border-white/20 rounded focus:ring-primary-400"
+                    />
+                    <label for="nested-virt" class="text-sm text-white">
+                      Enable Nested Virtualization
+                    </label>
+                  </div>
+
+                  <div class="flex items-center gap-2">
+                    <input
+                      v-model="formData.enableKvmClock"
+                      type="checkbox"
+                      id="kvm-clock"
+                      class="w-4 h-4 text-primary-600 bg-white/10 border-white/20 rounded focus:ring-primary-400"
+                    />
+                    <label for="kvm-clock" class="text-sm text-white">
+                      Enable KVM Paravirtualized Clock
+                    </label>
+                  </div>
+
+                  <div class="flex items-center gap-2">
+                    <input
+                      v-model="formData.enableVhostNet"
+                      type="checkbox"
+                      id="vhost-net"
+                      class="w-4 h-4 text-primary-600 bg-white/10 border-white/20 rounded focus:ring-primary-400"
+                    />
+                    <label for="vhost-net" class="text-sm text-white">
+                      Enable vhost-net (Network Performance)
+                    </label>
+                  </div>
+
+                  <div class="flex items-center gap-2">
+                    <input
+                      v-model="formData.enableMultiqueue"
+                      type="checkbox"
+                      id="multiqueue"
+                      class="w-4 h-4 text-primary-600 bg-white/10 border-white/20 rounded focus:ring-primary-400"
+                    />
+                    <label for="multiqueue" class="text-sm text-white">
+                      Enable Multiqueue I/O
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Step 9: Boot & Final Configuration -->
+            <div v-if="currentStep === 9" class="space-y-6">
               <div class="flex items-center gap-3 mb-4">
                 <div class="w-8 h-8 bg-red-600 rounded-full flex items-center justify-center">
                   <svg class="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
@@ -622,6 +1218,63 @@
                     <option value="uefi">UEFI</option>
                     <option value="uefi-secure">UEFI with Secure Boot</option>
                   </select>
+                </div>
+
+                <div>
+                  <label class="block text-sm font-medium text-white mb-2">
+                    Boot Order Priority
+                  </label>
+                  <input
+                    v-model="formData.bootOrder"
+                    type="text"
+                    placeholder="e.g., hd,cdrom,network"
+                    class="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent transition-all"
+                  />
+                  <p class="text-xs text-slate-400 mt-1">Comma-separated boot device priority</p>
+                </div>
+
+                <div>
+                  <label class="block text-sm font-medium text-white mb-2">
+                    Boot Delay (seconds)
+                  </label>
+                  <input
+                    v-model.number="formData.bootDelay"
+                    type="number"
+                    min="0"
+                    max="60"
+                    placeholder="0"
+                    class="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent transition-all"
+                  />
+                  <p class="text-xs text-slate-400 mt-1">Delay before automatic boot</p>
+                </div>
+
+                <div>
+                  <label class="block text-sm font-medium text-white mb-2">
+                    QEMU Guest Agent
+                  </label>
+                  <select
+                    v-model="formData.qemuGuestAgent"
+                    class="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent transition-all"
+                  >
+                    <option value="enabled">Enabled (Recommended)</option>
+                    <option value="disabled">Disabled</option>
+                  </select>
+                  <p class="text-xs text-slate-400 mt-1">Enhanced VM management capabilities</p>
+                </div>
+
+                <div>
+                  <label class="block text-sm font-medium text-white mb-2">
+                    Power Management
+                  </label>
+                  <select
+                    v-model="formData.powerManagement"
+                    class="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent transition-all"
+                  >
+                    <option value="acpi">ACPI (Standard)</option>
+                    <option value="guest">Guest-controlled</option>
+                    <option value="host">Host-controlled</option>
+                  </select>
+                  <p class="text-xs text-slate-400 mt-1">Power state management method</p>
                 </div>
               </div>
 
@@ -769,16 +1422,18 @@ const hostStore = useHostStore();
 
 // Step management
 const currentStep = ref(1);
-const totalSteps = 7;
+const totalSteps = 9;
 
 const steps = [
-  { id: 1, name: 'Basic', icon: '✓' },
-  { id: 2, name: 'CPU', icon: '⚡' },
+  { id: 1, name: 'Basic', icon: '⚙️' },
+  { id: 2, name: 'CPU', icon: '🔧' },
   { id: 3, name: 'Memory', icon: '💾' },
   { id: 4, name: 'Storage', icon: '💿' },
   { id: 5, name: 'Network', icon: '🌐' },
-  { id: 6, name: 'Hardware', icon: '🔧' },
-  { id: 7, name: 'Boot', icon: '🚀' }
+  { id: 6, name: 'Hardware', icon: '�' },
+  { id: 7, name: 'Security', icon: '🔒' },
+  { id: 8, name: 'Advanced', icon: '⚡' },
+  { id: 9, name: 'Boot', icon: '🚀' }
 ];
 
 // Hardware types for add hardware dropdown
@@ -815,9 +1470,22 @@ const formData = reactive({
   cpuSockets: 1,
   cpuCores: 2,
   cpuThreads: 1,
+  cpuCacheMode: 'passthrough',
+  numaMode: 'auto',
+  cpuFeatures: {
+    pae: true,
+    acpi: true,
+    apic: true,
+    hyperv: false
+  },
   memoryMB: 2048,
   maxMemoryMB: null as number | null,
   memoryBalloon: true,
+  memoryBacking: 'standard',
+  memoryAccess: 'private',
+  memoryLocking: false,
+  memoryHotplug: false,
+  memoryDiscard: false,
   hugepages: false,
   storageDevices: [
     {
@@ -825,7 +1493,16 @@ const formData = reactive({
       sizeGB: 20,
       format: 'qcow2',
       bus: 'virtio',
-      cache: 'none'
+      cache: 'none',
+      ioMode: 'threads',
+      discard: 'ignore',
+      detectZeroes: 'off',
+      qos: {
+        readIops: undefined,
+        writeIops: undefined,
+        readBandwidth: undefined,
+        writeBandwidth: undefined
+      }
     }
   ],
   networkInterfaces: [
@@ -833,16 +1510,49 @@ const formData = reactive({
       id: generateId(),
       network: 'default',
       model: 'virtio',
-      mac: ''
+      mac: '',
+      linkState: 'up',
+      queues: undefined,
+      mtu: undefined,
+      vlanId: undefined,
+      nativeVlan: 'tagged',
+      pfDevice: '',
+      vfNumber: undefined
     }
   ],
   additionalHardware: [] as any[],
   bootDevice: 'hd',
+  bootOrder: '',
+  bootDelay: 0,
   firmware: 'bios',
+  powerManagement: 'acpi',
   autoStart: false,
   enableSpice: true,
   enableVNC: false,
-  enableSerial: false
+  enableSerial: false,
+  // Security Configuration
+  secureBoot: 'disabled',
+  tpmVersion: 'none',
+  memoryEncryption: 'none',
+  rngDevice: 'none',
+  enableSMM: false,
+  enableIOMMU: false,
+  // Advanced Configuration
+  resourceClass: 'standard',
+  qemuGuestAgent: 'enabled',
+  placementPolicy: 'automatic',
+  watchdogTimer: 'none',
+  requiredTraits: {
+    avx2: false,
+    ssd: false,
+    sriovNic: false,
+    gpuAccel: false
+  },
+  // Performance Tuning
+  enableNestedVirt: false,
+  enableKvmClock: true,
+  enableVhostNet: true,
+  enableMultiqueue: false
 });
 
 const isLoading = ref(false);
@@ -863,6 +1573,14 @@ const isStepValid = (step: number): boolean => {
       return formData.storageDevices.length > 0 && formData.storageDevices.every(d => d.sizeGB > 0);
     case 5:
       return formData.networkInterfaces.length > 0;
+    case 6:
+      return true; // Hardware step is optional
+    case 7:
+      return true; // Security step is optional
+    case 8:
+      return true; // Advanced step is optional
+    case 9:
+      return true; // Boot step is optional
     default:
       return true;
   }
@@ -879,7 +1597,16 @@ const addStorageDevice = () => {
     sizeGB: 20,
     format: 'qcow2',
     bus: 'virtio',
-    cache: 'none'
+    cache: 'none',
+    ioMode: 'threads',
+    discard: 'ignore',
+    detectZeroes: 'off',
+    qos: {
+      readIops: undefined,
+      writeIops: undefined,
+      readBandwidth: undefined,
+      writeBandwidth: undefined
+    }
   });
 };
 
@@ -893,7 +1620,14 @@ const addNetworkInterface = () => {
     id: generateId(),
     network: 'default',
     model: 'virtio',
-    mac: ''
+    mac: '',
+    linkState: 'up',
+    queues: undefined,
+    mtu: undefined,
+    vlanId: undefined,
+    nativeVlan: 'tagged',
+    pfDevice: '',
+    vfNumber: undefined
   });
 };
 
@@ -973,9 +1707,22 @@ const resetForm = (): void => {
     cpuSockets: 1,
     cpuCores: 2,
     cpuThreads: 1,
+    cpuCacheMode: 'passthrough',
+    numaMode: 'auto',
+    cpuFeatures: {
+      pae: true,
+      acpi: true,
+      apic: true,
+      hyperv: false
+    },
     memoryMB: 2048,
     maxMemoryMB: null,
     memoryBalloon: true,
+    memoryBacking: 'standard',
+    memoryAccess: 'private',
+    memoryLocking: false,
+    memoryHotplug: false,
+    memoryDiscard: false,
     hugepages: false,
     storageDevices: [
       {
@@ -983,7 +1730,16 @@ const resetForm = (): void => {
         sizeGB: 20,
         format: 'qcow2',
         bus: 'virtio',
-        cache: 'none'
+        cache: 'none',
+        ioMode: 'threads',
+        discard: 'ignore',
+        detectZeroes: 'off',
+        qos: {
+          readIops: undefined,
+          writeIops: undefined,
+          readBandwidth: undefined,
+          writeBandwidth: undefined
+        }
       }
     ],
     networkInterfaces: [
@@ -991,16 +1747,49 @@ const resetForm = (): void => {
         id: generateId(),
         network: 'default',
         model: 'virtio',
-        mac: ''
+        mac: '',
+        linkState: 'up',
+        queues: undefined,
+        mtu: undefined,
+        vlanId: undefined,
+        nativeVlan: 'tagged',
+        pfDevice: '',
+        vfNumber: undefined
       }
     ],
     additionalHardware: [],
     bootDevice: 'hd',
+    bootOrder: '',
+    bootDelay: 0,
     firmware: 'bios',
+    powerManagement: 'acpi',
     autoStart: false,
     enableSpice: true,
     enableVNC: false,
-    enableSerial: false
+    enableSerial: false,
+    // Security Configuration
+    secureBoot: 'disabled',
+    tpmVersion: 'none',
+    memoryEncryption: 'none',
+    rngDevice: 'none',
+    enableSMM: false,
+    enableIOMMU: false,
+    // Advanced Configuration
+    resourceClass: 'standard',
+    qemuGuestAgent: 'enabled',
+    placementPolicy: 'automatic',
+    watchdogTimer: 'none',
+    requiredTraits: {
+      avx2: false,
+      ssd: false,
+      sriovNic: false,
+      gpuAccel: false
+    },
+    // Performance Tuning
+    enableNestedVirt: false,
+    enableKvmClock: true,
+    enableVhostNet: true,
+    enableMultiqueue: false
   });
   error.value = null;
   isLoading.value = false;
