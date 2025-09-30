@@ -66,6 +66,23 @@ export interface DiscoveredVM {
   isActive?: boolean;
 }
 
+export interface DiscoveredVMWithHost {
+  uuid: string;
+  name: string;
+  host_id: string;
+  host_name: string;
+  // Optional VM info properties
+  state?: VMState;
+  max_mem?: number;
+  memory?: number;
+  vcpu?: number;
+  cpu_time?: number;
+  uptime?: number;
+  persistent?: boolean;
+  autostart?: boolean;
+  graphics?: GraphicsInfo;
+}
+
 export interface VMStats {
   cpu_percent: number;
   cpu_percent_core?: number;

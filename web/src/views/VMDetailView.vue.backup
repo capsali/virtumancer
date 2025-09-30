@@ -96,7 +96,7 @@
               title="Force Power Off VM"
             >
               <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v8m4-4a8 8 0 11-8 0"/>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.636 5.636l12.728 12.728M5.636 18.364l12.728-12.728M12 2v6m4.95 1.05l-2.12 2.12M20 12h-6m-1.05 4.95l-2.12-2.12M12 14v6m-4.95-1.05l2.12-2.12M4 12h6m1.05-4.95l2.12 2.12"/>
               </svg>
             </FButton>
             
@@ -109,7 +109,7 @@
               title="Force Reset VM"
             >
               <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1-1H8a1 1 0 00-1 1v3M4 7h16"/>
               </svg>
             </FButton>
             
@@ -238,13 +238,13 @@
             <div class="p-4">
               <div class="flex items-center justify-between mb-4">
                 <div class="flex items-center gap-3">
-                  <div class="w-8 h-8 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center shadow-xl ring-2 ring-emerald-500/20">
-                    <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                  <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center shadow-lg">
+                    <svg class="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
                       <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm0 4a1 1 0 011-1h12a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1V8zm8 2a1 1 0 100 2h2a1 1 0 100-2h-2z" clip-rule="evenodd" />
                     </svg>
                   </div>
                   <div>
-                    <h4 class="text-base font-bold text-white">Console Preview</h4>
+                    <h4 class="text-base font-semibold text-white">Console Preview</h4>
                     <p class="text-sm text-slate-400">{{ getConsoleStatusText() }}</p>
                   </div>
                 </div>
@@ -276,11 +276,13 @@
                         :class="{ 'opacity-70': isCapturingSnapshot }"
                         alt="Console Preview"
                       />
-                      <!-- Loading state -->
+                      <!-- No screenshot available yet -->
                       <div v-else class="w-full h-full bg-slate-800 flex items-center justify-center">
                         <div class="text-center text-slate-400">
-                          <div class="w-6 h-6 border-2 border-slate-500 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
-                          <p class="text-xs">Capturing console screenshot...</p>
+                          <svg class="w-8 h-8 mx-auto mb-2 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                          </svg>
+                          <p class="text-xs">Console preview</p>
                         </div>
                       </div>
                       <!-- Refresh indicator -->
@@ -322,7 +324,7 @@
     </div>
 
     <!-- VM Information - Wide Card -->
-    <FCard v-if="vm" class="card-glow cursor-pointer hover:shadow-lg transition-all duration-300" @click="vmDetailsExpanded = !vmDetailsExpanded">
+    <FCard v-if="vm" class="card-glow cursor-pointer hover:shadow-lg transition-all duration-300" @click="toggleExpandedDetails">
       <div class="p-6">
         <div class="flex items-center justify-between mb-6">
           <div class="flex items-center gap-4">
@@ -337,6 +339,10 @@
             </div>
           </div>
           <div class="flex items-center gap-2">
+            <div v-if="loadingExtendedHardware" class="flex items-center gap-2 text-slate-400">
+              <div class="w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin"></div>
+              <span class="text-sm">Loading...</span>
+            </div>
             <!-- Sync Button -->
             <FButton
               variant="ghost"
@@ -401,7 +407,7 @@
             <div class="bg-slate-800/50 rounded-lg p-3 border border-slate-700/50">
               <div class="flex items-center gap-2">
                 <div class="w-2 h-2 bg-purple-400 rounded-full"></div>
-                <span class="text-purple-400 text-lg font-bold">{{ formatBytes(vm.memoryBytes || 0) }}</span>
+                <span class="text-purple-400 text-lg font-bold">{{ formatBytes((vm.memoryMB || 0) * 1024 * 1024) }}</span>
               </div>
             </div>
           </div>
@@ -495,123 +501,298 @@
         <!-- Expanded Details Section -->
         <div v-show="vmDetailsExpanded" class="mt-8 pt-6 border-t border-slate-700/50">
           <div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-            <!-- Basic Information -->
+            
+            <!-- Disks and Storage -->
             <FCard class="p-6 card-glow">
-              <h4 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              <h4 class="text-base font-semibold text-white mb-4 flex items-center gap-2">
+                <svg class="w-4 h-4 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
                 </svg>
-                Basic Information
+                Disks & Storage
               </h4>
               <div class="space-y-3">
-                <div class="grid grid-cols-3 gap-4 text-sm">
-                  <span class="text-slate-400 font-medium">Name:</span>
-                  <span class="col-span-2 text-white">{{ vm.name }}</span>
+                <div v-if="vmExtendedHardware?.disk_attachments?.length" class="space-y-3">
+                  <div 
+                    v-for="(disk, index) in vmExtendedHardware.disk_attachments" 
+                    :key="index"
+                    class="bg-slate-800/30 rounded-lg p-3 border border-slate-700/30"
+                  >
+                    <div class="flex items-center justify-between mb-2">
+                      <span class="text-white font-medium">{{ disk.device_name || `Disk ${index + 1}` }}</span>
+                      <span class="text-xs px-2 py-1 bg-orange-500/20 text-orange-400 rounded-full">
+                        {{ disk.disk_type || 'disk' }}
+                      </span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <span class="text-slate-400">Bus:</span>
+                        <span class="text-white ml-1">{{ disk.bus_type || 'virtio' }}</span>
+                      </div>
+                      <div>
+                        <span class="text-slate-400">Device:</span>
+                        <span class="text-white ml-1">{{ disk.target_device || 'vda' }}</span>
+                      </div>
+                    </div>
+                    <div class="text-xs mt-2">
+                      <span class="text-slate-400">Path:</span>
+                      <span class="text-white ml-1 font-mono break-all">{{ disk.source_path || 'N/A' }}</span>
+                    </div>
+                  </div>
                 </div>
-                <div class="grid grid-cols-3 gap-4 text-sm">
-                  <span class="text-slate-400 font-medium">UUID:</span>
-                  <span class="col-span-2 text-white font-mono text-xs break-all">{{ vm.uuid }}</span>
-                </div>
-                <div class="grid grid-cols-3 gap-4 text-sm">
-                  <span class="text-slate-400 font-medium">Domain UUID:</span>
-                  <span class="col-span-2 text-white font-mono text-xs break-all">{{ vm.domainUuid || 'Unknown' }}</span>
-                </div>
-                <div class="grid grid-cols-3 gap-4 text-sm">
-                  <span class="text-slate-400 font-medium">Title:</span>
-                  <span class="col-span-2 text-white">{{ vm.title || vm.name }}</span>
-                </div>
-                <div class="grid grid-cols-3 gap-4 text-sm">
-                  <span class="text-slate-400 font-medium">Description:</span>
-                  <span class="col-span-2 text-white">{{ vm.description || 'No description' }}</span>
-                </div>
-                <div class="grid grid-cols-3 gap-4 text-sm">
-                  <span class="text-slate-400 font-medium">Source:</span>
-                  <span class="col-span-2 text-white capitalize">{{ vm.source || 'Unknown' }}</span>
-                </div>
-                <div class="grid grid-cols-3 gap-4 text-sm">
-                  <span class="text-slate-400 font-medium">Template:</span>
-                  <span class="col-span-2 text-white">{{ vm.isTemplate ? 'Yes' : 'No' }}</span>
-                </div>
-                <div class="grid grid-cols-3 gap-4 text-sm">
-                  <span class="text-slate-400 font-medium">Created:</span>
-                  <span class="col-span-2 text-white text-xs">{{ vm.createdAt ? new Date(vm.createdAt).toLocaleString() : 'Unknown' }}</span>
-                </div>
-                <div class="grid grid-cols-3 gap-4 text-sm">
-                  <span class="text-slate-400 font-medium">Updated:</span>
-                  <span class="col-span-2 text-white text-xs">{{ vm.updatedAt ? new Date(vm.updatedAt).toLocaleString() : 'Unknown' }}</span>
+                <div v-else class="text-slate-400 text-sm text-center py-4">
+                  {{ loadingExtendedHardware ? 'Loading disk information...' : 'No disk information available' }}
                 </div>
               </div>
             </FCard>
 
-            <!-- CPU & Compute Configuration -->
+            <!-- Network Interfaces -->
             <FCard class="p-6 card-glow">
-              <h4 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                <svg class="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/>
+              <h4 class="text-base font-semibold text-white mb-4 flex items-center gap-2">
+                <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"/>
                 </svg>
-                CPU & Compute
+                Network Interfaces
               </h4>
               <div class="space-y-3">
-                <div class="grid grid-cols-3 gap-4 text-sm">
-                  <span class="text-slate-400 font-medium">vCPUs:</span>
-                  <span class="col-span-2 text-white">{{ vm.vcpuCount || 0 }}</span>
+                <div v-if="vmExtendedHardware?.port_attachments?.length" class="space-y-3">
+                  <div 
+                    v-for="(port, index) in vmExtendedHardware.port_attachments" 
+                    :key="index"
+                    class="bg-slate-800/30 rounded-lg p-3 border border-slate-700/30"
+                  >
+                    <div class="flex items-center justify-between mb-2">
+                      <span class="text-white font-medium">{{ port.device_name || `Interface ${index + 1}` }}</span>
+                      <span class="text-xs px-2 py-1 bg-cyan-500/20 text-cyan-400 rounded-full">
+                        {{ port.interface_type || 'bridge' }}
+                      </span>
+                    </div>
+                    <div class="grid grid-cols-1 gap-2 text-xs">
+                      <div>
+                        <span class="text-slate-400">MAC Address:</span>
+                        <span class="text-white ml-1 font-mono">{{ port.mac_address || 'auto' }}</span>
+                      </div>
+                      <div>
+                        <span class="text-slate-400">Model:</span>
+                        <span class="text-white ml-1">{{ port.model_type || 'virtio' }}</span>
+                      </div>
+                      <div v-if="port.source_bridge">
+                        <span class="text-slate-400">Bridge:</span>
+                        <span class="text-white ml-1">{{ port.source_bridge }}</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div class="grid grid-cols-3 gap-4 text-sm">
-                  <span class="text-slate-400 font-medium">CPU Model:</span>
-                  <span class="col-span-2 text-white">{{ vm.cpuModel || 'host-passthrough' }}</span>
+                <div v-else class="text-slate-400 text-sm text-center py-4">
+                  {{ loadingExtendedHardware ? 'Loading network information...' : 'No network interfaces available' }}
                 </div>
-                <div class="grid grid-cols-3 gap-4 text-sm" v-if="vm.cpuTopologyJson">
-                  <span class="text-slate-400 font-medium">Topology:</span>
-                  <span class="col-span-2 text-white text-xs">{{ formatCPUTopology(vm.cpuTopologyJson) }}</span>
+              </div>
+            </FCard>
+
+            <!-- Video & Graphics -->
+            <FCard class="p-6 card-glow">
+              <h4 class="text-base font-semibold text-white mb-4 flex items-center gap-2">
+                <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                </svg>
+                Video & Graphics
+              </h4>
+              <div class="space-y-3">
+                <div v-if="vmExtendedHardware?.video_attachments?.length" class="space-y-3">
+                  <div 
+                    v-for="(video, index) in vmExtendedHardware.video_attachments" 
+                    :key="index"
+                    class="bg-slate-800/30 rounded-lg p-3 border border-slate-700/30"
+                  >
+                    <div class="flex items-center justify-between mb-2">
+                      <span class="text-white font-medium">Video {{ index + 1 }}</span>
+                      <span class="text-xs px-2 py-1 bg-emerald-500/20 text-emerald-400 rounded-full">
+                        {{ video.video_type || 'qxl' }}
+                      </span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <span class="text-slate-400">Model:</span>
+                        <span class="text-white ml-1">{{ video.model_type || 'qxl' }}</span>
+                      </div>
+                      <div>
+                        <span class="text-slate-400">VRAM:</span>
+                        <span class="text-white ml-1">{{ video.vram_mb || 16 }}MB</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div class="grid grid-cols-3 gap-4 text-sm">
-                  <span class="text-slate-400 font-medium">Hypervisor:</span>
-                  <span class="col-span-2 text-white">KVM/QEMU</span>
+                <div v-else class="space-y-3">
+                  <div class="bg-slate-800/30 rounded-lg p-3 border border-slate-700/30">
+                    <div class="flex items-center justify-between mb-2">
+                      <span class="text-white font-medium">Graphics Type</span>
+                      <span class="text-xs px-2 py-1 bg-emerald-500/20 text-emerald-400 rounded-full">
+                        {{ vm.graphics?.type || 'spice' }}
+                      </span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <span class="text-slate-400">Port:</span>
+                        <span class="text-white ml-1">{{ vm.graphics?.port || 'auto' }}</span>
+                      </div>
+                      <div>
+                        <span class="text-slate-400">Listen:</span>
+                        <span class="text-white ml-1">{{ vm.graphics?.listen || '0.0.0.0' }}</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div class="grid grid-cols-3 gap-4 text-sm">
-                  <span class="text-slate-400 font-medium">Architecture:</span>
-                  <span class="col-span-2 text-white">x86_64</span>
-                </div>
-                <div class="grid grid-cols-3 gap-4 text-sm">
-                  <span class="text-slate-400 font-medium">Machine Type:</span>
-                  <span class="col-span-2 text-white">pc-q35</span>
+              </div>
+            </FCard>
+
+            <!-- CPU Configuration -->
+            <FCard class="p-6 card-glow">
+              <h4 class="text-base font-semibold text-white mb-4 flex items-center gap-2">
+                <svg class="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/>
+                </svg>
+                CPU Configuration
+              </h4>
+              <div class="space-y-3">
+                <div class="bg-slate-800/30 rounded-lg p-3 border border-slate-700/30">
+                  <div class="grid grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <span class="text-slate-400">vCPUs:</span>
+                      <span class="text-white ml-1">{{ vm.vcpuCount || 1 }}</span>
+                    </div>
+                    <div>
+                      <span class="text-slate-400">Model:</span>
+                      <span class="text-white ml-1">{{ vm.cpuModel || 'host' }}</span>
+                    </div>
+                  </div>
+                  <div v-if="vmExtendedHardware?.cpu_topology" class="mt-3 pt-3 border-t border-slate-700/50">
+                    <div class="grid grid-cols-3 gap-3 text-xs">
+                      <div>
+                        <span class="text-slate-400">Sockets:</span>
+                        <span class="text-white ml-1">{{ vmExtendedHardware.cpu_topology.sockets || 1 }}</span>
+                      </div>
+                      <div>
+                        <span class="text-slate-400">Cores:</span>
+                        <span class="text-white ml-1">{{ vmExtendedHardware.cpu_topology.cores || 1 }}</span>
+                      </div>
+                      <div>
+                        <span class="text-slate-400">Threads:</span>
+                        <span class="text-white ml-1">{{ vmExtendedHardware.cpu_topology.threads || 1 }}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div v-if="vmExtendedHardware?.cpu_features?.length" class="mt-3 pt-3 border-t border-slate-700/50">
+                    <span class="text-slate-400 text-xs">Features:</span>
+                    <div class="flex flex-wrap gap-1 mt-1">
+                      <span 
+                        v-for="feature in vmExtendedHardware.cpu_features.slice(0, 6)" 
+                        :key="feature.name"
+                        class="text-xs px-1.5 py-0.5 bg-green-500/20 text-green-400 rounded"
+                      >
+                        {{ feature.name }}
+                      </span>
+                      <span 
+                        v-if="vmExtendedHardware.cpu_features.length > 6"
+                        class="text-xs px-1.5 py-0.5 bg-slate-500/20 text-slate-400 rounded"
+                      >
+                        +{{ vmExtendedHardware.cpu_features.length - 6 }} more
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </FCard>
 
             <!-- Memory Configuration -->
             <FCard class="p-6 card-glow">
-              <h4 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <h4 class="text-base font-semibold text-white mb-4 flex items-center gap-2">
+                <svg class="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"/>
                 </svg>
-                Memory
+                Memory Configuration
               </h4>
               <div class="space-y-3">
-                <div class="grid grid-cols-3 gap-4 text-sm">
-                  <span class="text-slate-400 font-medium">Max Memory:</span>
-                  <span class="col-span-2 text-white">{{ formatBytes(vm.memoryBytes || 0) }}</span>
-                </div>
-                <div class="grid grid-cols-3 gap-4 text-sm">
-                  <span class="text-slate-400 font-medium">Current:</span>
-                  <span class="col-span-2 text-white">{{ formatBytes(vm.currentMemory || vm.memoryBytes || 0) }}</span>
-                </div>
-                <div class="grid grid-cols-3 gap-4 text-sm">
-                  <span class="text-slate-400 font-medium">Unit:</span>
-                  <span class="col-span-2 text-white">KiB</span>
-                </div>
-                <div class="grid grid-cols-3 gap-4 text-sm">
-                  <span class="text-slate-400 font-medium">Balloon:</span>
-                  <span class="col-span-2 text-white">Enabled</span>
-                </div>
-                <div class="grid grid-cols-3 gap-4 text-sm">
-                  <span class="text-slate-400 font-medium">Hugepages:</span>
-                  <span class="col-span-2 text-white">Auto</span>
+                <div class="bg-slate-800/30 rounded-lg p-3 border border-slate-700/30">
+                  <div class="grid grid-cols-1 gap-3 text-sm">
+                    <div>
+                      <span class="text-slate-400">Total Memory:</span>
+                      <span class="text-white ml-1">{{ formatBytes(vm.memoryBytes || 0) }}</span>
+                    </div>
+                    <div v-if="vmStats && vm.state === 'ACTIVE'">
+                      <span class="text-slate-400">Current Usage:</span>
+                      <span class="text-purple-400 ml-1">{{ formatBytes((vmStats.memory_mb || 0) * 1024 * 1024) }}</span>
+                    </div>
+                  </div>
+                  <div v-if="vmExtendedHardware?.memory_configs?.length" class="mt-3 pt-3 border-t border-slate-700/50">
+                    <div v-for="memConfig in vmExtendedHardware.memory_configs" :key="memConfig.id" class="text-xs">
+                      <div class="flex justify-between">
+                        <span class="text-slate-400">Mode:</span>
+                        <span class="text-white">{{ memConfig.mode || 'strict' }}</span>
+                      </div>
+                      <div class="flex justify-between">
+                        <span class="text-slate-400">Unit:</span>
+                        <span class="text-white">{{ memConfig.unit || 'KiB' }}</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </FCard>
 
-            <!-- Storage Configuration -->
+            <!-- Basic VM Information -->
+            <FCard class="p-6 card-glow">
+              <h4 class="text-base font-semibold text-white mb-4 flex items-center gap-2">
+                <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                System Information
+              </h4>
+              <div class="space-y-3">
+                <div class="bg-slate-800/30 rounded-lg p-3 border border-slate-700/30">
+                  <div class="grid grid-cols-1 gap-2 text-xs">
+                    <div class="flex justify-between">
+                      <span class="text-slate-400">VM UUID:</span>
+                      <span class="text-white font-mono break-all">{{ vm.uuid?.substring(0, 8) }}...</span>
+                    </div>
+                    <div class="flex justify-between">
+                      <span class="text-slate-400">Domain UUID:</span>
+                      <span class="text-white font-mono break-all">{{ vm.domainUuid?.substring(0, 8) || 'Unknown' }}...</span>
+                    </div>
+                    <div class="flex justify-between">
+                      <span class="text-slate-400">OS Type:</span>
+                      <span class="text-white">{{ vm.osType || 'Unknown' }}</span>
+                    </div>
+                    <div class="flex justify-between">
+                      <span class="text-slate-400">Template:</span>
+                      <span class="text-white">{{ vm.isTemplate ? 'Yes' : 'No' }}</span>
+                    </div>
+                    <div class="flex justify-between">
+                      <span class="text-slate-400">State:</span>
+                      <span :class="[
+                        vm.state === 'ACTIVE' ? 'text-green-400' : 
+                        vm.state === 'STOPPED' ? 'text-red-400' : 'text-yellow-400'
+                      ]">
+                        {{ vm.state }}
+                      </span>
+                    </div>
+                    <div class="flex justify-between">
+                      <span class="text-slate-400">Sync Status:</span>
+                      <span :class="[
+                        vm.syncStatus === 'SYNCED' ? 'text-green-400' : 
+                        vm.syncStatus === 'DRIFTED' ? 'text-yellow-400' : 'text-gray-400'
+                      ]">
+                        {{ vm.syncStatus }}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </FCard>
+
+          </div>
+        </div>
+      </div>
+    </FCard>
+
             <FCard class="p-6 card-glow">
               <h4 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
                 <svg class="w-5 h-5 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -952,7 +1133,6 @@ import FButton from '@/components/ui/FButton.vue';
 import FBreadcrumbs from '@/components/ui/FBreadcrumbs.vue';
 import FBackButton from '@/components/ui/FBackButton.vue';
 import FModal from '@/components/ui/FModal.vue';
-import VMHardwareConfigModalExtended from '@/components/modals/VMHardwareConfigModalExtended.vue';
 import MetricSettingsModal from '@/components/modals/MetricSettingsModal.vue';
 // Types will be inferred from store usage
 import { wsManager } from '@/services/api';
@@ -975,8 +1155,10 @@ const uiStore = useUIStore();
 // Component state
 const vm = ref<any>(null);
 const vmStats = ref<any>(null);
+const vmExtendedHardware = ref<any>(null);
 const error = ref<string | null>(null);
 const loadingStats = ref(false);
+const loadingExtendedHardware = ref(false);
 // simplified CPU display: show smoothed host-normalized `cpu_percent`
 const showMetricSettings = ref(false);
 const vmDetailsExpanded = ref(false);
@@ -1365,6 +1547,34 @@ const refreshStats = async (): Promise<void> => {
     console.error('Failed to load VM stats:', err);
   } finally {
     loadingStats.value = false;
+  }
+};
+
+// Load extended hardware configuration
+const loadExtendedHardware = async (): Promise<void> => {
+  if (!vm.value || loadingExtendedHardware.value) return;
+  
+  loadingExtendedHardware.value = true;
+  try {
+    const response = await fetch(`/api/v1/hosts/${props.hostId}/vms/${vm.value.name}/hardware/extended`);
+    if (response.ok) {
+      vmExtendedHardware.value = await response.json();
+    } else {
+      console.error('Failed to load extended hardware data:', response.statusText);
+    }
+  } catch (err) {
+    console.error('Failed to load extended hardware data:', err);
+  } finally {
+    loadingExtendedHardware.value = false;
+  }
+};
+
+// Toggle expanded details and load hardware data
+const toggleExpandedDetails = async (): Promise<void> => {
+  vmDetailsExpanded.value = !vmDetailsExpanded.value;
+  
+  if (vmDetailsExpanded.value && !vmExtendedHardware.value) {
+    await loadExtendedHardware();
   }
 };
 

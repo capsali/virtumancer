@@ -60,6 +60,13 @@ type VMView struct {
 	NetworkInterface string  `json:"network_interface,omitempty"`
 }
 
+// DiscoveredVMWithHost includes host information for global discovered VM views
+type DiscoveredVMWithHost struct {
+	libvirt.VMInfo
+	HostID   string `json:"host_id"`
+	HostName string `json:"host_name"`
+}
+
 // ProcessedVMStats holds frontend-friendly VM statistics with calculated metrics
 type ProcessedVMStats struct {
 	// cpu_percent: percentage of host total (smoothed)
@@ -207,6 +214,8 @@ type HostServiceProvider interface {
 	SyncVMsForHost(hostID string)
 	// Discovery and import helpers
 	ListDiscoveredVMs(hostID string) ([]libvirt.VMInfo, error)
+	ListAllDiscoveredVMs() ([]DiscoveredVMWithHost, error)
+	RefreshAllDiscoveredVMs() error
 	ImportVM(hostID, vmName string) error
 	ImportAllVMs(hostID string) error
 	ImportSelectedVMs(hostID string, domainUUIDs []string) error
@@ -1210,6 +1219,78 @@ func (s *HostService) ListDiscoveredVMs(hostID string) ([]libvirt.VMInfo, error)
 	}(hostID)
 
 	return out, nil
+}
+
+// ListAllDiscoveredVMs returns all discovered VMs across all hosts from the database cache
+func (s *HostService) ListAllDiscoveredVMs() ([]DiscoveredVMWithHost, error) {
+	var discs []storage.DiscoveredVM
+	if err := s.db.Where("imported = 0").Find(&discs).Error; err != nil {
+		return nil, err
+	}
+
+	// Get host information
+	var hosts []storage.Host
+	if err := s.db.Find(&hosts).Error; err != nil {
+		return nil, err
+	}
+
+	// Create a map for quick host lookup
+	hostMap := make(map[string]storage.Host)
+	for _, h := range hosts {
+		hostMap[h.ID] = h
+	}
+
+	var out []DiscoveredVMWithHost
+	for _, d := range discs {
+		host, exists := hostMap[d.HostID]
+		if !exists {
+			continue // Skip if host not found
+		}
+
+		// Parse InfoJSON if available to get more VM details
+		vmInfo := libvirt.VMInfo{
+			UUID: d.DomainUUID,
+			Name: d.Name,
+		}
+
+		// TODO: If we need more details, we can parse d.InfoJSON here
+		// For now, we'll keep it simple with name and UUID
+
+		out = append(out, DiscoveredVMWithHost{
+			VMInfo:   vmInfo,
+			HostID:   d.HostID,
+			HostName: host.Name,
+		})
+	}
+
+	return out, nil
+}
+
+// RefreshAllDiscoveredVMs triggers a refresh of discovered VMs for all connected hosts
+func (s *HostService) RefreshAllDiscoveredVMs() error {
+	hosts, err := s.GetAllHosts()
+	if err != nil {
+		return err
+	}
+
+	// Launch background sync for all connected hosts
+	for _, host := range hosts {
+		if host.State == string(storage.HostStateConnected) {
+			go func(hostID string) {
+				// Prevent concurrent syncs for the same host
+				mu, _ := s.syncMutex.LoadOrStore(hostID, &sync.Mutex{})
+				mu.(*sync.Mutex).Lock()
+				defer mu.(*sync.Mutex).Unlock()
+
+				_, err := s.syncHostVMs(hostID)
+				if err != nil {
+					log.Verbosef("RefreshAllDiscoveredVMs: syncHostVMs failed for host %s: %v", hostID, err)
+				}
+			}(host.ID)
+		}
+	}
+
+	return nil
 }
 
 // ImportVM imports a single discovered VM into the database by name.

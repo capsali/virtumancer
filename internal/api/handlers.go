@@ -250,8 +250,36 @@ func (h *APIHandler) ListDiscoveredVMs(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(vms)
+}
+
+// ListAllDiscoveredVMs lists all discovered VMs across all hosts from the database cache
+func (h *APIHandler) ListAllDiscoveredVMs(w http.ResponseWriter, r *http.Request) {
+	vms, err := h.HostService.ListAllDiscoveredVMs()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(vms)
+}
+
+// RefreshAllDiscoveredVMs triggers a refresh of discovered VMs for all connected hosts
+func (h *APIHandler) RefreshAllDiscoveredVMs(w http.ResponseWriter, r *http.Request) {
+	err := h.HostService.RefreshAllDiscoveredVMs()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Discovered VMs refresh initiated for all connected hosts",
+	})
 }
 
 // ImportVM imports a single discovered VM into the DB.

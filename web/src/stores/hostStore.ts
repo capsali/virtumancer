@@ -5,6 +5,7 @@ import type {
   HostStats, 
   LoadingStates, 
   DiscoveredVM,
+  DiscoveredVMWithHost,
   AppError 
 } from '@/types';
 import { hostApi, wsManager, ApiError } from '@/services/api';
@@ -16,7 +17,12 @@ export const useHostStore = defineStore('hosts', () => {
   const selectedHostId = ref<string | null>(null);
   const hostStats = ref<Record<string, HostStats>>({});
   const discoveredVMs = ref<Record<string, DiscoveredVM[]>>({});
+  const globalDiscoveredVMs = ref<DiscoveredVMWithHost[]>([]);
   const errors = ref<Record<string, AppError>>({});
+  
+  // Background polling
+  const discoveredVMsPollingInterval = ref<number | null>(null);
+  const POLLING_INTERVAL = 30000; // 30 seconds
   
   // Loading states with granular control
   const loading = ref<LoadingStates>({
@@ -29,7 +35,9 @@ export const useHostStore = defineStore('hosts', () => {
     vmImport: null,
     hostImportAll: null,
     connectHost: {},
-    hostStats: {}
+    hostStats: {},
+    globalDiscoveredVMs: false,
+    refreshDiscoveredVMs: false
   });
 
   // Connection state tracking with debouncing
@@ -51,6 +59,10 @@ export const useHostStore = defineStore('hosts', () => {
     return hosts.value.filter(h => h && h.state === 'DISCONNECTED');
   });
 
+  const allDiscoveredVMs = computed(() => {
+    return globalDiscoveredVMs.value;
+  });
+
   const errorHosts = computed((): Host[] => {
     return hosts.value.filter(h => h && h.state === 'ERROR');
   });
@@ -65,6 +77,62 @@ export const useHostStore = defineStore('hosts', () => {
   });
 
   // Actions
+  // Global discovered VMs management
+  const fetchGlobalDiscoveredVMs = async (): Promise<void> => {
+    loading.value.globalDiscoveredVMs = true;
+    clearError('fetchGlobalDiscoveredVMs');
+    
+    try {
+      const data = await hostApi.getAllDiscoveredVMs();
+      globalDiscoveredVMs.value = data;
+    } catch (error) {
+      handleError('fetchGlobalDiscoveredVMs', error);
+      // Don't throw here to allow continued operation
+    } finally {
+      loading.value.globalDiscoveredVMs = false;
+    }
+  };
+
+  const refreshAllDiscoveredVMs = async (): Promise<void> => {
+    loading.value.refreshDiscoveredVMs = true;
+    clearError('refreshAllDiscoveredVMs');
+    
+    try {
+      await hostApi.refreshAllDiscoveredVMs();
+      // Wait a moment for the refresh to propagate, then fetch updated data
+      setTimeout(() => {
+        fetchGlobalDiscoveredVMs();
+      }, 1000);
+    } catch (error) {
+      handleError('refreshAllDiscoveredVMs', error);
+      throw error;
+    } finally {
+      loading.value.refreshDiscoveredVMs = false;
+    }
+  };
+
+  // Background polling management
+  const startDiscoveredVMsPolling = (): void => {
+    if (discoveredVMsPollingInterval.value) {
+      return; // Already polling
+    }
+    
+    // Initial fetch
+    fetchGlobalDiscoveredVMs();
+    
+    // Set up polling
+    discoveredVMsPollingInterval.value = window.setInterval(() => {
+      fetchGlobalDiscoveredVMs();
+    }, POLLING_INTERVAL);
+  };
+
+  const stopDiscoveredVMsPolling = (): void => {
+    if (discoveredVMsPollingInterval.value) {
+      clearInterval(discoveredVMsPollingInterval.value);
+      discoveredVMsPollingInterval.value = null;
+    }
+  };
+
   const fetchHosts = async (): Promise<void> => {
     loading.value.hosts = true;
     clearError('fetchHosts');
@@ -72,6 +140,9 @@ export const useHostStore = defineStore('hosts', () => {
     try {
       const data = await hostApi.getAll();
       hosts.value = data;
+      
+      // Start discovered VMs polling when hosts are loaded
+      startDiscoveredVMsPolling();
     } catch (error) {
       handleError('fetchHosts', error);
       throw error;
@@ -377,6 +448,8 @@ export const useHostStore = defineStore('hosts', () => {
     selectedHostId,
     hostStats: readonly(hostStats),
     discoveredVMs: readonly(discoveredVMs),
+    globalDiscoveredVMs: readonly(globalDiscoveredVMs),
+    allDiscoveredVMs,
     loading: readonly(loading),
     errors: readonly(errors),
     
@@ -389,6 +462,10 @@ export const useHostStore = defineStore('hosts', () => {
     
     // Actions
     fetchHosts,
+    fetchGlobalDiscoveredVMs,
+    refreshAllDiscoveredVMs,
+    startDiscoveredVMsPolling,
+    stopDiscoveredVMsPolling,
     addHost,
     updateHost,
     deleteHost,

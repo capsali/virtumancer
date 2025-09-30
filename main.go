@@ -74,6 +74,11 @@ func main() {
 		// Host routes
 		r.Get("/hosts", apiHandler.GetHosts)
 		r.Post("/hosts", apiHandler.CreateHost)
+
+		// Global discovered VMs routes
+		r.Get("/discovered-vms", apiHandler.ListAllDiscoveredVMs)
+		r.Post("/discovered-vms/refresh", apiHandler.RefreshAllDiscoveredVMs)
+
 		r.Post("/hosts/{hostID}/connect", apiHandler.ConnectHost)
 		r.Post("/hosts/{hostID}/disconnect", apiHandler.DisconnectHost)
 		r.Get("/hosts/{hostID}/info", apiHandler.GetHostInfo)

@@ -1,7 +1,8 @@
 import type { 
   Host, 
   VirtualMachine, 
-  DiscoveredVM, 
+  DiscoveredVM,
+  DiscoveredVMWithHost, 
   HostStats, 
   VMStats, 
   VMHardware,
@@ -223,6 +224,14 @@ export const hostApi = {
 
   async getDiscoveredVMs(id: string): Promise<DiscoveredVM[]> {
     return apiClient.get<DiscoveredVM[]>(`/hosts/${id}/discovered-vms`);
+  },
+
+  async getAllDiscoveredVMs(): Promise<DiscoveredVMWithHost[]> {
+    return apiClient.get<DiscoveredVMWithHost[]>('/discovered-vms');
+  },
+
+  async refreshAllDiscoveredVMs(): Promise<void> {
+    return apiClient.post('/discovered-vms/refresh');
   },
 
   async importAllVMs(id: string): Promise<void> {

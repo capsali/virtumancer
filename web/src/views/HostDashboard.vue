@@ -548,6 +548,26 @@
               </div>
             </div>
             <div class="flex items-center gap-3">
+              <FButton
+                v-if="discoveredVMs.length > 0"
+                variant="primary"
+                size="sm"
+                @click="handleImportAllVMs"
+                :disabled="!!loading.hostImportAll"
+                class="px-3 py-2"
+                title="Import all discovered VMs"
+              >
+                <span v-if="!loading.hostImportAll" class="flex items-center gap-2">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+                  </svg>
+                  Import All
+                </span>
+                <span v-else class="flex items-center gap-2">
+                  <div class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                  Importing...
+                </span>
+              </FButton>
               <div class="px-4 py-2 bg-blue-500/20 border border-blue-500/30 rounded-lg">
                 <span class="text-blue-400 font-semibold">{{ discoveredVMs.length }}</span>
               </div>
@@ -764,6 +784,13 @@ const handleBulkImport = async (domainUUIDs: string[]): Promise<void> => {
   } catch (error) {
     uiStore.addToast(`Failed to import selected VMs`, 'error');
   }
+};
+
+const handleImportAllVMs = async (): Promise<void> => {
+  if (!selectedHost.value || discoveredVMs.value.length === 0) return;
+  
+  const allDomainUUIDs = discoveredVMs.value.map(vm => vm.domain_uuid);
+  await handleBulkImport(allDomainUUIDs);
 };
 
 const handleBulkDelete = async (domainUUIDs: string[]): Promise<void> => {
