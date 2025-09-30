@@ -7,6 +7,7 @@ import (
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 // VMState defines the possible stable states of a VM.
@@ -1194,6 +1195,9 @@ func InitDB(dataSourceName string) (*gorm.DB, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// Configure GORM logger to default (info level)
+	db.Logger = logger.Default.LogMode(logger.Info)
 
 	// Auto-migrate the full schema
 	err = db.AutoMigrate(

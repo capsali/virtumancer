@@ -902,11 +902,16 @@ func (s *HostService) getPrimaryNetworkInterface(vmUUID string) string {
 	}
 
 	// Get the network for the first port attachment
-	var portBinding storage.PortBinding
-	if err := s.db.Preload("Network").Where("port_id = ?", portAttachments[0].PortID).First(&portBinding).Error; err != nil {
+	var portBindings []storage.PortBinding
+	if err := s.db.Preload("Network").Where("port_id = ?", portAttachments[0].PortID).Find(&portBindings).Error; err != nil {
 		log.Verbosef("Failed to get port binding for VM %s: %v", vmUUID, err)
 		return ""
 	}
+	if len(portBindings) == 0 {
+		// Port binding not found - this can be normal for some network configurations
+		return ""
+	}
+	portBinding := portBindings[0]
 
 	if portBinding.Network.BridgeName != "" {
 		return portBinding.Network.BridgeName
@@ -2753,15 +2758,21 @@ func (s *HostService) syncVMDisks(tx *gorm.DB, vmUUID, hostID string, disks []li
 
 			// Store block statistics if available
 			if enhancedDisk.BlockStats != nil {
+				// Handle sentinel values for unavailable statistics (libvirt returns -1)
+				var errors uint64 = 0
+				if enhancedDisk.BlockStats.Errors >= 0 { // Only use non-negative values
+					errors = uint64(enhancedDisk.BlockStats.Errors)
+				}
+
 				blockStat := storage.BlockStatistics{
 					DiskAttachmentID: newAttachment.ID,
 					VMUUID:           vmUUID,
 					DeviceName:       disk.Target.Dev,
-					ReadReqs:         uint64(enhancedDisk.BlockStats.ReadReqs),
-					ReadBytes:        uint64(enhancedDisk.BlockStats.ReadBytes),
-					WriteReqs:        uint64(enhancedDisk.BlockStats.WriteReqs),
-					WriteBytes:       uint64(enhancedDisk.BlockStats.WriteBytes),
-					Errors:           uint64(enhancedDisk.BlockStats.Errors),
+					ReadReqs:         uint64(max(0, enhancedDisk.BlockStats.ReadReqs)),
+					ReadBytes:        uint64(max(0, enhancedDisk.BlockStats.ReadBytes)),
+					WriteReqs:        uint64(max(0, enhancedDisk.BlockStats.WriteReqs)),
+					WriteBytes:       uint64(max(0, enhancedDisk.BlockStats.WriteBytes)),
+					Errors:           errors,
 					Allocation:       enhancedDisk.AllocationBytes,
 					Capacity:         capacityBytes,
 					Physical:         enhancedDisk.PhysicalBytes,
@@ -3218,14 +3229,14 @@ func (s *HostService) syncVMNetworks(tx *gorm.DB, vmUUID string, hostID string, 
 					PortAttachmentID: attachment.ID,
 					VMUUID:           vmUUID,
 					DeviceName:       network.Target.Dev,
-					RxBytes:          uint64(enhancedNetwork.InterfaceStats.RxBytes),
-					RxPackets:        uint64(enhancedNetwork.InterfaceStats.RxPackets),
-					RxErrs:           uint64(enhancedNetwork.InterfaceStats.RxErrs),
-					RxDrop:           uint64(enhancedNetwork.InterfaceStats.RxDrop),
-					TxBytes:          uint64(enhancedNetwork.InterfaceStats.TxBytes),
-					TxPackets:        uint64(enhancedNetwork.InterfaceStats.TxPackets),
-					TxErrs:           uint64(enhancedNetwork.InterfaceStats.TxErrs),
-					TxDrop:           uint64(enhancedNetwork.InterfaceStats.TxDrop),
+					RxBytes:          uint64(max(0, enhancedNetwork.InterfaceStats.RxBytes)),
+					RxPackets:        uint64(max(0, enhancedNetwork.InterfaceStats.RxPackets)),
+					RxErrs:           uint64(max(0, enhancedNetwork.InterfaceStats.RxErrs)),
+					RxDrop:           uint64(max(0, enhancedNetwork.InterfaceStats.RxDrop)),
+					TxBytes:          uint64(max(0, enhancedNetwork.InterfaceStats.TxBytes)),
+					TxPackets:        uint64(max(0, enhancedNetwork.InterfaceStats.TxPackets)),
+					TxErrs:           uint64(max(0, enhancedNetwork.InterfaceStats.TxErrs)),
+					TxDrop:           uint64(max(0, enhancedNetwork.InterfaceStats.TxDrop)),
 					CollectedAt:      time.Now(),
 				}
 
