@@ -18,6 +18,17 @@
           <div class="text-2xl font-bold text-green-400">{{ activeVMs }}</div>
           <div class="text-sm text-slate-400">Active</div>
         </div>
+        <FButton
+          @click="openCreateVMModal"
+          variant="primary"
+          size="lg"
+          class="ml-6 px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
+        >
+          <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+          </svg>
+          Create VM
+        </FButton>
       </div>
     </div>
 
@@ -861,6 +872,14 @@
       </div>
     </FGlassCard>
 
+    <!-- Create VM Modal -->
+    <CreateVMModalEnhanced
+      :open="showCreateVMModal"
+      :host-id="selectedHostForVM"
+      @update:open="showCreateVMModal = $event"
+      @close="closeCreateVMModal"
+      @vm-created="handleVMCreated"
+    />
   </div>
 </template>
 
@@ -875,6 +894,7 @@ import FButton from '@/components/ui/FButton.vue'
 import FBreadcrumbs from '@/components/ui/FBreadcrumbs.vue'
 import { getConsoleRoute } from '@/utils/console'
 import DiscoveredVMBulkManager from '@/components/vm/DiscoveredVMBulkManager.vue'
+import CreateVMModalEnhanced from '@/components/modals/CreateVMModalEnhanced.vue'
 import { vClickAway } from '@/directives/clickAway'
 
 const router = useRouter()
@@ -916,6 +936,10 @@ const itemsPerPageOptions = [
 const selectedDiscoveredVMs = ref<string[]>([])
 const importingVMs = ref<Record<string, boolean>>({})
 const bulkImporting = ref(false)
+
+// Create VM Modal state
+const showCreateVMModal = ref(false)
+const selectedHostForVM = ref<string>('')
 
 // Use preferences for persistent state
 const viewMode = computed({
@@ -1487,6 +1511,28 @@ onMounted(async () => {
   // Add click outside listener
   document.addEventListener('click', handleClickOutside)
 })
+
+// Modal methods
+const openCreateVMModal = () => {
+  // Use the first available host as default
+  if (hosts.value.length > 0) {
+    selectedHostForVM.value = hosts.value[0]!.id
+    showCreateVMModal.value = true
+  } else {
+    // TODO: Show error that no hosts are available
+    console.error('No hosts available to create VM')
+  }
+}
+
+const closeCreateVMModal = () => {
+  showCreateVMModal.value = false
+  selectedHostForVM.value = ''
+}
+
+const handleVMCreated = async (vm: any) => {
+  await fetchVMsForAllHosts()
+  closeCreateVMModal()
+}
 
 // Cleanup
 onUnmounted(() => {
