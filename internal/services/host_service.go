@@ -136,7 +136,7 @@ type ActivityEntry struct {
 // PortAttachmentView is a transport-friendly view of a PortAttachment including
 // the underlying Port and (optional) Network information for the UI.
 type PortAttachmentView struct {
-	ID         uint             `json:"id"`
+	ID         string           `json:"id"`
 	VMUUID     string           `json:"vm_uuid"`
 	DeviceName string           `json:"device_name"`
 	MACAddress string           `json:"mac_address"`
@@ -544,7 +544,7 @@ func (s *HostService) ensureAttachmentIndex(tx *gorm.DB, alloc storage.Attachmen
 	// before attempting to create. This prevents immediate UNIQUE constraint
 	// failures in common cases (e.g., video attachments) where the
 	// attachment row is created before the index is reconciled.
-	if alloc.AttachmentID != 0 {
+	if alloc.AttachmentID != "" {
 		var existing []storage.AttachmentIndex
 		tx.Where("device_type = ? AND attachment_id = ?", alloc.DeviceType, alloc.AttachmentID).Limit(1).Find(&existing)
 		if len(existing) > 0 {
@@ -661,7 +661,7 @@ func (s *HostService) RemoveHost(hostID string) error {
 	}
 
 	for _, vm := range vms {
-		if err := tx.Where("vm_uuid = ?", vm.UUID).Delete(&storage.AttachmentIndex{}).Error; err != nil {
+		if err := tx.Where("vm_uuid = ?", vm.ID).Delete(&storage.AttachmentIndex{}).Error; err != nil {
 			tx.Rollback()
 			log.Verbosef("Warning: failed to delete attachment indices for VM %s: %v", vm.Name, err)
 			return err
@@ -823,7 +823,7 @@ func (s *HostService) GetVMsForHostFromDB(hostID string) ([]VMView, error) {
 
 		if dbVM.State == storage.StateActive {
 			var console storage.Console
-			err := s.db.Where("vm_uuid = ?", dbVM.UUID).First(&console).Error
+			err := s.db.Where("vm_uuid = ?", dbVM.ID).First(&console).Error
 			if err != nil && err != gorm.ErrRecordNotFound {
 				log.Verbosef("Error querying console for running VM %s: %v", dbVM.Name, err)
 			} else if err == nil {
@@ -845,12 +845,12 @@ func (s *HostService) GetVMsForHostFromDB(hostID string) ([]VMView, error) {
 		*/
 
 		// Calculate disk size and get primary network interface
-		diskSizeGB := s.calculateVMDiskSize(dbVM.UUID)
-		networkInterface := s.getPrimaryNetworkInterface(dbVM.UUID)
+		diskSizeGB := s.calculateVMDiskSize(dbVM.ID)
+		networkInterface := s.getPrimaryNetworkInterface(dbVM.ID)
 
 		vmViews = append(vmViews, VMView{
 			Name:            dbVM.Name,
-			UUID:            dbVM.UUID,
+			UUID:            dbVM.ID,
 			DomainUUID:      dbVM.DomainUUID,
 			Description:     dbVM.Description,
 			VCPUCount:       dbVM.VCPUCount,
@@ -939,7 +939,7 @@ func (s *HostService) getVMHardwareFromDB(hostID, vmName string) (*libvirt.Hardw
 
 	// Retrieve and populate disks
 	var diskAttachments []storage.DiskAttachment
-	s.db.Preload("Disk").Where("vm_uuid = ?", vm.UUID).Find(&diskAttachments)
+	s.db.Preload("Disk").Where("vm_uuid = ?", vm.ID).Find(&diskAttachments)
 	for _, da := range diskAttachments {
 		path := da.Disk.Path
 		if da.Disk.VolumeID != nil {
@@ -982,7 +982,7 @@ func (s *HostService) getVMHardwareFromDB(hostID, vmName string) (*libvirt.Hardw
 
 	// Retrieve and populate networks using PortAttachment records.
 	var attachments []storage.PortAttachment
-	if err := s.db.Preload("Port").Where("vm_uuid = ?", vm.UUID).Find(&attachments).Error; err == nil {
+	if err := s.db.Preload("Port").Where("vm_uuid = ?", vm.ID).Find(&attachments).Error; err == nil {
 		for _, a := range attachments {
 			var binding storage.PortBinding
 			if err := s.db.Preload("Network").Where("port_id = ?", a.PortID).First(&binding).Error; err == nil {
@@ -1028,7 +1028,7 @@ func (s *HostService) getVMHardwareFromDB(hostID, vmName string) (*libvirt.Hardw
 
 	// Retrieve and populate videos
 	var videoAttachments []storage.VideoAttachment
-	s.db.Preload("VideoModel").Where("vm_uuid = ?", vm.UUID).Find(&videoAttachments)
+	s.db.Preload("VideoModel").Where("vm_uuid = ?", vm.ID).Find(&videoAttachments)
 	for _, va := range videoAttachments {
 		hardware.Videos = append(hardware.Videos, libvirt.VideoInfo{
 			Model: struct {
@@ -1044,7 +1044,7 @@ func (s *HostService) getVMHardwareFromDB(hostID, vmName string) (*libvirt.Hardw
 	}
 
 	var bootConfig storage.BootConfig
-	if err := s.db.Where("vm_uuid = ?", vm.UUID).First(&bootConfig).Error; err == nil {
+	if err := s.db.Where("vm_uuid = ?", vm.ID).First(&bootConfig).Error; err == nil {
 		var bootDevices []libvirt.BootEntry
 		if err := json.Unmarshal([]byte(bootConfig.BootOrderJSON), &bootDevices); err == nil {
 			hardware.Boot = bootDevices
@@ -1511,7 +1511,7 @@ func (s *HostService) ingestVMFromLibvirt(hostID, vmName string) (bool, error) {
 			}
 			// Also ingest hardware for the restored VM
 			if hw, hwErr := s.connector.GetDomainHardware(hostID, vmName); hwErr == nil {
-				if _, err := s.syncVMHardware(tx, softVM.UUID, hostID, hw, &vmInfo.Graphics, nil, nil); err != nil {
+				if _, err := s.syncVMHardware(tx, softVM.ID, hostID, hw, &vmInfo.Graphics, nil, nil); err != nil {
 					tx.Rollback()
 					return false, fmt.Errorf("failed to sync hardware for restored VM during ingestion: %w", err)
 				}
@@ -1571,9 +1571,9 @@ func (s *HostService) ingestVMFromLibvirt(hostID, vmName string) (bool, error) {
 	var existingVMs []storage.VirtualMachine
 	tx.Where("domain_uuid = ?", vmInfo.UUID).Limit(1).Find(&existingVMs)
 	if len(existingVMs) == 0 {
-		newVM.UUID = vmInfo.UUID
+		newVM.DomainUUID = vmInfo.UUID
 	} else {
-		newVM.UUID = uuid.New().String()
+		newVM.DomainUUID = uuid.New().String()
 	}
 
 	if ierr := tx.Create(&newVM).Error; ierr != nil {
@@ -1592,7 +1592,7 @@ func (s *HostService) ingestVMFromLibvirt(hostID, vmName string) (bool, error) {
 
 	// Ingest hardware for the new VM
 	if hw, hwErr := s.connector.GetDomainHardware(hostID, vmName); hwErr == nil {
-		if _, err := s.syncVMHardware(tx, newVM.UUID, hostID, hw, &vmInfo.Graphics, nil, nil); err != nil {
+		if _, err := s.syncVMHardware(tx, newVM.ID, hostID, hw, &vmInfo.Graphics, nil, nil); err != nil {
 			tx.Rollback()
 			return false, fmt.Errorf("failed to sync hardware during ingestion: %w", err)
 		}
@@ -1655,7 +1655,7 @@ func (s *HostService) detectDriftOrIngestVM(hostID, vmName string, isInitialSync
 			}
 			log.Verbosef("Pruning VM %s from database as it's no longer in libvirt.", vmName)
 			tx := s.db.Begin()
-			if err := tx.Where("vm_uuid = ?", dbVM.UUID).Delete(&storage.AttachmentIndex{}).Error; err != nil {
+			if err := tx.Where("vm_uuid = ?", dbVM.ID).Delete(&storage.AttachmentIndex{}).Error; err != nil {
 				tx.Rollback()
 				log.Verbosef("Warning: failed to delete attachment indices for VM %s: %v", dbVM.Name, err)
 				return false, err
@@ -1782,7 +1782,7 @@ func (s *HostService) detectDriftOrIngestVM(hostID, vmName string, isInitialSync
 			if hwErr != nil {
 				log.Verbosef("Warning: could not fetch hardware for restored VM %s: %v", vmInfo.Name, hwErr)
 			} else {
-				if _, err := s.syncVMHardware(tx, existingVM.UUID, hostID, hardwareInfo, &vmInfo.Graphics, nil, nil); err != nil {
+				if _, err := s.syncVMHardware(tx, existingVM.ID, hostID, hardwareInfo, &vmInfo.Graphics, nil, nil); err != nil {
 					tx.Rollback()
 					return false, fmt.Errorf("failed to sync hardware for restored VM: %w", err)
 				}
@@ -2385,8 +2385,8 @@ func (s *HostService) syncVMMdevs(tx *gorm.DB, vmUUID string, mdevs []libvirt.Md
 			if err := tx.Create(&mda).Error; err != nil {
 				return false, err
 			}
-			devID4 := md.ID
-			alloc := storage.AttachmentIndex{VMUUID: vmUUID, DeviceType: "mdev", AttachmentID: mda.ID, DeviceID: &devID4}
+			devID4Str := strconv.Itoa(int(md.ID))
+			alloc := storage.AttachmentIndex{VMUUID: vmUUID, DeviceType: "mdev", AttachmentID: strconv.Itoa(int(mda.ID)), DeviceID: &devID4Str}
 			var existingAllocs []storage.AttachmentIndex
 			tx.Where("device_type = ? AND attachment_id = ?", alloc.DeviceType, alloc.AttachmentID).Limit(1).Find(&existingAllocs)
 			if len(existingAllocs) > 0 {
@@ -2490,8 +2490,8 @@ func (s *HostService) syncVMVideos(tx *gorm.DB, vmUUID string, videos []libvirt.
 			// Videos represent logical models, not exclusive host devices.
 			// Treat them like volumes for indexing (DeviceID=nil) so many VMs
 			// can reference the same Video model without causing uniqueness conflicts.
-			var nilDevID *uint = nil
-			alloc := storage.AttachmentIndex{VMUUID: vmUUID, DeviceType: "video", AttachmentID: att.ID, DeviceID: nilDevID}
+			var nilDevID *string = nil
+			alloc := storage.AttachmentIndex{VMUUID: vmUUID, DeviceType: "video", AttachmentID: strconv.Itoa(int(att.ID)), DeviceID: nilDevID}
 			var existingAllocs []storage.AttachmentIndex
 			tx.Where("device_type = ? AND attachment_id = ?", alloc.DeviceType, alloc.AttachmentID).Limit(1).Find(&existingAllocs)
 			if len(existingAllocs) == 0 {
@@ -2527,8 +2527,8 @@ func (s *HostService) syncVMVideos(tx *gorm.DB, vmUUID string, videos []libvirt.
 				return false, err
 			}
 			// Use DeviceID=nil for video model multi-attach semantics.
-			var nilDevID2 *uint = nil
-			alloc := storage.AttachmentIndex{VMUUID: vmUUID, DeviceType: "video", AttachmentID: newAtt.ID, DeviceID: nilDevID2}
+			var nilDevID2 *string = nil
+			alloc := storage.AttachmentIndex{VMUUID: vmUUID, DeviceType: "video", AttachmentID: strconv.Itoa(int(newAtt.ID)), DeviceID: nilDevID2}
 			var existingAllocs2 []storage.AttachmentIndex
 			tx.Where("device_type = ? AND attachment_id = ?", alloc.DeviceType, alloc.AttachmentID).Limit(1).Find(&existingAllocs2)
 			if len(existingAllocs2) > 0 {
@@ -2776,7 +2776,8 @@ func (s *HostService) syncVMDisks(tx *gorm.DB, vmUUID, hostID string, disks []li
 				switch k {
 				case "volume_id":
 					if vid, ok := v.(uint); ok {
-						diskRes.VolumeID = &vid
+						vidStr := strconv.Itoa(int(vid))
+						diskRes.VolumeID = &vidStr
 					}
 				case "path":
 					diskRes.Path = v.(string)
@@ -2866,7 +2867,7 @@ func (s *HostService) syncVMDisks(tx *gorm.DB, vmUUID, hostID string, disks []li
 
 			// For shareable or readonly disks, allow multi-attach (DeviceID=nil)
 			// For exclusive disks, prevent double attach
-			var deviceID *uint
+			var deviceID *string
 			if disk.Shareable || disk.ReadOnly {
 				deviceID = nil
 			} else {
@@ -2895,7 +2896,7 @@ func (s *HostService) syncVMDisks(tx *gorm.DB, vmUUID, hostID string, disks []li
 
 	// Clean up any stale disk attachments
 	if len(existingDiskAttachmentsMap) > 0 {
-		var idsToDelete []uint
+		var idsToDelete []string
 		for _, attachment := range existingDiskAttachmentsMap {
 			idsToDelete = append(idsToDelete, attachment.ID)
 		}
@@ -3006,7 +3007,8 @@ func (s *HostService) syncVMDisksXMLOnly(tx *gorm.DB, vmUUID, hostID string, dis
 				switch k {
 				case "volume_id":
 					if vid, ok := v.(uint); ok {
-						diskRes.VolumeID = &vid
+						vidStr := strconv.Itoa(int(vid))
+						diskRes.VolumeID = &vidStr
 					}
 				case "path":
 					diskRes.Path = v.(string)
@@ -3057,7 +3059,7 @@ func (s *HostService) syncVMDisksXMLOnly(tx *gorm.DB, vmUUID, hostID string, dis
 
 			// For shareable or readonly disks, allow multi-attach (DeviceID=nil)
 			// For exclusive disks, prevent double attach
-			var deviceID *uint
+			var deviceID *string
 			if disk.Shareable || disk.ReadOnly {
 				deviceID = nil
 			} else {
@@ -3086,7 +3088,7 @@ func (s *HostService) syncVMDisksXMLOnly(tx *gorm.DB, vmUUID, hostID string, dis
 
 	// Clean up any stale disk attachments
 	if len(existingDiskAttachmentsMap) > 0 {
-		var idsToDelete []uint
+		var idsToDelete []string
 		for _, attachment := range existingDiskAttachmentsMap {
 			idsToDelete = append(idsToDelete, attachment.ID)
 		}
@@ -3392,7 +3394,7 @@ func (s *HostService) syncVMNetworks(tx *gorm.DB, vmUUID string, hostID string, 
 	}
 
 	if len(allExisting) > 0 {
-		var idsToDelete []uint
+		var idsToDelete []string
 		for _, attachment := range allExisting {
 			idsToDelete = append(idsToDelete, attachment.ID)
 		}
@@ -3457,7 +3459,7 @@ func (s *HostService) syncVMNetworksXMLOnly(tx *gorm.DB, vmUUID string, hostID s
 				return false, err
 			}
 
-			if network.ID != 0 && newPort.ID != 0 {
+			if network.ID != "" && newPort.ID != "" {
 				binding := storage.PortBinding{PortID: newPort.ID, NetworkID: network.ID}
 				tx.Create(&binding)
 			}
@@ -3489,7 +3491,7 @@ func (s *HostService) syncVMNetworksXMLOnly(tx *gorm.DB, vmUUID string, hostID s
 					// Refresh existingAtt.PortID if changed
 					if v, ok := updates["port_id"]; ok {
 						if id, ok2 := v.(uint); ok2 {
-							existingAtt.PortID = id
+							existingAtt.PortID = strconv.Itoa(int(id))
 						}
 					}
 					changed = true
@@ -3543,8 +3545,8 @@ func (s *HostService) syncVMNetworksXMLOnly(tx *gorm.DB, vmUUID string, hostID s
 
 	// Any attachments left are stale and should be removed along with their ports
 	if len(existingByMAC) > 0 {
-		var portIDsToDelete []uint
-		var attachmentIDs []uint
+		var portIDsToDelete []string
+		var attachmentIDs []string
 		for _, att := range existingByMAC {
 			portIDsToDelete = append(portIDsToDelete, att.PortID)
 			attachmentIDs = append(attachmentIDs, att.ID)
@@ -3572,7 +3574,7 @@ func (s *HostService) syncVMHardware(tx *gorm.DB, vmUUID string, hostID string, 
 
 	// Get VM name for enhanced API calls
 	var vm storage.VirtualMachine
-	if err := tx.Where("uuid = ?", vmUUID).First(&vm).Error; err != nil {
+	if err := tx.Where("id = ?", vmUUID).First(&vm).Error; err != nil {
 		log.Debugf("Failed to find VM for enhanced sync: %v", err)
 		// Continue with standard sync if we can't get the VM name
 	}
@@ -3948,9 +3950,9 @@ func (s *HostService) syncHostVMs(hostID string) (bool, error) {
 				log.Verbosef("Skipping pruning VM %s because host %s is not connected: %v", dbVM.Name, hostID, connErr)
 				continue
 			}
-			log.Verbosef("Pruning VM %s (UUID: %s) from database as it's no longer in libvirt.", dbVM.Name, dbVM.UUID)
+			log.Verbosef("Pruning VM %s (UUID: %s) from database as it's no longer in libvirt.", dbVM.Name, dbVM.ID)
 			tx := s.db.Begin()
-			if err := tx.Where("vm_uuid = ?", dbVM.UUID).Delete(&storage.AttachmentIndex{}).Error; err != nil {
+			if err := tx.Where("vm_uuid = ?", dbVM.ID).Delete(&storage.AttachmentIndex{}).Error; err != nil {
 				tx.Rollback()
 				log.Verbosef("Warning: failed to delete attachment indices for VM %s: %v", dbVM.Name, err)
 				continue
@@ -4628,7 +4630,7 @@ func (s *HostService) SyncVMFromLibvirt(hostID, vmName string) error {
 
 	// Sync hardware
 	if hardwareInfo != nil {
-		if _, err := s.syncVMHardware(tx, vmToUpdate.UUID, hostID, hardwareInfo, &vmInfo.Graphics, nil, nil); err != nil {
+		if _, err := s.syncVMHardware(tx, vmToUpdate.ID, hostID, hardwareInfo, &vmInfo.Graphics, nil, nil); err != nil {
 			tx.Rollback()
 			return fmt.Errorf("failed to sync hardware during manual sync: %w", err)
 		}
@@ -5244,21 +5246,25 @@ func (s *HostService) syncNodePerformance(tx *gorm.DB, hostID string, nodePerf *
 	}
 
 	// Check if a recent record exists (within last minute)
-	var existing storage.NodePerformance
+	var existing []storage.NodePerformance
 	recentThreshold := time.Now().Add(-1 * time.Minute)
 
 	err := tx.Where("host_id = ? AND collected_at > ?", hostID, recentThreshold).
 		Order("collected_at DESC").
-		First(&existing).Error
+		Find(&existing).Error
 
-	if err == nil {
+	if err != nil {
+		return false, fmt.Errorf("failed to query node performance: %w", err)
+	}
+
+	if len(existing) > 0 {
 		// Update existing recent record
-		result := tx.Model(&existing).Updates(perfData)
+		result := tx.Model(&existing[0]).Updates(perfData)
 		if result.Error != nil {
 			return false, fmt.Errorf("failed to update node performance: %w", result.Error)
 		}
 		return result.RowsAffected > 0, nil
-	} else if errors.Is(err, gorm.ErrRecordNotFound) {
+	} else {
 		// Create new record
 		result := tx.Create(&perfData)
 		if result.Error != nil {
@@ -5266,8 +5272,6 @@ func (s *HostService) syncNodePerformance(tx *gorm.DB, hostID string, nodePerf *
 		}
 		return true, nil
 	}
-
-	return false, err
 }
 
 // syncDevicePerformance handles device performance data synchronization

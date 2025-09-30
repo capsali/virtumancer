@@ -9,7 +9,7 @@ import (
 // DiscoveredVM represents a libvirt-only domain that has been observed on a host
 // but not yet imported into Virtumancer's canonical VM table.
 type DiscoveredVM struct {
-	gorm.Model
+	Base
 	HostID     string    `gorm:"index;not null" json:"host_id"`
 	Name       string    `json:"name"`
 	DomainUUID string    `gorm:"size:64;index" json:"domain_uuid"`

@@ -4,11 +4,28 @@ import (
 	"time"
 
 	log "github.com/capsali/virtumancer/internal/logging"
+	"github.com/google/uuid"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
+
+// Base contains common fields for all models using UUID primary keys
+type Base struct {
+	ID        string         `gorm:"primaryKey;type:char(36);default:(uuid())" json:"id"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
+}
+
+// BeforeCreate hook to generate UUID if not set
+func (b *Base) BeforeCreate(tx *gorm.DB) error {
+	if b.ID == "" {
+		b.ID = uuid.New().String()
+	}
+	return nil
+}
 
 // VMState defines the possible stable states of a VM.
 type VMState string
@@ -55,7 +72,7 @@ const (
 
 // Host represents a libvirt host connection configuration.
 type Host struct {
-	ID   string `gorm:"primaryKey" json:"id"`
+	Base
 	Name string `json:"name,omitempty"` // Optional friendly name for the host
 	URI  string `json:"uri"`
 	// State reflects the stable connection state of the host.
@@ -86,10 +103,9 @@ const (
 
 // VirtualMachine is Virtumancer's canonical definition of a VM's intended state.
 type VirtualMachine struct {
-	gorm.Model
+	Base
 	HostID     string `gorm:"uniqueIndex:idx_vm_host_name" json:"hostId"`
 	Name       string `gorm:"uniqueIndex:idx_vm_host_name" json:"name"`
-	UUID       string `gorm:"primaryKey" json:"uuid"`        // Virtumancer's internal, guaranteed-unique UUID
 	DomainUUID string `gorm:"uniqueIndex" json:"domainUuid"` // The UUID as reported by libvirt
 	// Source indicates whether this VM was created/managed by Virtumancer
 	// ('managed') or imported from libvirt ('imported'). Discovered VMs are
@@ -117,7 +133,7 @@ type VirtualMachine struct {
 
 // StoragePool represents a libvirt storage pool (e.g., LVM, a directory).
 type StoragePool struct {
-	gorm.Model
+	Base
 	HostID          string `json:"host_id"`
 	Name            string `json:"name"`
 	UUID            string `gorm:"uniqueIndex" json:"uuid"`
@@ -129,8 +145,8 @@ type StoragePool struct {
 
 // Volume represents a single storage volume, like a virtual disk or an ISO.
 type Volume struct {
-	gorm.Model
-	StoragePoolID   uint   `json:"storage_pool_id"`
+	Base
+	StoragePoolID   string `json:"storage_pool_id"`
 	Name            string `json:"name"`
 	Type            string `json:"type"` // 'DISK' or 'ISO'
 	Format          string `json:"format"`
@@ -142,7 +158,7 @@ type Volume struct {
 
 // Network represents a virtual network or bridge on a host.
 type Network struct {
-	gorm.Model
+	Base
 	HostID     string `gorm:"uniqueIndex:idx_network_host_name" json:"host_id"`
 	Name       string `gorm:"uniqueIndex:idx_network_host_name" json:"name"`
 	UUID       string `json:"uuid"`
@@ -152,7 +168,7 @@ type Network struct {
 
 // Port represents a virtual Network Interface Card (vNIC) belonging to a VM.
 type Port struct {
-	gorm.Model
+	Base
 	// VMUUID was removed in favor of explicit PortAttachment records.
 	MACAddress string `json:"mac_address"` // canonical MAC for the resource
 	// DeviceName removed from Port; device name is attachment-scoped
@@ -172,10 +188,10 @@ type Port struct {
 
 // PortBinding links a Port to a Network.
 type PortBinding struct {
-	gorm.Model
-	PortID    uint    `json:"port_id"`
+	Base
+	PortID    string  `json:"port_id"`
 	Port      Port    `json:"port"`
-	NetworkID uint    `json:"network_id"`
+	NetworkID string  `json:"network_id"`
 	Network   Network `json:"network"`
 }
 
@@ -183,9 +199,9 @@ type PortBinding struct {
 // This is intentionally separate from Port/PortBinding so ports can exist unattached
 // (for provisioning / pool usage) and then be attached to VMs later.
 type PortAttachment struct {
-	gorm.Model
+	Base
 	VMUUID      string `gorm:"index" json:"vm_uuid"`
-	PortID      uint   `gorm:"index" json:"port_id"`
+	PortID      string `gorm:"index" json:"port_id"`
 	Port        Port   `json:"port"`
 	HostID      string `gorm:"index" json:"host_id"` // host that the attachment is bound to (if attached)
 	DeviceName  string `json:"device_name"`          // per-VM device name (overrides Port.DeviceName)
@@ -198,26 +214,26 @@ type PortAttachment struct {
 
 // FilterRef represents a network filterref applied to a specific port/resource.
 type FilterRef struct {
-	gorm.Model
-	PortID         uint
+	Base
+	PortID         string
 	Name           string
 	ParametersJSON string `gorm:"type:text"`
 }
 
 // VirtualPort represents the <virtualport> subtree for advanced NICs (e.g., openvswitch).
 type VirtualPort struct {
-	gorm.Model
-	PortID     uint
+	Base
+	PortID     string
 	Type       string
 	ConfigJSON string `gorm:"type:text"`
 }
 
 // DeviceAlias records libvirt <alias name='...'> entries to map alias -> device.
 type DeviceAlias struct {
-	gorm.Model
+	Base
 	VMUUID     string `gorm:"index"`
 	DeviceType string `gorm:"size:64"`
-	DeviceID   uint
+	DeviceID   string
 	AliasName  string `gorm:"size:128"`
 }
 
@@ -225,7 +241,7 @@ type DeviceAlias struct {
 
 // Controller represents a hardware controller within a VM (e.g., USB, SATA).
 type Controller struct {
-	gorm.Model
+	Base
 	Type      string // 'usb', 'sata', 'virtio-serial'
 	ModelName string
 	Index     uint
@@ -233,23 +249,23 @@ type Controller struct {
 
 // ControllerAttachment links a Controller to a VirtualMachine.
 type ControllerAttachment struct {
-	gorm.Model
+	Base
 	VMUUID       string `gorm:"index"`
-	ControllerID uint
+	ControllerID string
 }
 
 // InputDevice represents an input device like a mouse or keyboard.
 type InputDevice struct {
-	gorm.Model
+	Base
 	Type string // 'mouse', 'tablet', 'keyboard'
 	Bus  string // 'usb', 'ps2', 'virtio'
 }
 
 // InputDeviceAttachment links an InputDevice to a VirtualMachine.
 type InputDeviceAttachment struct {
-	gorm.Model
+	Base
 	VMUUID        string `gorm:"index"`
-	InputDeviceID uint
+	InputDeviceID string
 }
 
 // GraphicsDevice represented a virtual GPU and display protocol (legacy).
@@ -258,7 +274,7 @@ type InputDeviceAttachment struct {
 // This is a per-instance model used during migration from the older
 // GraphicsDevice/GraphicsDeviceAttachment model to a first-class Console instance.
 type Console struct {
-	gorm.Model
+	Base
 	VMUUID        string `gorm:"index"`
 	HostID        string `gorm:"index"`
 	Type          string // 'vnc' or 'spice'
@@ -271,20 +287,20 @@ type Console struct {
 
 // SoundCard represents a virtual sound device.
 type SoundCard struct {
-	gorm.Model
+	Base
 	ModelName string // 'ich6', 'ac97'
 }
 
 // SoundCardAttachment links a SoundCard to a VirtualMachine.
 type SoundCardAttachment struct {
-	gorm.Model
+	Base
 	VMUUID      string `gorm:"index"`
-	SoundCardID uint
+	SoundCardID string
 }
 
 // HostDevice represents a physical device on a host for passthrough.
 type HostDevice struct {
-	gorm.Model
+	Base
 	HostID      string
 	Type        string // 'pci', 'usb'
 	Address     string // Physical address on host
@@ -293,14 +309,14 @@ type HostDevice struct {
 
 // HostDeviceAttachment links a HostDevice to a VirtualMachine for passthrough.
 type HostDeviceAttachment struct {
-	gorm.Model
+	Base
 	VMUUID       string `gorm:"index"`
-	HostDeviceID uint
+	HostDeviceID string
 }
 
 // TPM represents a Trusted Platform Module device.
 type TPM struct {
-	gorm.Model
+	Base
 	ModelName   string // 'tpm-crb', 'tpm-tis'
 	BackendType string // 'passthrough', 'emulator'
 	BackendPath string
@@ -308,28 +324,28 @@ type TPM struct {
 
 // TPMAttachment links a TPM to a VirtualMachine.
 type TPMAttachment struct {
-	gorm.Model
+	Base
 	VMUUID string `gorm:"index"`
-	TPMID  uint
+	TPMID  string
 }
 
 // Watchdog represents a virtual watchdog device.
 type Watchdog struct {
-	gorm.Model
+	Base
 	ModelName string // 'i6300esb'
 	Action    string // 'reset', 'shutdown', 'poweroff'
 }
 
 // WatchdogAttachment links a Watchdog to a VirtualMachine.
 type WatchdogAttachment struct {
-	gorm.Model
+	Base
 	VMUUID     string `gorm:"index"`
-	WatchdogID uint
+	WatchdogID string
 }
 
 // SerialDevice represents a serial port configuration.
 type SerialDevice struct {
-	gorm.Model
+	Base
 	Type       string // 'pty', 'tcp', 'stdio'
 	TargetPort uint
 	ConfigJSON string
@@ -337,14 +353,14 @@ type SerialDevice struct {
 
 // SerialDeviceAttachment links a SerialDevice to a VirtualMachine.
 type SerialDeviceAttachment struct {
-	gorm.Model
+	Base
 	VMUUID         string `gorm:"index"`
-	SerialDeviceID uint
+	SerialDeviceID string
 }
 
 // ChannelDevice represents a communication channel (e.g., for guest agent).
 type ChannelDevice struct {
-	gorm.Model
+	Base
 	Type       string // 'unix', 'spicevmc'
 	TargetName string // e.g., 'org.qemu.guest_agent.0'
 	ConfigJSON string
@@ -352,14 +368,14 @@ type ChannelDevice struct {
 
 // ChannelDeviceAttachment links a ChannelDevice to a VirtualMachine.
 type ChannelDeviceAttachment struct {
-	gorm.Model
+	Base
 	VMUUID          string `gorm:"index"`
-	ChannelDeviceID uint
+	ChannelDeviceID string
 }
 
 // Filesystem represents a shared filesystem for a VM.
 type Filesystem struct {
-	gorm.Model
+	Base
 	DriverType string
 	SourcePath string
 	TargetPath string
@@ -367,96 +383,96 @@ type Filesystem struct {
 
 // FilesystemAttachment links a Filesystem to a VM.
 type FilesystemAttachment struct {
-	gorm.Model
+	Base
 	VMUUID       string `gorm:"index"`
-	FilesystemID uint
+	FilesystemID string
 }
 
 // Smartcard represents a smartcard device for a VM.
 type Smartcard struct {
-	gorm.Model
+	Base
 	Type       string
 	ConfigJSON string
 }
 
 // SmartcardAttachment links a Smartcard to a VM.
 type SmartcardAttachment struct {
-	gorm.Model
+	Base
 	VMUUID      string `gorm:"index"`
-	SmartcardID uint
+	SmartcardID string
 }
 
 // USBRedirector represents a USB redirection device.
 type USBRedirector struct {
-	gorm.Model
+	Base
 	Type       string
 	FilterRule string
 }
 
 // USBRedirectorAttachment links a USBRedirector to a VM.
 type USBRedirectorAttachment struct {
-	gorm.Model
+	Base
 	VMUUID          string `gorm:"index"`
-	USBRedirectorID uint
+	USBRedirectorID string
 }
 
 // RngDevice represents a Random Number Generator device.
 type RngDevice struct {
-	gorm.Model
+	Base
 	ModelName   string
 	BackendType string
 }
 
 // RngDeviceAttachment links an RngDevice to a VM.
 type RngDeviceAttachment struct {
-	gorm.Model
+	Base
 	VMUUID      string `gorm:"index"`
-	RngDeviceID uint
+	RngDeviceID string
 }
 
 // PanicDevice represents a panic device for a VM.
 type PanicDevice struct {
-	gorm.Model
+	Base
 	ModelName string
 }
 
 // PanicDeviceAttachment links a PanicDevice to a VM.
 type PanicDeviceAttachment struct {
-	gorm.Model
+	Base
 	VMUUID        string `gorm:"index"`
-	PanicDeviceID uint
+	PanicDeviceID string
 }
 
 // Vsock represents a VirtIO socket device.
 type Vsock struct {
-	gorm.Model
+	Base
 	GuestCID uint
 }
 
 // VsockAttachment links a Vsock to a VM.
 type VsockAttachment struct {
-	gorm.Model
+	Base
 	VMUUID  string `gorm:"index"`
-	VsockID uint
+	VsockID string
 }
 
 // MemoryBalloon represents a memory balloon device.
 type MemoryBalloon struct {
-	gorm.Model
+	Base
 	ModelName  string
 	ConfigJSON string
 }
 
 // MemoryBalloonAttachment links a MemoryBalloon to a VM.
 type MemoryBalloonAttachment struct {
-	gorm.Model
+	Base
 	VMUUID          string `gorm:"index"`
-	MemoryBalloonID uint
+	MemoryBalloonID string
 }
 
 // ShmemDevice represents a shared memory device.
 type ShmemDevice struct {
-	gorm.Model
+	Base
 	Name    string
 	SizeKiB uint
 	Path    string
@@ -464,36 +480,36 @@ type ShmemDevice struct {
 
 // ShmemDeviceAttachment links a ShmemDevice to a VM.
 type ShmemDeviceAttachment struct {
-	gorm.Model
+	Base
 	VMUUID        string `gorm:"index"`
-	ShmemDeviceID uint
+	ShmemDeviceID string
 }
 
 // IOMMUDevice represents an IOMMU device.
 type IOMMUDevice struct {
-	gorm.Model
+	Base
 	ModelName string
 }
 
 // IOMMUDeviceAttachment links an IOMMUDevice to a VM.
 type IOMMUDeviceAttachment struct {
-	gorm.Model
+	Base
 	VMUUID        string `gorm:"index"`
-	IOMMUDeviceID uint
+	IOMMUDeviceID string
 }
 
 // Disk represents a block device/resource. It may reference a Volume when managed
 // by a storage pool, or a raw path when unmanaged.
 type Disk struct {
-	gorm.Model
-	Name          string `json:"name"`
-	VolumeID      *uint  `json:"volume_id"`
-	Path          string `json:"path"`
-	Format        string `json:"format"`
-	CapacityBytes uint64 `json:"capacity_bytes"`
-	Serial        string `json:"serial"`
-	DriverJSON    string `gorm:"type:text" json:"driver_json"`  // driver options (cache/io/…) as JSON
-	BackingJSON   string `gorm:"type:text" json:"backing_json"` // backingStore / layered info
+	Base
+	Name          string  `json:"name"`
+	VolumeID      *string `json:"volume_id"`
+	Path          string  `json:"path"`
+	Format        string  `json:"format"`
+	CapacityBytes uint64  `json:"capacity_bytes"`
+	Serial        string  `json:"serial"`
+	DriverJSON    string  `gorm:"type:text" json:"driver_json"`  // driver options (cache/io/…) as JSON
+	BackingJSON   string  `gorm:"type:text" json:"backing_json"` // backingStore / layered info
 	// Enhanced API-sourced fields
 	VolumeType      string `json:"volume_type"`             // From StorageVolGetInfo
 	AllocationBytes uint64 `json:"allocation_bytes"`        // Actual space used
@@ -506,9 +522,9 @@ type Disk struct {
 
 // DiskAttachment links a Disk (or volume) to a VM and stores per-VM metadata.
 type DiskAttachment struct {
-	gorm.Model
+	Base
 	VMUUID      string `gorm:"index" json:"vm_uuid"`
-	DiskID      uint   `json:"disk_id"`
+	DiskID      string `json:"disk_id"`
 	Disk        Disk   `json:"disk"`        // Preloaded disk resource
 	DeviceName  string `json:"device_name"` // e.g., vda
 	BusType     string `json:"bus_type"`    // virtio/sata/ide
@@ -520,8 +536,8 @@ type DiskAttachment struct {
 
 // BlockStatistics stores real-time disk performance metrics from libvirt APIs
 type BlockStatistics struct {
-	gorm.Model
-	DiskAttachmentID uint   `gorm:"index" json:"disk_attachment_id"`
+	Base
+	DiskAttachmentID string `gorm:"index" json:"disk_attachment_id"`
 	VMUUID           string `gorm:"index" json:"vm_uuid"`
 	DeviceName       string `json:"device_name"`
 	// Block I/O statistics from DomainGetBlockStats
@@ -540,8 +556,8 @@ type BlockStatistics struct {
 
 // NetworkStatistics stores real-time network performance metrics from libvirt APIs
 type NetworkStatistics struct {
-	gorm.Model
-	PortAttachmentID uint   `gorm:"index" json:"port_attachment_id"`
+	Base
+	PortAttachmentID string `gorm:"index" json:"port_attachment_id"`
 	VMUUID           string `gorm:"index" json:"vm_uuid"`
 	DeviceName       string `json:"device_name"`
 	// Network I/O statistics from DomainInterfaceStats
@@ -562,7 +578,7 @@ type NetworkStatistics struct {
 
 // CPUPerformance stores real-time CPU performance metrics from libvirt APIs
 type CPUPerformance struct {
-	gorm.Model
+	Base
 	VMUUID string `gorm:"index" json:"vm_uuid"`
 	// CPU info from DomainGetInfo
 	State     uint8  `json:"state"`       // Domain state
@@ -581,7 +597,7 @@ type CPUPerformance struct {
 
 // MemoryPerformance stores real-time memory performance metrics from libvirt APIs
 type MemoryPerformance struct {
-	gorm.Model
+	Base
 	VMUUID string `gorm:"index" json:"vm_uuid"`
 	// Memory info from DomainGetInfo and DomainGetMemoryParameters
 	MaxMemoryKB     uint64 `json:"max_memory_kb"`     // Maximum memory in KB
@@ -600,7 +616,7 @@ type MemoryPerformance struct {
 
 // NodePerformance stores real-time node/host performance metrics from libvirt APIs
 type NodePerformance struct {
-	gorm.Model
+	Base
 	HostID string `gorm:"index" json:"host_id"`
 	// Node info from NodeGetInfo
 	CPUModel string `json:"cpu_model"` // CPU model
@@ -630,7 +646,7 @@ type NodePerformance struct {
 
 // DevicePerformance stores device-specific performance metrics
 type DevicePerformance struct {
-	gorm.Model
+	Base
 	VMUUID     string `gorm:"index" json:"vm_uuid"`
 	DeviceType string `json:"device_type"` // "video", "sound", "hostdev", etc.
 	DeviceName string `json:"device_name"` // Device identifier
@@ -1017,18 +1033,18 @@ type Setting struct {
 // AttachmentIndex provides a compact index of attachments across device types.
 // The corresponding table name will be `attachment_indices` by GORM pluralization.
 type AttachmentIndex struct {
-	gorm.Model
-	VMUUID       string `gorm:"index;not null"`
-	DeviceType   string `gorm:"index;size:64;not null"` // e.g. 'volume', 'graphics', 'hostdevice'
-	AttachmentID uint   `gorm:"not null"`               // row id in the specific attachment table
-	DeviceID     *uint  `gorm:"index"`                  // optional convenience: device's numeric id (nullable for multi-attach)
+	Base
+	VMUUID       string  `gorm:"index;not null"`
+	DeviceType   string  `gorm:"index;size:64;not null"` // e.g. 'volume', 'graphics', 'hostdevice'
+	AttachmentID string  `gorm:"not null"`               // row id in the specific attachment table
+	DeviceID     *string `gorm:"index"`                  // optional convenience: device's UUID (nullable for multi-attach)
 }
 
 // --- OS Configuration ---
 
 // OSConfig stores OS-level configuration for a VM (loader, nvram, boot menu, etc.)
 type OSConfig struct {
-	gorm.Model
+	Base
 	VMUUID            string `gorm:"index;unique"`
 	LoaderPath        string
 	LoaderType        string // 'rom', 'pflash'
@@ -1196,8 +1212,8 @@ func InitDB(dataSourceName string) (*gorm.DB, error) {
 		return nil, err
 	}
 
-	// Configure GORM logger to default (info level)
-	db.Logger = logger.Default.LogMode(logger.Info)
+	// Configure GORM logger to warn level (only log warnings and errors, not info queries)
+	db.Logger = logger.Default.LogMode(logger.Warn)
 
 	// Auto-migrate the full schema
 	err = db.AutoMigrate(

@@ -606,7 +606,7 @@ func (h *APIHandler) ListVMVideoAttachments(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	var atts []storage.VideoAttachment
-	if err := h.DB.Preload("VideoModel").Where("vm_uuid = ?", vm.UUID).Find(&atts).Error; err != nil {
+	if err := h.DB.Preload("VideoModel").Where("vm_uuid = ?", vm.ID).Find(&atts).Error; err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -624,7 +624,7 @@ func (h *APIHandler) ListVMPortAttachments(w http.ResponseWriter, r *http.Reques
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
-	atts, err := h.HostService.GetPortAttachmentsForVM(vm.UUID)
+	atts, err := h.HostService.GetPortAttachmentsForVM(vm.ID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -1171,8 +1171,10 @@ func (h *APIHandler) ListStorageVolumes(w http.ResponseWriter, r *http.Request) 
 
 		// Get pool name
 		var pool storage.StoragePool
-		if err := h.DB.Where("id = ?", vol.StoragePoolID).First(&pool).Error; err == nil {
-			resp.PoolName = pool.Name
+		if vol.StoragePoolID != "" {
+			if err := h.DB.Where("id = ?", vol.StoragePoolID).First(&pool).Error; err == nil {
+				resp.PoolName = pool.Name
+			}
 		}
 
 		response = append(response, resp)
@@ -1213,7 +1215,7 @@ func (h *APIHandler) ListDiskAttachments(w http.ResponseWriter, r *http.Request)
 
 		// Get VM name
 		var vm storage.VirtualMachine
-		if err := h.DB.Where("uuid = ?", att.VMUUID).First(&vm).Error; err == nil {
+		if err := h.DB.Where("id = ?", att.VMUUID).First(&vm).Error; err == nil {
 			resp.VMName = vm.Name
 		}
 
@@ -1318,7 +1320,7 @@ func (h *APIHandler) ListPorts(w http.ResponseWriter, r *http.Request) {
 	// Transform to include network_id from PortBinding
 	type PortResponse struct {
 		storage.Port
-		NetworkID *uint `json:"network_id,omitempty"`
+		NetworkID *string `json:"network_id,omitempty"`
 	}
 
 	var response = make([]PortResponse, 0)
