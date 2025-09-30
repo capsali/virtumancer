@@ -2729,10 +2729,19 @@ func (s *HostService) syncVMDisks(tx *gorm.DB, vmUUID, hostID string, disks []li
 		updates["format"] = disk.Driver.Type
 		updates["driver_json"] = string(driverJSON)
 
-		// Use API-sourced capacity data
-		capacityBytes := enhancedDisk.AllocationBytes
-		if disk.Capacity.Value > 0 {
-			// Convert capacity from XML
+		// Prioritize API-sourced capacity data over XML
+		var capacityBytes uint64
+
+		// Strategy 1: Use libvirt API block info capacity (most reliable)
+		if disk.Capacity.Value > 0 && disk.Capacity.Unit == "bytes" {
+			capacityBytes = disk.Capacity.Value
+			log.Debugf("Using XML capacity (bytes) for disk %s: %d bytes", diskName, capacityBytes)
+		} else if enhancedDisk.VolumeInfo != nil && enhancedDisk.VolumeInfo.Capacity > 0 {
+			// Strategy 2: Use storage volume API capacity
+			capacityBytes = enhancedDisk.VolumeInfo.Capacity
+			log.Debugf("Using volume API capacity for disk %s: %d bytes", diskName, capacityBytes)
+		} else if disk.Capacity.Value > 0 {
+			// Strategy 3: Convert XML capacity units to bytes
 			switch disk.Capacity.Unit {
 			case "bytes":
 				capacityBytes = disk.Capacity.Value
@@ -2747,9 +2756,21 @@ func (s *HostService) syncVMDisks(tx *gorm.DB, vmUUID, hostID string, disks []li
 			default:
 				capacityBytes = disk.Capacity.Value
 			}
-		} else if enhancedDisk.VolumeInfo != nil {
-			// Use API volume capacity
-			capacityBytes = enhancedDisk.VolumeInfo.Capacity
+			log.Debugf("Using XML capacity (converted from %s) for disk %s: %d bytes", disk.Capacity.Unit, diskName, capacityBytes)
+		} else {
+			// Strategy 4: Direct libvirt API call as fallback
+			diskPath := disk.Source.File
+			if diskPath == "" {
+				diskPath = disk.Source.Dev
+			}
+			if diskPath != "" {
+				if apiCapacity, err := s.connector.GetDiskSize(hostID, diskPath); err == nil && apiCapacity > 0 {
+					capacityBytes = apiCapacity
+					log.Debugf("Retrieved disk capacity via direct API call for %s: %d bytes", diskPath, capacityBytes)
+				} else {
+					log.Debugf("Failed to get disk capacity via API for %s: %v", diskPath, err)
+				}
+			}
 		}
 
 		if capacityBytes > 0 {
@@ -3217,8 +3238,6 @@ func (s *HostService) syncVMNetworks(tx *gorm.DB, vmUUID string, hostID string, 
 		}
 
 		updates := make(map[string]interface{})
-		updates["network_id"] = netRes.ID
-		updates["name"] = portName
 		updates["mac_address"] = network.Mac.Address
 
 		// Add enhanced network data
@@ -3262,6 +3281,15 @@ func (s *HostService) syncVMNetworks(tx *gorm.DB, vmUUID string, hostID string, 
 			if err := tx.Model(&portRes).Updates(updates).Error; err != nil {
 				return false, err
 			}
+		}
+
+		// Create or update PortBinding to link Port to Network
+		var binding storage.PortBinding
+		if err := tx.Where("port_id = ? AND network_id = ?", portRes.ID, netRes.ID).FirstOrCreate(&binding, storage.PortBinding{
+			PortID:    portRes.ID,
+			NetworkID: netRes.ID,
+		}).Error; err != nil {
+			return false, err
 		}
 
 		// Create or update PortAttachment
