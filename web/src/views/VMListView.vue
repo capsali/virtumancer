@@ -44,15 +44,69 @@
                 v-model="searchQuery"
                 type="text"
                 placeholder="Search VMs... (try 'host:myhost', 'cpu:>2', 'memory:>4GB')"
-                class="w-full px-4 py-2 bg-slate-800/50 border border-slate-600/50 rounded-lg text-white placeholder-slate-400 focus-glow transition-all duration-200"
+                class="w-full px-4 py-2 pr-24 bg-slate-800/50 border border-slate-600/50 rounded-lg text-white placeholder-slate-400 focus-glow transition-all duration-200"
               />
-              <div class="absolute right-3 top-1/2 -translate-y-1/2">
+              <!-- Filter Dropdown -->
+              <div class="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                <div class="relative">
+                  <button
+                    @click="showFilterDropdown = !showFilterDropdown"
+                    class="p-1.5 text-slate-400 hover:text-white transition-colors rounded"
+                    title="Filter options"
+                  >
+                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                      <path fill-rule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 011 1v3a1 1 0 01-.293.707L12 11.414V15a1 1 0 01-.293.707l-2 2A1 1 0 018 17v-5.586L3.293 6.707A1 1 0 013 6V3z" clip-rule="evenodd" />
+                    </svg>
+                  </button>
+                  <!-- Filter Dropdown Menu -->
+                  <div v-if="showFilterDropdown" v-click-away="() => showFilterDropdown = false" class="absolute right-0 top-full mt-2 w-64 bg-slate-800 border border-slate-600 rounded-lg shadow-xl z-50">
+                    <div class="p-4 space-y-4">
+                      <div>
+                        <label class="block text-sm font-medium text-slate-300 mb-2">State</label>
+                        <select
+                          v-model="statusFilter"
+                          class="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          <option value="all">All States</option>
+                          <option value="ACTIVE">Active</option>
+                          <option value="STOPPED">Stopped</option>
+                          <option value="PAUSED">Paused</option>
+                          <option value="ERROR">Error</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label class="block text-sm font-medium text-slate-300 mb-2">Host</label>
+                        <select
+                          v-model="hostFilter"
+                          class="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          <option value="all">All Hosts</option>
+                          <option v-for="host in hosts" :key="host.id" :value="host.id">{{ host.name || host.uri }}</option>
+                        </select>
+                      </div>
+                      <div class="flex justify-between pt-2 border-t border-slate-600">
+                        <button
+                          @click="clearAllFilters"
+                          class="px-3 py-1.5 text-sm text-slate-400 hover:text-white transition-colors"
+                        >
+                          Clear All
+                        </button>
+                        <button
+                          @click="showFilterDropdown = false"
+                          class="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors"
+                        >
+                          Apply
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
                 <button
                   @click="showFilterHelp = !showFilterHelp"
-                  class="text-slate-400 hover:text-white transition-colors"
+                  class="p-1.5 text-slate-400 hover:text-white transition-colors rounded"
                   title="Show filter syntax help"
                 >
-                  <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                  <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                     <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" />
                   </svg>
                 </button>
@@ -70,168 +124,161 @@
               </div>
             </div>
           </div>
-          <div class="flex gap-2">
-            <select
-              v-model="statusFilter"
-              class="px-4 py-2 bg-slate-800/50 border border-slate-600/50 rounded-lg text-white focus-glow transition-all duration-200"
-            >
-              <option value="all">All States</option>
-              <option value="ACTIVE">Active</option>
-              <option value="STOPPED">Stopped</option>
-              <option value="PAUSED">Paused</option>
-              <option value="ERROR">Error</option>
-            </select>
-            <select
-              v-model="hostFilter"
-              class="px-4 py-2 bg-slate-800/50 border border-slate-600/50 rounded-lg text-white focus-glow transition-all duration-200"
-            >
-              <option value="all">All Hosts</option>
-              <option v-for="host in hosts" :key="host.id" :value="host.id">{{ host.name || host.uri }}</option>
-            </select>
-            <!-- Clear Filters Button -->
+        </div>
+      </div>
+    </FCard>
+
+    <!-- VM List Card with Tabs and Content -->
+    <FCard class="card-glow">
+      <!-- Tab Navigation with Controls -->
+      <div class="border-b border-slate-700/50">
+        <div class="flex items-center justify-between px-6 pt-6 pb-4">
+          <div class="flex items-center gap-1">
             <button
-              v-if="searchQuery || statusFilter !== 'all' || hostFilter !== 'all'"
-              @click="clearAllFilters"
-              class="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white rounded-lg transition-colors text-sm"
-              title="Clear all filters"
+              @click="activeTab = 'managed'"
+              :class="[
+                'px-4 py-2 text-sm font-medium rounded-t-lg transition-all duration-200',
+                activeTab === 'managed'
+                  ? 'bg-primary-500/20 text-primary-400 border-b-2 border-primary-500'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-700/50'
+              ]"
             >
-              <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
-              </svg>
+              Managed VMs ({{ totalVMs }})
+            </button>
+            <button
+              @click="activeTab = 'discovered'"
+              :class="[
+                'px-4 py-2 text-sm font-medium rounded-t-lg transition-all duration-200',
+                activeTab === 'discovered'
+                  ? 'bg-primary-500/20 text-primary-400 border-b-2 border-primary-500'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-700/50'
+              ]"
+            >
+              Discovered VMs ({{ discoveredVMs.length }})
             </button>
           </div>
-        </div>
-
-        <!-- Tab Navigation -->
-        <div class="flex items-center gap-1 border-b border-slate-700/50">
-          <button
-            @click="activeTab = 'managed'"
-            :class="[
-              'px-4 py-2 text-sm font-medium rounded-t-lg transition-all duration-200',
-              activeTab === 'managed'
-                ? 'bg-primary-500/20 text-primary-400 border-b-2 border-primary-500'
-                : 'text-slate-400 hover:text-white hover:bg-slate-700/50'
-            ]"
-          >
-            Managed VMs ({{ totalVMs }})
-          </button>
-          <button
-            @click="activeTab = 'discovered'"
-            :class="[
-              'px-4 py-2 text-sm font-medium rounded-t-lg transition-all duration-200',
-              activeTab === 'discovered'
-                ? 'bg-primary-500/20 text-primary-400 border-b-2 border-primary-500'
-                : 'text-slate-400 hover:text-white hover:bg-slate-700/50'
-            ]"
-          >
-            Discovered VMs ({{ discoveredVMs.length }})
-          </button>
-        </div>
-
-        <!-- View Toggle Row -->
-        <div v-if="activeTab === 'managed'" class="flex justify-between items-center">
-          <div class="text-sm text-slate-400">
-            Showing {{ filteredVMs.length }} of {{ totalVMs }} virtual machines
-          </div>
-          <div class="flex items-center gap-2">
-            <span class="text-sm text-slate-400 mr-2">View:</span>
-            <div class="flex bg-slate-800/50 rounded-lg p-1 border border-slate-600/50 overflow-x-auto">
+          
+          <!-- Controls Row -->
+          <div class="flex items-center gap-4">
+            <!-- Pagination Controls -->
+            <div class="flex items-center gap-2">
+              <span class="text-sm text-slate-400">Show:</span>
+              <div class="relative">
+                <select
+                  v-model="itemsPerPage"
+                  class="px-3 py-1.5 bg-slate-800 border border-slate-600 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 pr-8 appearance-none"
+                >
+                  <option value="10">10</option>
+                  <option value="25">25</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                  <option value="all">All</option>
+                </select>
+                <svg class="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400 pointer-events-none" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
+                </svg>
+              </div>
+            </div>
+            
+            <!-- View Settings Dropdown (only for managed VMs) -->
+            <div v-if="activeTab === 'managed'" class="relative">
               <button
-                @click="viewMode = 'grid'"
-                :class="[
-                  'px-2 xl:px-3 py-1.5 rounded-md text-xs xl:text-sm transition-all duration-200 flex items-center gap-1 xl:gap-2 whitespace-nowrap',
-                  viewMode === 'grid'
-                    ? 'bg-primary-500/20 text-primary-400 ring-1 ring-primary-500/50'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-700/50'
-                ]"
-                title="Card View"
+                @click="showViewDropdown = !showViewDropdown"
+                class="flex items-center gap-2 px-3 py-1.5 bg-slate-800 border border-slate-600 rounded text-white text-sm hover:bg-slate-700 transition-colors"
               >
-                <svg class="w-3 h-3 xl:w-4 xl:h-4" fill="currentColor" viewBox="0 0 20 20">
+                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                   <path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM11 13a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
                 </svg>
-                <span class="hidden sm:inline">Cards</span>
-              </button>
-              <button
-                @click="viewMode = 'list'"
-                :class="[
-                  'px-2 xl:px-3 py-1.5 rounded-md text-xs xl:text-sm transition-all duration-200 flex items-center gap-1 xl:gap-2 whitespace-nowrap',
-                  viewMode === 'list'
-                    ? 'bg-primary-500/20 text-primary-400 ring-1 ring-primary-500/50'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-700/50'
-                ]"
-                title="List View"
-              >
-                <svg class="w-3 h-3 xl:w-4 xl:h-4" fill="currentColor" viewBox="0 0 20 20">
-                  <path fill-rule="evenodd" d="M3 3a1 1 0 000 2v8a2 2 0 002 2h2.586l-1.293 1.293a1 1 0 101.414 1.414L10 15.414l2.293 2.293a1 1 0 001.414-1.414L12.414 15H15a2 2 0 002-2V5a1 1 0 100-2H3zm11.707 4.707a1 1 0 00-1.414-1.414L10 9.586 6.707 6.293a1 1 0 00-1.414 1.414l4 4a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                <span>{{ viewMode === 'grid' ? 'Cards' : viewMode === 'list' ? 'List' : 'Compact' }}</span>
+                <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
                 </svg>
-                <span class="hidden sm:inline">List</span>
               </button>
+              
+              <!-- View Dropdown Menu -->
+              <div v-if="showViewDropdown" v-click-away="() => showViewDropdown = false" class="absolute right-0 top-full mt-2 w-40 bg-slate-800 border border-slate-600 rounded-lg shadow-xl z-50">
+                <div class="py-2">
+                  <button
+                    @click="setViewMode('grid')"
+                    :class="[
+                      'w-full flex items-center gap-3 px-4 py-2 text-sm transition-colors',
+                      viewMode === 'grid' ? 'text-blue-400 bg-blue-500/10' : 'text-slate-300 hover:text-white hover:bg-slate-700'
+                    ]"
+                  >
+                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM11 13a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                    </svg>
+                    Cards
+                  </button>
+                  <button
+                    @click="setViewMode('list')"
+                    :class="[
+                      'w-full flex items-center gap-3 px-4 py-2 text-sm transition-colors',
+                      viewMode === 'list' ? 'text-blue-400 bg-blue-500/10' : 'text-slate-300 hover:text-white hover:bg-slate-700'
+                    ]"
+                  >
+                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                      <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd" />
+                    </svg>
+                    List
+                  </button>
+                  <button
+                    @click="setViewMode('compact')"
+                    :class="[
+                      'w-full flex items-center gap-3 px-4 py-2 text-sm transition-colors',
+                      viewMode === 'compact' ? 'text-blue-400 bg-blue-500/10' : 'text-slate-300 hover:text-white hover:bg-slate-700'
+                    ]"
+                  >
+                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M2 4a1 1 0 011-1h14a1 1 0 110 2H3a1 1 0 01-1-1zM2 8a1 1 0 011-1h14a1 1 0 110 2H3a1 1 0 01-1-1zM2 12a1 1 0 011-1h14a1 1 0 110 2H3a1 1 0 01-1-1zM2 16a1 1 0 011-1h14a1 1 0 110 2H3a1 1 0 01-1-1z" />
+                    </svg>
+                    Compact
+                  </button>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Discovered VMs Actions (icon-only buttons) -->
+            <div v-if="activeTab === 'discovered'" class="flex items-center gap-2">
               <button
-                @click="viewMode = 'compact'"
-                :class="[
-                  'px-2 xl:px-3 py-1.5 rounded-md text-xs xl:text-sm transition-all duration-200 flex items-center gap-1 xl:gap-2 whitespace-nowrap',
-                  viewMode === 'compact'
-                    ? 'bg-primary-500/20 text-primary-400 ring-1 ring-primary-500/50'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-700/50'
-                ]"
-                title="Compact View"
+                @click="handleRefreshDiscoveredVMs"
+                :disabled="!!hostStore.loading.refreshDiscoveredVMs"
+                class="p-2 text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded transition-colors"
+                title="Refresh discovered VMs from all hosts"
               >
-                <svg class="w-3 h-3 xl:w-4 xl:h-4" fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M2 4a1 1 0 011-1h14a1 1 0 110 2H3a1 1 0 01-1-1zM2 8a1 1 0 011-1h14a1 1 0 110 2H3a1 1 0 01-1-1zM2 12a1 1 0 011-1h14a1 1 0 110 2H3a1 1 0 01-1-1zM2 16a1 1 0 011-1h14a1 1 0 110 2H3a1 1 0 01-1-1z" />
+                <svg
+                  :class="['w-4 h-4', !!hostStore.loading.refreshDiscoveredVMs ? 'animate-spin' : '']"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
-                <span class="hidden sm:inline">Compact</span>
+              </button>
+              
+              <button
+                v-if="selectedDiscoveredVMs.length > 0"
+                @click="importSelectedDiscoveredVMs"
+                :disabled="bulkImporting"
+                class="p-2 text-white bg-blue-600 hover:bg-blue-700 border border-blue-500 rounded transition-colors"
+                :title="`Import selected VMs (${selectedDiscoveredVMs.length})`"
+              >
+                <svg v-if="!bulkImporting" class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 4.414V13a1 1 0 11-2 0V4.414L7.707 5.707a1 1 0 01-1.414 0z" clip-rule="evenodd" />
+                </svg>
+                <svg v-else class="w-4 h-4 animate-spin" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
               </button>
             </div>
           </div>
         </div>
       </div>
-    </FCard>
 
-    <!-- Discovered VMs Tab Content -->
-    <div v-if="activeTab === 'discovered'">
-      <FCard class="p-6 card-glow">
-        <div class="flex items-center justify-between mb-6">
-          <div>
-            <h2 class="text-xl font-semibold text-white mb-1">Discovered Virtual Machines</h2>
-            <p class="text-slate-400 text-sm">Import VMs that were discovered on your hosts</p>
-          </div>
-          <div class="flex items-center gap-3">
-            <FButton
-              @click="handleRefreshDiscoveredVMs"
-              variant="ghost"
-              :disabled="!!hostStore.loading.refreshDiscoveredVMs"
-              class="flex items-center gap-2"
-              title="Refresh discovered VMs from all hosts"
-            >
-              <svg
-                :class="['w-4 h-4', !!hostStore.loading.refreshDiscoveredVMs ? 'animate-spin' : '']"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-              {{ !!hostStore.loading.refreshDiscoveredVMs ? 'Refreshing...' : 'Refresh' }}
-            </FButton>
-            <FButton
-              v-if="discoveredVMs.length > 0"
-              @click="handleImportAllVMs"
-              variant="primary"
-              :disabled="!!hostStore.loading.refreshDiscoveredVMs"
-              class="flex items-center gap-2"
-            >
-              <svg v-if="!hostStore.loading.refreshDiscoveredVMs" class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 4.414V13a1 1 0 11-2 0V4.414L7.707 5.707a1 1 0 01-1.414 0z" clip-rule="evenodd" />
-              </svg>
-              <svg v-else class="animate-spin w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H8a1 1 0 110 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H12a1 1 0 110-2h4a1 1 0 011 1v4a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd" />
-              </svg>
-              {{ hostStore.loading.refreshDiscoveredVMs ? 'Importing...' : 'Import All VMs' }}
-            </FButton>
-          </div>
-        </div>
-        <!-- Discovered VMs Table -->
-        <div class="space-y-4">
+      <!-- Tab Content -->
+      <div class="p-6">
+        <!-- Discovered VMs Tab Content -->
+        <div v-if="activeTab === 'discovered'">
           <div v-if="filteredDiscoveredVMs.length === 0" class="text-center py-8 text-slate-400">
             <svg class="w-12 h-12 mx-auto mb-4 opacity-50" fill="currentColor" viewBox="0 0 20 20">
               <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h4a1 1 0 010 2H6.414l2.293 2.293a1 1 0 01-1.414 1.414L5 6.414V8a1 1 0 01-2 0V4zm9 1a1 1 0 010-2h4a1 1 0 011 1v4a1 1 0 01-2 0V6.414l-2.293 2.293a1 1 0 11-1.414-1.414L13.586 5H12z" clip-rule="evenodd" />
@@ -286,21 +333,19 @@
                   </td>
                   <td class="py-3 px-4 text-slate-400 font-mono text-sm">{{ vm.uuid.slice(0, 8) }}...</td>
                   <td class="py-3 px-4">
-                    <FButton
+                    <button
                       @click="importSingleDiscoveredVM(vm)"
-                      variant="primary"
-                      size="sm"
                       :disabled="!!importingVMs[vm.uuid]"
-                      class="text-xs"
+                      class="p-2 text-white bg-blue-600 hover:bg-blue-700 disabled:bg-slate-600 disabled:text-slate-400 rounded transition-colors"
+                      :title="importingVMs[vm.uuid] ? 'Importing...' : 'Import VM'"
                     >
-                      <svg v-if="!importingVMs[vm.uuid]" class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                      <svg v-if="!importingVMs[vm.uuid]" class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                         <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 4.414V13a1 1 0 11-2 0V4.414L7.707 5.707a1 1 0 01-1.414 0z" clip-rule="evenodd" />
                       </svg>
-                      <svg v-else class="w-3 h-3 mr-1 animate-spin" fill="currentColor" viewBox="0 0 20 20">
+                      <svg v-else class="w-4 h-4 animate-spin" fill="currentColor" viewBox="0 0 20 20">
                         <path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                       </svg>
-                      {{ importingVMs[vm.uuid] ? 'Importing...' : 'Import' }}
-                    </FButton>
+                    </button>
                   </td>
                 </tr>
               </tbody>
@@ -339,10 +384,10 @@
             </div>
           </div>
         </div>
-      </FCard>
-    </div>
+      </div>
+    </FCard>
 
-    <!-- VM Grid View -->
+    <!-- Managed VMs Content (Outside Card) -->
     <div v-if="activeTab === 'managed' && filteredVMs.length > 0 && viewMode === 'grid'" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
       <FCard
         v-for="vm in filteredVMs"
@@ -767,6 +812,11 @@ const activeTab = ref<'managed' | 'discovered'>('managed')
 
 // Filter UI state
 const showFilterHelp = ref(false)
+const showFilterDropdown = ref(false)
+const showViewDropdown = ref(false)
+
+// Pagination state  
+const itemsPerPage = ref(25)
 
 // Discovered VMs state
 const selectedDiscoveredVMs = ref<string[]>([])
@@ -1162,6 +1212,13 @@ const clearAllFilters = () => {
   statusFilter.value = 'all'
   hostFilter.value = 'all'
   showFilterHelp.value = false
+  showFilterDropdown.value = false
+}
+
+// View mode methods
+const setViewMode = (mode: 'grid' | 'list' | 'compact') => {
+  viewMode.value = mode
+  showViewDropdown.value = false
 }
 
 // Sorting methods
