@@ -3270,6 +3270,31 @@ func (s *HostService) syncVMNetworks(tx *gorm.DB, vmUUID string, hostID string, 
 			existingAttachment, existsByMAC = existingByDev[network.Target.Dev]
 		}
 
+		// If not found in maps, try direct database lookup to handle edge cases
+		if !existsByMAC {
+			log.Debugf("Database lookup for VM %s: MAC='%s' (len=%d), Dev='%s' (len=%d, empty=%v)", vmUUID, network.Mac.Address, len(network.Mac.Address), network.Target.Dev, len(network.Target.Dev), network.Target.Dev == "")
+			var dbAttachments []storage.PortAttachment
+			query := tx.Where("vm_uuid = ?", vmUUID)
+
+			// Try to find by MAC address and device name combination
+			// Always include a check for existing records with empty device_name to prevent duplicates
+			if network.Mac.Address != "" && network.Target.Dev != "" {
+				query = query.Where("(mac_address = ? OR device_name = ? OR device_name = '')", network.Mac.Address, network.Target.Dev)
+			} else if network.Mac.Address != "" {
+				query = query.Where("(mac_address = ? OR device_name = '')", network.Mac.Address)
+			} else if network.Target.Dev != "" {
+				query = query.Where("(device_name = ? OR device_name = '')", network.Target.Dev)
+			} else {
+				// Neither MAC nor device_name - this shouldn't happen, but try to find any existing attachment
+				query = query.Where("device_name = ''")
+			}
+
+			if err := query.Find(&dbAttachments).Error; err == nil && len(dbAttachments) > 0 {
+				existingAttachment = dbAttachments[0]
+				existsByMAC = true
+			}
+		}
+
 		if existsByMAC {
 			attachment = existingAttachment
 			updates := make(map[string]interface{})

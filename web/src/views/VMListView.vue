@@ -264,6 +264,9 @@
               ]"
             >
               Discovered VMs ({{ discoveredVMs.length }})
+              <span v-if="selectedDiscoveredVMs.length > 0" class="ml-2 px-2 py-1 bg-blue-500/20 text-blue-400 text-xs rounded-full">
+                {{ selectedDiscoveredVMs.length }} selected
+              </span>
             </button>
           </div>
           
@@ -348,10 +351,25 @@
               
               <button
                 v-if="selectedDiscoveredVMs.length > 0"
+                @click="clearSelectedDiscovered"
+                class="p-2 text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded transition-colors"
+                title="Clear selection"
+              >
+                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+                </svg>
+              </button>
+              
+              <button
                 @click="importSelectedDiscoveredVMs"
-                :disabled="bulkImporting"
-                class="p-2 text-white bg-blue-600 hover:bg-blue-700 border border-blue-500 rounded transition-colors"
-                :title="`Import selected VMs (${selectedDiscoveredVMs.length})`"
+                :disabled="bulkImporting || selectedDiscoveredVMs.length === 0"
+                class="p-2 text-white transition-colors rounded"
+                :class="[
+                  selectedDiscoveredVMs.length > 0 
+                    ? 'bg-blue-600 hover:bg-blue-700 border border-blue-500' 
+                    : 'bg-slate-600 border border-slate-500 cursor-not-allowed'
+                ]"
+                :title="selectedDiscoveredVMs.length > 0 ? `Import selected VMs (${selectedDiscoveredVMs.length})` : 'Select VMs to import'"
               >
                 <svg v-if="!bulkImporting" class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                   <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 4.414V13a1 1 0 11-2 0V4.414L7.707 5.707a1 1 0 01-1.414 0z" clip-rule="evenodd" />
@@ -838,38 +856,6 @@
                 </tr>
               </tbody>
             </table>
-            
-            <!-- Bulk Actions -->
-            <div v-if="selectedDiscoveredVMs.length > 0" class="mt-4 p-4 bg-slate-800/50 rounded-lg border border-slate-600">
-              <div class="flex items-center justify-between">
-                <div class="text-sm text-slate-300">
-                  {{ selectedDiscoveredVMs.length }} VM{{ selectedDiscoveredVMs.length === 1 ? '' : 's' }} selected
-                </div>
-                <div class="flex gap-2">
-                  <FButton
-                    @click="clearSelectedDiscovered"
-                    variant="ghost"
-                    size="sm"
-                  >
-                    Clear Selection
-                  </FButton>
-                  <FButton
-                    @click="importSelectedDiscoveredVMs"
-                    variant="primary"
-                    size="sm"
-                    :disabled="bulkImporting"
-                  >
-                    <svg v-if="!bulkImporting" class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                      <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 4.414V13a1 1 0 11-2 0V4.414L7.707 5.707a1 1 0 01-1.414 0z" clip-rule="evenodd" />
-                    </svg>
-                    <svg v-else class="w-4 h-4 mr-2 animate-spin" fill="currentColor" viewBox="0 0 20 20">
-                      <path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                    </svg>
-                    {{ bulkImporting ? 'Importing...' : `Import Selected (${selectedDiscoveredVMs.length})` }}
-                  </FButton>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       </div>
