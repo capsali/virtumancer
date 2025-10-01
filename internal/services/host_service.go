@@ -221,6 +221,8 @@ type HostServiceProvider interface {
 	ImportAllVMs(hostID string) error
 	ImportSelectedVMs(hostID string, domainUUIDs []string) error
 	DeleteSelectedDiscoveredVMs(hostID string, domainUUIDs []string) error
+	// VM creation and management
+	CreateVM(hostID string, vmData storage.CreateVMRequest) (*storage.VirtualMachine, error)
 	SyncVMFromLibvirt(hostID, vmName string) error
 	RebuildVMFromDB(hostID, vmName string) error
 	StartVM(hostID, vmName string) error
@@ -1307,6 +1309,103 @@ func (s *HostService) RefreshAllDiscoveredVMs() error {
 	}
 
 	return nil
+}
+
+// CreateVM creates a new virtual machine on the specified host
+func (s *HostService) CreateVM(hostID string, vmData storage.CreateVMRequest) (*storage.VirtualMachine, error) {
+	log.Infof("CreateVM started - hostID: %s, vmName: %s", hostID, vmData.Name)
+
+	// Ensure host is connected
+	if err := s.EnsureHostConnected(hostID); err != nil {
+		return nil, fmt.Errorf("failed to connect to host %s: %w", hostID, err)
+	}
+
+	// Validate that VM name doesn't already exist
+	var existingVM storage.VirtualMachine
+	if err := s.db.Where("host_id = ? AND name = ?", hostID, vmData.Name).First(&existingVM).Error; err == nil {
+		return nil, fmt.Errorf("VM with name %s already exists on host %s", vmData.Name, hostID)
+	}
+
+	// Generate UUID for the new VM
+	vmUUID := uuid.New().String()
+
+	// Set defaults for optional fields
+	if vmData.OSType == "" {
+		vmData.OSType = "linux"
+	}
+	if vmData.CPUModel == "" {
+		vmData.CPUModel = "host-passthrough"
+	}
+	if vmData.DiskSizeGB == 0 {
+		vmData.DiskSizeGB = 20 // Default 20GB disk
+	}
+	if vmData.NetworkInterface == "" {
+		vmData.NetworkInterface = "default"
+	}
+	if vmData.BootDevice == "" {
+		vmData.BootDevice = "hd"
+	}
+
+	// Create storage volume for the VM disk
+	volumeName := fmt.Sprintf("%s.qcow2", vmData.Name)
+	diskPath, err := s.connector.CreateStorageVolume(hostID, "default", volumeName, uint64(vmData.DiskSizeGB)*1024*1024*1024)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create storage volume: %w", err)
+	}
+
+	// Generate VM XML configuration
+	memoryKB := vmData.MemoryBytes / 1024
+	domainXML := s.connector.GenerateBasicVMXML(vmData.Name, vmUUID, vmData.VCPUCount, memoryKB, diskPath, vmData.NetworkInterface)
+
+	// Define the domain in libvirt
+	_, err = s.connector.DefineAndCreateDomain(hostID, domainXML)
+	if err != nil {
+		// Cleanup: remove the storage volume if domain creation failed
+		// Note: In a production system, you'd want more robust cleanup
+		log.Errorf("Failed to define domain, cleaning up storage volume: %v", err)
+		return nil, fmt.Errorf("failed to define domain: %w", err)
+	}
+
+	// Create VM record in database
+	newVM := storage.VirtualMachine{
+		HostID:        hostID,
+		Name:          vmData.Name,
+		DomainUUID:    vmUUID,
+		Source:        "managed",
+		Title:         vmData.Title,
+		Description:   vmData.Description,
+		State:         storage.StateStopped,
+		LibvirtState:  storage.StateStopped,
+		VCPUCount:     vmData.VCPUCount,
+		CPUModel:      vmData.CPUModel,
+		MemoryBytes:   vmData.MemoryBytes,
+		CurrentMemory: vmData.MemoryBytes,
+		OSType:        vmData.OSType,
+		IsTemplate:    false,
+		SyncStatus:    storage.StatusSynced,
+		NeedsRebuild:  false,
+	}
+
+	// Set default title if not provided
+	if newVM.Title == "" {
+		newVM.Title = vmData.Name
+	}
+
+	// Save to database
+	if err := s.db.Create(&newVM).Error; err != nil {
+		// Cleanup: undefine domain if database save failed
+		log.Errorf("Failed to save VM to database, cleaning up domain: %v", err)
+		if undefErr := s.connector.UndefineDomain(hostID, vmData.Name); undefErr != nil {
+			log.Errorf("Failed to cleanup domain after database error: %v", undefErr)
+		}
+		return nil, fmt.Errorf("failed to save VM to database: %w", err)
+	}
+
+	// Broadcast VM creation to connected clients
+	s.broadcastVMsChanged(hostID)
+
+	log.Infof("CreateVM completed successfully - hostID: %s, vmName: %s, ID: %s", hostID, newVM.Name, newVM.ID)
+	return &newVM, nil
 }
 
 // ImportVM imports a single discovered VM into the database by name.

@@ -2340,6 +2340,135 @@ func (c *Connector) ResetDomain(hostID, vmName string) error {
 	return l.DomainReset(domain, 0)
 }
 
+// DefineAndCreateDomain creates a new domain from XML definition
+func (c *Connector) DefineAndCreateDomain(hostID, domainXML string) (*libvirt.Domain, error) {
+	conn, err := c.GetConnection(hostID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get libvirt connection: %w", err)
+	}
+
+	// Define the domain from XML
+	domain, err := conn.DomainDefineXML(domainXML)
+	if err != nil {
+		return nil, fmt.Errorf("failed to define domain: %w", err)
+	}
+
+	log.Debugf("Successfully defined domain: %s", domain.Name)
+	return &domain, nil
+}
+
+// UndefineDomain undefines (removes) a domain definition
+func (c *Connector) UndefineDomain(hostID, vmName string) error {
+	l, domain, err := c.getDomainByName(hostID, vmName)
+	if err != nil {
+		return err
+	}
+
+	err = l.DomainUndefine(domain)
+	if err != nil {
+		return fmt.Errorf("failed to undefine domain %s: %w", vmName, err)
+	}
+
+	log.Debugf("Successfully undefined domain: %s", vmName)
+	return nil
+}
+
+// GenerateBasicVMXML generates a basic VM XML configuration
+func (c *Connector) GenerateBasicVMXML(name, uuid string, vcpus uint, memoryKB uint64, diskPath, networkSource string) string {
+	// This is a basic template - in a real implementation, this would be much more sophisticated
+	// and would use proper XML generation libraries and templates
+	xmlTemplate := `<domain type='kvm'>
+  <name>%s</name>
+  <uuid>%s</uuid>
+  <memory unit='KiB'>%d</memory>
+  <currentMemory unit='KiB'>%d</currentMemory>
+  <vcpu placement='static'>%d</vcpu>
+  <os>
+    <type arch='x86_64' machine='pc-i440fx-2.9'>hvm</type>
+    <boot dev='hd'/>
+  </os>
+  <features>
+    <acpi/>
+    <apic/>
+    <pae/>
+  </features>
+  <clock offset='utc'/>
+  <on_poweroff>destroy</on_poweroff>
+  <on_reboot>restart</on_reboot>
+  <on_crash>restart</on_crash>
+  <devices>
+    <emulator>/usr/bin/qemu-system-x86_64</emulator>
+    <disk type='file' device='disk'>
+      <driver name='qemu' type='qcow2'/>
+      <source file='%s'/>
+      <target dev='vda' bus='virtio'/>
+    </disk>
+    <interface type='%s'>
+      <source %s='%s'/>
+      <model type='virtio'/>
+    </interface>
+    <console type='pty'>
+      <target type='serial' port='0'/>
+    </console>
+    <input type='tablet' bus='usb'/>
+    <input type='mouse' bus='ps2'/>
+    <input type='keyboard' bus='ps2'/>
+    <graphics type='vnc' port='-1' autoport='yes'/>
+    <video>
+      <model type='vga' vram='16384' heads='1'/>
+    </video>
+  </devices>
+</domain>`
+
+	// Determine network configuration
+	networkType := "network"
+	networkAttr := "network"
+	if networkSource == "" {
+		networkSource = "default"
+	}
+
+	return fmt.Sprintf(xmlTemplate, name, uuid, memoryKB, memoryKB, vcpus, diskPath, networkType, networkAttr, networkSource)
+}
+
+// CreateStorageVolume creates a new storage volume for VM disk
+func (c *Connector) CreateStorageVolume(hostID, poolName, volumeName string, capacityBytes uint64) (string, error) {
+	conn, err := c.GetConnection(hostID)
+	if err != nil {
+		return "", fmt.Errorf("failed to get libvirt connection: %w", err)
+	}
+
+	// Get the storage pool
+	pool, err := conn.StoragePoolLookupByName(poolName)
+	if err != nil {
+		return "", fmt.Errorf("failed to find storage pool %s: %w", poolName, err)
+	}
+
+	// Generate volume XML
+	volumeXML := fmt.Sprintf(`<volume>
+  <name>%s</name>
+  <capacity unit='bytes'>%d</capacity>
+  <allocation unit='bytes'>0</allocation>
+  <target>
+    <format type='qcow2'/>
+  </target>
+</volume>`, volumeName, capacityBytes)
+
+	// Create the volume
+	volume, err := conn.StorageVolCreateXML(pool, volumeXML, 0)
+	if err != nil {
+		return "", fmt.Errorf("failed to create storage volume: %w", err)
+	}
+
+	// Get the volume path
+	volumePath, err := conn.StorageVolGetPath(volume)
+	if err != nil {
+		return "", fmt.Errorf("failed to get volume path: %w", err)
+	}
+
+	log.Debugf("Successfully created storage volume: %s at %s", volumeName, volumePath)
+	return volumePath, nil
+}
+
 // GetDiskSize gets the actual size of a disk file from the host
 func (c *Connector) GetDiskSize(hostID, diskPath string) (uint64, error) {
 	conn, err := c.GetConnection(hostID)

@@ -234,6 +234,55 @@ func (h *APIHandler) ListVMsFromLibvirt(w http.ResponseWriter, r *http.Request) 
 	json.NewEncoder(w).Encode(vms)
 }
 
+// CreateVM creates a new virtual machine on the specified host
+func (h *APIHandler) CreateVM(w http.ResponseWriter, r *http.Request) {
+	hostID := chi.URLParam(r, "hostID")
+
+	// Parse the VM creation request
+	var vmData storage.CreateVMRequest
+	if err := json.NewDecoder(r.Body).Decode(&vmData); err != nil {
+		apiErr := NewAPIError(ErrorCodeValidation, "Invalid request body", "Failed to parse JSON request")
+		WriteError(w, apiErr, http.StatusBadRequest)
+		return
+	}
+
+	// Validate required fields
+	if vmData.Name == "" {
+		apiErr := NewAPIError(ErrorCodeValidation, "Missing required fields", "VM name is required")
+		WriteError(w, apiErr, http.StatusBadRequest)
+		return
+	}
+
+	if vmData.VCPUCount <= 0 {
+		apiErr := NewAPIError(ErrorCodeValidation, "Invalid VCPU count", "VCPU count must be greater than 0")
+		WriteError(w, apiErr, http.StatusBadRequest)
+		return
+	}
+
+	if vmData.MemoryBytes <= 0 {
+		apiErr := NewAPIError(ErrorCodeValidation, "Invalid memory size", "Memory must be greater than 0")
+		WriteError(w, apiErr, http.StatusBadRequest)
+		return
+	}
+
+	log.Infof("CreateVM request received - hostID: %s, vmName: %s", hostID, vmData.Name)
+
+	// Create the VM using the host service
+	newVM, err := h.HostService.CreateVM(hostID, vmData)
+	if err != nil {
+		log.Errorf("CreateVM failed - hostID: %s, vmName: %s, error: %v", hostID, vmData.Name, err)
+		h.HandleError(w, err, "create_vm")
+		return
+	}
+
+	log.Infof("CreateVM completed successfully - hostID: %s, vmName: %s, ID: %s", hostID, newVM.Name, newVM.ID)
+
+	// Return the created VM
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(newVM)
+}
+
 // ListDiscoveredVMs lists libvirt-only VMs for a host that are not in our DB.
 func (h *APIHandler) ListDiscoveredVMs(w http.ResponseWriter, r *http.Request) {
 	hostID := chi.URLParam(r, "hostID")

@@ -90,6 +90,7 @@ func main() {
 
 		// VM routes
 		r.Get("/hosts/{hostID}/vms", apiHandler.ListVMsFromLibvirt)
+		r.Post("/hosts/{hostID}/vms", apiHandler.CreateVM)
 		// Discovered/Import routes
 		r.Get("/hosts/{hostID}/discovered-vms", apiHandler.ListDiscoveredVMs)
 		r.Post("/hosts/{hostID}/vms/{vmName}/import", apiHandler.ImportVM)

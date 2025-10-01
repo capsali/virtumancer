@@ -129,6 +129,35 @@ type VirtualMachine struct {
 	NeedsRebuild    bool        `gorm:"default:false" json:"needsRebuild"`
 }
 
+// CreateVMRequest represents the data structure for creating a new VM
+type CreateVMRequest struct {
+	// Basic VM configuration
+	Name        string `json:"name" binding:"required"`
+	Description string `json:"description,omitempty"`
+	HostID      string `json:"hostId" binding:"required"`
+	OSType      string `json:"os_type,omitempty"`
+	VCPUCount   uint   `json:"vcpu_count" binding:"required,min=1"`
+	MemoryBytes uint64 `json:"memory_bytes" binding:"required,min=1"`
+	DiskSizeGB  uint   `json:"disk_size_gb,omitempty"`
+
+	// Network configuration
+	NetworkInterface string `json:"network_interface,omitempty"`
+
+	// Boot configuration
+	BootDevice string `json:"boot_device,omitempty"`
+
+	// CPU configuration
+	CPUModel string `json:"cpu_model,omitempty"`
+
+	// System settings
+	Source       string `json:"source,omitempty"`
+	SyncStatus   string `json:"sync_status,omitempty"`
+	LibvirtState string `json:"libvirtState,omitempty"`
+	DomainUUID   string `json:"domain_uuid,omitempty"`
+	Title        string `json:"title,omitempty"`
+	State        string `json:"state,omitempty"`
+}
+
 // --- Storage Management ---
 
 // StoragePool represents a libvirt storage pool (e.g., LVM, a directory).
