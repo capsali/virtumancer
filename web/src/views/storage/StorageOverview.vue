@@ -1,28 +1,36 @@
 <template>
-  <div class="min-h-screen bg-slate-900 p-6">
-    <div class="max-w-7xl mx-auto">
-      <!-- Header Section -->
-      <div class="glass-panel rounded-2xl p-8 mb-8 border border-white/10 relative overflow-hidden">
-        <!-- Background Glow Effect -->
-        <div class="absolute inset-0 bg-gradient-to-r from-slate-600/10 via-emerald-600/10 to-slate-600/10 opacity-50"></div>
-        
-        <div class="relative z-10">
+  <div class="space-y-8">
+    <!-- Breadcrumbs -->
+    <FBreadcrumbs />
+    
+    <!-- Welcome Section -->
+    <div class="text-center">
+      <h2 class="text-4xl font-bold bg-gradient-to-r from-primary-400 to-accent-400 bg-clip-text text-transparent mb-4">
+        Storage Overview
+      </h2>
+      <p class="text-slate-400 text-lg">Manage storage pools, volumes, and disks</p>
+    </div>
+
+    <!-- Storage Statistics Cards -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <!-- Storage Pools Card -->
+      <FCard class="card-glow hover:scale-105 transition-all duration-300" interactive @click="router.push('/storage/pools')">
+        <div class="p-6">
           <div class="flex items-center justify-between mb-6">
-            <div class="flex items-center gap-4">
-              <!-- Storage Icon with Glow -->
-              <div class="w-16 h-16 bg-gradient-to-br from-slate-500 via-emerald-500 to-slate-600 rounded-xl flex items-center justify-center shadow-neon-emerald">
-                <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4V2a1 1 0 011-1h8a1 1 0 011 1v2m0 0V3a1 1 0 011 1v1M7 4V3a1 1 0 011-1m0 0h8m-8 0v1m0 0v4m0 0h8m-8 0H6a1 1 0 00-1 1v1M5 21h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v11a2 2 0 002 2z"/>
+            <div class="flex items-center gap-3">
+              <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center shadow-lg shadow-emerald-500/25">
+                <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
                 </svg>
               </div>
-              
               <div>
-                <h1 class="text-3xl font-bold bg-gradient-to-r from-slate-400 via-emerald-400 to-slate-400 bg-clip-text text-transparent">
-                  Storage Overview
-                </h1>
-                <p class="text-slate-400 mt-2">Manage storage pools, volumes, and disks</p>
+                <h3 class="text-xl font-bold text-white">Storage Pools</h3>
+                <p class="text-slate-400 text-sm">Pool management</p>
               </div>
             </div>
+            <svg class="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+            </svg>
             
             <!-- Quick Actions -->
             <div class="flex gap-3">
@@ -41,7 +49,7 @@
             </div>
           </div>
         </div>
-      </div>
+      </FCard>
       
       <!-- Storage Statistics -->
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
@@ -154,6 +162,11 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import FCard from '@/components/ui/FCard.vue'
+import FBreadcrumbs from '@/components/ui/FBreadcrumbs.vue'
+
+const router = useRouter()
 
 interface StorageStats {
   totalPools: number

@@ -569,7 +569,7 @@ func (s *HostService) ensureAttachmentIndex(tx *gorm.DB, alloc storage.Attachmen
 			if existing[0].VMUUID == alloc.VMUUID {
 				return nil
 			}
-			return fmt.Errorf("attachment (id=%d) already indexed for VM %s (index id %d)", alloc.AttachmentID, existing[0].VMUUID, existing[0].ID)
+			return fmt.Errorf("attachment (id=%s) already indexed for VM %s (index id %s)", alloc.AttachmentID, existing[0].VMUUID, existing[0].ID)
 		}
 
 		var soft []storage.AttachmentIndex
@@ -599,7 +599,7 @@ func (s *HostService) ensureAttachmentIndex(tx *gorm.DB, alloc storage.Attachmen
 				if byAttach.VMUUID == alloc.VMUUID {
 					return nil
 				}
-				return fmt.Errorf("attachment (id=%d) already indexed for VM %s (index id %d)", alloc.AttachmentID, byAttach.VMUUID, byAttach.ID)
+				return fmt.Errorf("attachment (id=%s) already indexed for VM %s (index id %s)", alloc.AttachmentID, byAttach.VMUUID, byAttach.ID)
 			} else if r.Error != nil && r.Error != gorm.ErrRecordNotFound {
 				return r.Error
 			}
@@ -625,7 +625,7 @@ func (s *HostService) ensureAttachmentIndex(tx *gorm.DB, alloc storage.Attachmen
 					if byDevice.AttachmentID == alloc.AttachmentID && byDevice.VMUUID == alloc.VMUUID {
 						return nil
 					}
-					return fmt.Errorf("device (type=%s id=%v) already allocated to VM %s (attachment_index id %d)", alloc.DeviceType, alloc.DeviceID, byDevice.VMUUID, byDevice.ID)
+					return fmt.Errorf("device (type=%s id=%v) already allocated to VM %s (attachment_index id %s)", alloc.DeviceType, alloc.DeviceID, byDevice.VMUUID, byDevice.ID)
 				} else if r.Error != nil && r.Error != gorm.ErrRecordNotFound {
 					return r.Error
 				}
@@ -2507,7 +2507,7 @@ func (s *HostService) syncVMMdevs(tx *gorm.DB, vmUUID string, mdevs []libvirt.Md
 			if len(existingAllocs) > 0 {
 				existingAlloc := existingAllocs[0]
 				if existingAlloc.VMUUID != alloc.VMUUID {
-					return false, fmt.Errorf("attachment (id=%d) already indexed for VM %s (index id %d)", alloc.AttachmentID, existingAlloc.VMUUID, existingAlloc.ID)
+					return false, fmt.Errorf("attachment (id=%s) already indexed for VM %s (index id %s)", alloc.AttachmentID, existingAlloc.VMUUID, existingAlloc.ID)
 				}
 				// already indexed correctly
 			} else {
@@ -2649,7 +2649,7 @@ func (s *HostService) syncVMVideos(tx *gorm.DB, vmUUID string, videos []libvirt.
 			if len(existingAllocs2) > 0 {
 				existingAlloc2 := existingAllocs2[0]
 				if existingAlloc2.VMUUID != alloc.VMUUID {
-					return false, fmt.Errorf("attachment (id=%d) already indexed for VM %s (index id %d)", alloc.AttachmentID, existingAlloc2.VMUUID, existingAlloc2.ID)
+					return false, fmt.Errorf("attachment (id=%s) already indexed for VM %s (index id %s)", alloc.AttachmentID, existingAlloc2.VMUUID, existingAlloc2.ID)
 				}
 			} else {
 				var deviceAllocs2 []storage.AttachmentIndex
@@ -2680,7 +2680,7 @@ func (s *HostService) syncVMVideos(tx *gorm.DB, vmUUID string, videos []libvirt.
 				} else if len(deviceAllocs2) > 0 {
 					existingAlloc2 := deviceAllocs2[0]
 					if existingAlloc2.AttachmentID != alloc.AttachmentID || existingAlloc2.VMUUID != alloc.VMUUID {
-						return false, fmt.Errorf("device (type=%s id=%d) already allocated to VM %s (attachment_index id %d)", alloc.DeviceType, alloc.DeviceID, existingAlloc2.VMUUID, existingAlloc2.ID)
+						return false, fmt.Errorf("device (type=%s id=%v) already allocated to VM %s (attachment_index id %s)", alloc.DeviceType, alloc.DeviceID, existingAlloc2.VMUUID, existingAlloc2.ID)
 					}
 				}
 			}
@@ -2735,7 +2735,7 @@ func (s *HostService) syncVMConsole(tx *gorm.DB, vmUUID, hostID string, graphics
 		if len(existingAllocs) > 0 {
 			existingAlloc = existingAllocs[0]
 			if existingAlloc.AttachmentID != alloc.AttachmentID || existingAlloc.VMUUID != alloc.VMUUID {
-				return false, fmt.Errorf("console (id=%d) already allocated to VM %s (attachment_index id %d)", alloc.DeviceID, existingAlloc.VMUUID, existingAlloc.ID)
+				return false, fmt.Errorf("console (id=%v) already allocated to VM %s (attachment_index id %s)", alloc.DeviceID, existingAlloc.VMUUID, existingAlloc.ID)
 			}
 			// allocation already present and matching
 		} else {
@@ -2900,7 +2900,7 @@ func (s *HostService) syncVMDisks(tx *gorm.DB, vmUUID, hostID string, disks []li
 			updates["physical_bytes"] = enhancedDisk.PhysicalBytes
 		}
 		if enhancedDisk.VolumeInfo != nil {
-			updates["volume_type"] = string(enhancedDisk.VolumeInfo.Type)
+			updates["volume_type"] = strconv.Itoa(int(enhancedDisk.VolumeInfo.Type))
 			updates["source_format"] = enhancedDisk.VolumeInfo.Format
 		}
 
@@ -4013,7 +4013,7 @@ func (s *HostService) syncVMHardware(tx *gorm.DB, vmUUID string, hostID string, 
 	}
 
 	// Phase 4b: Gather and sync device performance data (if not provided)
-	if devicePerformance == nil || len(devicePerformance) == 0 {
+	if len(devicePerformance) == 0 {
 		if devicePerfData, err := s.connector.GetDevicePerformance(hostID, vmUUID); err == nil {
 			devicePerformance = devicePerfData
 			log.Debugf("Device performance data retrieved for VM %s (%d devices)", vmUUID, len(devicePerfData))
@@ -4022,7 +4022,7 @@ func (s *HostService) syncVMHardware(tx *gorm.DB, vmUUID string, hostID string, 
 		}
 	}
 
-	if devicePerformance != nil && len(devicePerformance) > 0 {
+	if len(devicePerformance) > 0 {
 		if deviceChanged, err := s.syncDevicePerformance(tx, vmUUID, devicePerformance); err != nil {
 			return false, err
 		} else if deviceChanged {

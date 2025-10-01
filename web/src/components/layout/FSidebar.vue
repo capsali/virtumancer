@@ -10,7 +10,19 @@
     <div class="p-6 border-b border-white/10">
       <div class="flex items-center gap-3">
         <!-- Enhanced Logo Icon with VM Symbol -->
-        <div class="relative w-12 h-12 bg-gradient-to-br from-primary-500 via-accent-500 to-secondary-500 rounded-xl flex items-center justify-center shadow-neon-blue group hover:scale-105 transition-transform duration-300">
+        <div class="relative w-12 h-12 bg-gradient-to-br from-prim    ho    hostsItem.children = hostStore.hosts.map(host => ({
+      id: `host-${host.id}`,
+      label: host.name || host.uri || 'Unknown Host',
+      icon: host.state === 'CONNECTED' ? 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z' : 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.464 0L4.35 15.5c-.77.833.192 2.5 1.732 2.5z',
+      path: `/hosts/${host.id}`,
+      active: false
+    }));hildren = hostStore.hosts.map(host => ({
+      id: `host-${host.id}`,
+      label: host.name || host.uri || 'Unknown Host',
+      icon: host.state === 'CONNECTED' ? 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z' : 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.464 0L4.35 15.5c-.77.833.192 2.5 1.732 2.5z',
+      path: `/hosts/${host.id}`,
+      active: false
+    }));ia-accent-500 to-secondary-500 rounded-xl flex items-center justify-center shadow-neon-blue group hover:scale-105 transition-transform duration-300">
           <!-- Main VM/Server Icon -->
           <svg class="w-7 h-7 text-white relative z-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"/>
@@ -254,7 +266,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, onUpdated, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { useHostStore } from '@/stores/hostStore';
 
@@ -344,7 +356,8 @@ const navigationItems = ref<NavigationItem[]>([
     icon: 'M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01',
     active: false,
     path: '/hosts',
-    expanded: false
+    expanded: false,
+    children: []
   },
   {
     id: 'network',
@@ -407,6 +420,18 @@ const navigationItems = ref<NavigationItem[]>([
 
 // Update active state based on current route
 const updateActiveState = () => {
+  // Update hosts children with current hosts
+  const hostsItem = navigationItems.value.find(item => item.id === 'hosts');
+  if (hostsItem) {
+    hostsItem.children = hostStore.hosts.map(host => ({
+      id: `host-${host.id}`,
+      label: host.name || host.uri || 'Unknown Host',
+      icon: host.state === 'CONNECTED' ? 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z' : 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.464 0L4.35 15.5c-.77.833.192 2.5 1.732 2.5z',
+      path: `/hosts/${host.id}`,
+      active: false
+    }));
+  }
+  
   navigationItems.value.forEach(item => {
     // Check if main item is active
     item.active = route.path === item.path || 
@@ -433,20 +458,25 @@ const updateActiveState = () => {
 
 // Handle navigation item click
 const handleNavItemClick = (item: NavigationItem) => {
+  // Always navigate to the overview page first
+  router.push(item.path);
+  
+  // If item has children, also toggle expansion for secondary navigation
   if (item.children && item.children.length > 0) {
-    // If item has children, toggle expansion
     item.expanded = !item.expanded;
-  } else if (item.requiresHostId) {
-    // Handle host navigation with dynamic host selection
-    handleHostNavigation();
-  } else {
-    // Navigate to the item's path
-    router.push(item.path);
   }
 };
 
 // Watch for route changes
 onMounted(() => {
+  updateActiveState();
+});
+
+onUpdated(() => {
+  updateActiveState();
+});
+
+watch(route, () => {
   updateActiveState();
 });
 

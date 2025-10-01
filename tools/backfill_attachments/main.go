@@ -76,7 +76,8 @@ func main() {
 	// Helper to upsert an allocation row if not exists
 	upsert := func(vmUUID, deviceType string, attachmentID uint, deviceID uint) error {
 		var existing storage.AttachmentIndex
-		res := db.Where("device_type = ? AND attachment_id = ?", deviceType, attachmentID).First(&existing)
+		attachmentIDStr := strconv.FormatUint(uint64(attachmentID), 10)
+		res := db.Where("device_type = ? AND attachment_id = ?", deviceType, attachmentIDStr).First(&existing)
 		if res.Error == nil {
 			return nil // already present
 		}
@@ -87,8 +88,12 @@ func main() {
 		if deviceType == "volume" {
 			deviceID = 0
 		}
-		devID := deviceID
-		alloc := storage.AttachmentIndex{VMUUID: vmUUID, DeviceType: deviceType, AttachmentID: attachmentID, DeviceID: &devID}
+		var deviceIDPtr *string
+		if deviceID != 0 {
+			s := strconv.FormatUint(uint64(deviceID), 10)
+			deviceIDPtr = &s
+		}
+		alloc := storage.AttachmentIndex{VMUUID: vmUUID, DeviceType: deviceType, AttachmentID: attachmentIDStr, DeviceID: deviceIDPtr}
 		if *dryRun {
 			log.Verbosef("dry-run: would insert allocation: %+v", alloc)
 			return nil
@@ -357,24 +362,24 @@ func dedupeAttachmentIndices(db *gorm.DB, fix bool, reportPath string, keepNewes
 		if len(items) <= 1 {
 			continue
 		}
-		// collect ids
+		// collect ids (IDs are UUID strings)
 		var allIDs []string
 		for _, it := range items {
-			allIDs = append(allIDs, strconv.FormatUint(uint64(it.ID), 10))
+			allIDs = append(allIDs, it.ID)
 		}
 		// choose items to remove depending on keepNewest flag
 		var removeIDs []string
-		var removeIDNums []uint
+		var removeIDNums []string
 		if keepNewest {
 			// keep the newest -> remove all but the last
 			for i := 0; i < len(items)-1; i++ {
-				removeIDs = append(removeIDs, strconv.FormatUint(uint64(items[i].ID), 10))
+				removeIDs = append(removeIDs, items[i].ID)
 				removeIDNums = append(removeIDNums, items[i].ID)
 			}
 		} else {
 			// keep the oldest -> remove all after the first
 			for i := 1; i < len(items); i++ {
-				removeIDs = append(removeIDs, strconv.FormatUint(uint64(items[i].ID), 10))
+				removeIDs = append(removeIDs, items[i].ID)
 				removeIDNums = append(removeIDNums, items[i].ID)
 			}
 		}

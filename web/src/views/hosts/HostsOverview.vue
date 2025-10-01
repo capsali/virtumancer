@@ -1,107 +1,139 @@
 <template>
-  <div class="min-h-screen bg-slate-900 p-6">
-    <div class="max-w-7xl mx-auto">
-      <!-- Header Section -->
-      <div class="glass-panel rounded-2xl p-8 mb-8 border border-white/10 relative overflow-hidden">
-        <!-- Background Glow Effect -->
-        <div class="absolute inset-0 bg-gradient-to-r from-slate-600/10 via-blue-600/10 to-slate-600/10 opacity-50"></div>
-        
-        <div class="relative z-10">
-          <div class="flex items-center justify-between mb-6">
-            <div class="flex items-center gap-4">
-              <!-- Host Icon with Glow -->
-              <div class="w-16 h-16 bg-gradient-to-br from-slate-500 via-blue-500 to-slate-600 rounded-xl flex items-center justify-center shadow-neon-blue">
-                <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+  <div class="space-y-8">
+    <!-- Breadcrumbs -->
+    <FBreadcrumbs />
+    
+    <!-- Welcome Section -->
+    <div class="text-center">
+      <h2 class="text-4xl font-bold bg-gradient-to-r from-primary-400 to-accent-400 bg-clip-text text-transparent mb-4">
+        Hosts Overview
+      </h2>
+      <p class="text-slate-400 text-lg">Manage and monitor virtualization hosts</p>
+    </div>
+
+    <!-- Host Statistics Cards -->
+    <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+      <!-- Total Hosts Card -->
+      <FCard class="card-glow hover:scale-105 transition-all duration-300" interactive>
+        <div class="p-6">
+          <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-3">
+              <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/25">
+                <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"/>
                 </svg>
               </div>
-              
-              <div>
-                <h1 class="text-3xl font-bold bg-gradient-to-r from-slate-400 via-blue-400 to-slate-400 bg-clip-text text-transparent">
-                  Hosts Overview
-                </h1>
-                <p class="text-slate-400 mt-2">Manage and monitor virtualization hosts</p>
+            </div>
+          </div>
+          <div class="text-center">
+            <div class="text-3xl font-bold text-white mb-2">{{ hostStats.total }}</div>
+            <div class="text-sm text-slate-400">Total Hosts</div>
+          </div>
+        </div>
+      </FCard>
+      
+      <!-- Connected Hosts Card -->
+      <FCard class="card-glow hover:scale-105 transition-all duration-300" interactive>
+        <div class="p-6">
+          <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-3">
+              <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center shadow-lg shadow-green-500/25">
+                <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
               </div>
             </div>
-            
-            <!-- Quick Actions -->
-            <div class="flex gap-3">
-              <button class="glass-button glass-button-secondary">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </div>
+          <div class="text-center">
+            <div class="text-3xl font-bold text-white mb-2">{{ hostStats.connected }}</div>
+            <div class="text-sm text-slate-400">Connected</div>
+          </div>
+        </div>
+      </FCard>
+      
+      <!-- Total VMs Card -->
+      <FCard class="card-glow hover:scale-105 transition-all duration-300" interactive>
+        <div class="p-6">
+          <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-3">
+              <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-500 to-amber-600 flex items-center justify-center shadow-lg shadow-amber-500/25">
+                <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
                 </svg>
-                Refresh All
-              </button>
-              <button class="glass-button glass-button-primary">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
-                </svg>
-                Add Host
-              </button>
+              </div>
             </div>
           </div>
+          <div class="text-center">
+            <div class="text-3xl font-bold text-white mb-2">{{ hostStats.totalVMs }}</div>
+            <div class="text-sm text-slate-400">Total VMs</div>
+          </div>
+        </div>
+      </FCard>
+      
+      <!-- CPU Usage Card -->
+      <FCard class="card-glow hover:scale-105 transition-all duration-300" interactive>
+        <div class="p-6">
+          <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-3">
+              <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center shadow-lg shadow-purple-500/25">
+                <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                </svg>
+              </div>
+            </div>
+          </div>
+          <div class="text-center">
+            <div class="text-3xl font-bold text-white mb-2">{{ hostStats.avgCpuUsage }}%</div>
+            <div class="text-sm text-slate-400">Avg. CPU Usage</div>
+          </div>
+        </div>
+      </FCard>
+    </div>
+    
+    <!-- Hosts List -->
+    <FCard class="card-glow">
+      <div class="p-6">
+        <div class="flex items-center justify-between mb-6">
+          <h2 class="text-xl font-semibold text-white">Connected Hosts</h2>
+          <FButton variant="primary" size="sm">
+            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+            </svg>
+            Add Host
+          </FButton>
+        </div>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <router-link
+            v-for="host in hosts"
+            :key="host.id"
+            :to="`/hosts/${host.id}`"
+            class="group"
+          >
+            <div class="glass-panel rounded-xl p-4 border border-white/10 hover:shadow-glow-blue transition-all duration-300 group-hover:scale-105">
+              <div class="flex items-center justify-between mb-3">
+                <div class="flex items-center gap-3">
+                  <div :class="[
+                    'w-3 h-3 rounded-full',
+                    host.state === 'CONNECTED' ? 'bg-green-400' : 'bg-red-400'
+                  ]"></div>
+                  <span class="font-medium text-white">{{ host.name || host.uri }}</span>
+                </div>
+                <span :class="[
+                  'px-2 py-1 rounded-full text-xs font-medium',
+                  host.state === 'CONNECTED' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
+                ]">{{ host.state }}</span>
+              </div>
+              <div class="text-sm text-slate-400">
+                <div>URI: {{ host.uri }}</div>
+                <div>VMs: {{ getHostVMCount(host.id) }}</div>
+              </div>
+            </div>
+          </router-link>
         </div>
       </div>
-      
-      <!-- Quick Stats Cards -->
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <div class="glass-panel rounded-xl p-6 border border-white/10 relative group hover:shadow-glow-blue transition-all duration-300">
-          <div class="flex items-center justify-between">
-            <div>
-              <p class="text-slate-400 text-sm">Total Hosts</p>
-              <p class="text-2xl font-bold text-white mt-1">{{ hostStats.total }}</p>
-            </div>
-            <div class="w-12 h-12 bg-blue-500/20 rounded-lg flex items-center justify-center">
-              <svg class="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"/>
-              </svg>
-            </div>
-          </div>
-        </div>
-        
-        <div class="glass-panel rounded-xl p-6 border border-white/10 relative group hover:shadow-glow-green transition-all duration-300">
-          <div class="flex items-center justify-between">
-            <div>
-              <p class="text-slate-400 text-sm">Connected</p>
-              <p class="text-2xl font-bold text-white mt-1">{{ hostStats.connected }}</p>
-            </div>
-            <div class="w-12 h-12 bg-green-500/20 rounded-lg flex items-center justify-center">
-              <svg class="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-              </svg>
-            </div>
-          </div>
-        </div>
-        
-        <div class="glass-panel rounded-xl p-6 border border-white/10 relative group hover:shadow-glow-amber transition-all duration-300">
-          <div class="flex items-center justify-between">
-            <div>
-              <p class="text-slate-400 text-sm">Total VMs</p>
-              <p class="text-2xl font-bold text-white mt-1">{{ hostStats.totalVMs }}</p>
-            </div>
-            <div class="w-12 h-12 bg-amber-500/20 rounded-lg flex items-center justify-center">
-              <svg class="w-6 h-6 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
-              </svg>
-            </div>
-          </div>
-        </div>
-        
-        <div class="glass-panel rounded-xl p-6 border border-white/10 relative group hover:shadow-glow-purple transition-all duration-300">
-          <div class="flex items-center justify-between">
-            <div>
-              <p class="text-slate-400 text-sm">Avg. CPU Usage</p>
-              <p class="text-2xl font-bold text-white mt-1">{{ hostStats.avgCpuUsage }}%</p>
-            </div>
-            <div class="w-12 h-12 bg-purple-500/20 rounded-lg flex items-center justify-center">
-              <svg class="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
-              </svg>
-            </div>
-          </div>
-        </div>
-      </div>
-      
+    </FCard>
+
       <!-- Hosts Grid -->
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <router-link 
@@ -147,15 +179,19 @@
             </div>
           </div>
         </router-link>
-      </div>
-    </div>
   </div>
+</div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { useHostStore } from '@/stores/hostStore'
 import { useVMStore } from '@/stores/vmStore'
+import FCard from '@/components/ui/FCard.vue'
+import FBreadcrumbs from '@/components/ui/FBreadcrumbs.vue'
+
+const router = useRouter()
 
 interface HostStats {
   total: number
@@ -182,12 +218,19 @@ const getHostVMCount = (hostId: string): number => {
 
 const loadHostStats = async () => {
   try {
+    await hostStore.fetchHosts()
     const connectedHosts = hosts.value.filter(host => host.state === 'CONNECTED')
+    
+    // Count total VMs across all hosts
+    let totalVMs = 0
+    for (const host of hosts.value) {
+      totalVMs += getHostVMCount(host.id)
+    }
     
     hostStats.value = {
       total: hosts.value.length,
       connected: connectedHosts.length,
-      totalVMs: vmStore.vms.length,
+      totalVMs: totalVMs,
       avgCpuUsage: 45 // TODO: Calculate real average CPU usage
     }
   } catch (error) {

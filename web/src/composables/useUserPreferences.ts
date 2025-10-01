@@ -1,7 +1,9 @@
 import { ref, watch } from 'vue'
 
+export type ViewMode = 'cards' | 'compact' | 'list'
+
 export interface VMListPreferences {
-  viewMode: 'grid' | 'list' | 'compact'
+  viewMode: ViewMode
   sortBy: string
   sortDirection: 'asc' | 'desc'
 }
@@ -12,7 +14,7 @@ export interface UserPreferences {
 
 const defaultPreferences: UserPreferences = {
   vmList: {
-    viewMode: 'grid',
+    viewMode: 'cards',
     sortBy: 'name',
     sortDirection: 'asc'
   }
@@ -63,7 +65,7 @@ export function useUserPreferences() {
     get viewMode() {
       return preferences.value.vmList.viewMode
     },
-    set viewMode(value: 'grid' | 'list' | 'compact') {
+    set viewMode(value: ViewMode) {
       preferences.value.vmList.viewMode = value
     },
     get sortBy() {

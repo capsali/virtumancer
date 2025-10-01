@@ -149,8 +149,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { useVMStore } from '@/stores/vmStore'
+import { useHostStore } from '@/stores/hostStore'
+import FCard from '@/components/ui/FCard.vue'
+import FBreadcrumbs from '@/components/ui/FBreadcrumbs.vue'
+
+const router = useRouter()
 
 interface VMStats {
   total: number

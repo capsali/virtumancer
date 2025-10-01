@@ -1,28 +1,36 @@
 <template>
-  <div class="min-h-screen bg-slate-900 p-6">
-    <div class="max-w-7xl mx-auto">
-      <!-- Header Section -->
-      <div class="glass-panel rounded-2xl p-8 mb-8 border border-white/10 relative overflow-hidden">
-        <!-- Background Glow Effect -->
-        <div class="absolute inset-0 bg-gradient-to-r from-blue-600/10 via-cyan-600/10 to-blue-600/10 opacity-50"></div>
-        
-        <div class="relative z-10">
+  <div class="space-y-8">
+    <!-- Breadcrumbs -->
+    <FBreadcrumbs />
+    
+    <!-- Welcome Section -->
+    <div class="text-center">
+      <h2 class="text-4xl font-bold bg-gradient-to-r from-primary-400 to-accent-400 bg-clip-text text-transparent mb-4">
+        Network Overview
+      </h2>
+      <p class="text-slate-400 text-lg">Monitor and configure network infrastructure</p>
+    </div>
+
+    <!-- Network Statistics Cards -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <!-- Networks Card -->
+      <FCard class="card-glow hover:scale-105 transition-all duration-300" interactive @click="router.push('/network/networks')">
+        <div class="p-6">
           <div class="flex items-center justify-between mb-6">
-            <div class="flex items-center gap-4">
-              <!-- Network Icon with Glow -->
-              <div class="w-16 h-16 bg-gradient-to-br from-blue-500 via-cyan-500 to-blue-600 rounded-xl flex items-center justify-center shadow-neon-blue">
-                <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div class="flex items-center gap-3">
+              <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shadow-lg shadow-purple-500/25">
+                <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"/>
                 </svg>
               </div>
-              
               <div>
-                <h1 class="text-3xl font-bold bg-gradient-to-r from-blue-400 via-cyan-400 to-blue-400 bg-clip-text text-transparent">
-                  Network Overview
-                </h1>
-                <p class="text-slate-400 mt-2">Comprehensive network infrastructure management</p>
+                <h3 class="text-xl font-bold text-white">Networks</h3>
+                <p class="text-slate-400 text-sm">Virtual networks</p>
               </div>
             </div>
+            <svg class="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+            </svg>
             
             <!-- Quick Actions -->
             <div class="flex gap-3">
@@ -47,7 +55,7 @@
             </div>
           </div>
         </div>
-      </div>
+      </FCard>
       
       <!-- Quick Stats Cards -->
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
@@ -164,6 +172,11 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import FCard from '@/components/ui/FCard.vue'
+import FBreadcrumbs from '@/components/ui/FBreadcrumbs.vue'
+
+const router = useRouter()
 
 interface NetworkStats {
   total: number

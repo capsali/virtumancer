@@ -288,14 +288,18 @@
               <button
                 @click="cycleViewMode"
                 class="p-2 text-slate-400 hover:text-white transition-all duration-200 rounded hover:bg-slate-700/50 hover:ring-1 hover:ring-slate-600"
-                :title="`Current view: ${viewMode === 'grid' ? 'Cards' : viewMode === 'list' ? 'List' : 'Compact'}. Click to change.`"
+                :title="`Current view: ${viewMode === 'cards' ? 'Cards' : viewMode === 'compact' ? 'Compact' : 'List'}. Click to change.`"
               >
-                <!-- Grid/Cards View Icon -->
-                <svg v-if="viewMode === 'grid'" class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                <!-- Cards View Icon -->
+                <svg v-if="viewMode === 'cards'" class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
                   <path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM11 13a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
                 </svg>
+                <!-- Compact View Icon -->
+                <svg v-else-if="viewMode === 'compact'" class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M3 7a1.5 1.5 0 011.5-1.5h11a1.5 1.5 0 110 3h-11A1.5 1.5 0 013 7zM3 13a1.5 1.5 0 011.5-1.5h11a1.5 1.5 0 110 3h-11A1.5 1.5 0 013 13z" />
+                </svg>
                 <!-- List View Icon -->
-                <svg v-else-if="viewMode === 'list'" class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                <svg v-else class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
                   <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd" />
                 </svg>
                 <!-- Compact View Icon (2 thicker lines) -->
@@ -398,8 +402,8 @@
       <div class="p-6">
         <!-- Managed VMs Tab Content -->
         <div v-if="activeTab === 'managed'">
-          <!-- VM Grid View -->
-          <div v-if="filteredVMs.length > 0 && viewMode === 'grid'" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <!-- VM Cards View -->
+          <div v-if="filteredVMs.length > 0 && viewMode === 'cards'" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             <FGlassCard
               v-for="vm in filteredVMs"
               :key="vm.uuid"
@@ -888,7 +892,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useHostStore } from '@/stores/hostStore'
 import { useVMStore } from '@/stores/vmStore'
-import { useUserPreferences } from '@/composables/useUserPreferences'
+import { useUserPreferences, type ViewMode } from '@/composables/useUserPreferences'
 import FGlassCard from '@/components/ui/FGlassCard.vue'
 import FButton from '@/components/ui/FButton.vue'
 import FBreadcrumbs from '@/components/ui/FBreadcrumbs.vue'
@@ -944,7 +948,7 @@ const selectedHostForVM = ref<string>('')
 // Use preferences for persistent state
 const viewMode = computed({
   get: () => vmListPreferences.viewMode,
-  set: (value: 'grid' | 'list' | 'compact') => { vmListPreferences.viewMode = value }
+  set: (value: ViewMode) => { vmListPreferences.viewMode = value }
 })
 
 const sortBy = computed({
@@ -1418,7 +1422,7 @@ const clearAllFilters = () => {
 
 // View mode methods
 const cycleViewMode = () => {
-  const modes: ('grid' | 'list' | 'compact')[] = ['grid', 'list', 'compact']
+  const modes: ViewMode[] = ['cards', 'compact', 'list']
   const currentIndex = modes.indexOf(viewMode.value)
   const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % modes.length
   viewMode.value = modes[nextIndex]!

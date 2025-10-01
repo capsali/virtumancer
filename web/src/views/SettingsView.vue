@@ -96,9 +96,9 @@
                 v-model="userPrefs.vmListPreferences.viewMode"
                 class="px-3 py-1 bg-slate-800/50 border border-slate-600/50 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/50"
               >
-                <option value="grid">Grid (Cards)</option>
-                <option value="list">List (Table)</option>
+                <option value="cards">Cards</option>
                 <option value="compact">Compact</option>
+                <option value="list">List</option>
               </select>
             </div>
             
