@@ -39,74 +39,132 @@
     </div>
 
     <!-- Navigation Items -->
+        <!-- Navigation Items -->
     <div class="flex-1 p-4 space-y-4 overflow-y-auto">
       <!-- Main Navigation -->
       <div class="space-y-2">
         <div
           v-for="item in navigationItems"
           :key="item.id"
-          :class="[
-            'group relative overflow-hidden rounded-xl transition-all duration-300',
-            {
-              'bg-gradient-to-r from-primary-600/20 to-accent-600/20 shadow-glow-sm': item.active,
-              'hover:bg-white/5': !item.active
-            }
-          ]"
+          class="group relative overflow-hidden rounded-xl transition-all duration-300"
         >
-          <component
-            :is="item.requiresHostId ? 'button' : 'router-link'"
-            :to="item.requiresHostId ? undefined : item.path"
-            @click="item.requiresHostId ? handleHostNavigation() : undefined"
+          <!-- Main Navigation Item -->
+          <div
             :class="[
-              'w-full flex items-center gap-3 p-3 text-left transition-all duration-300 no-underline',
+              'relative overflow-hidden transition-all duration-300',
               {
-                'text-white': item.active,
-                'text-slate-300 hover:text-white': !item.active
+                'bg-gradient-to-r from-primary-600/20 to-accent-600/20 shadow-glow-sm': item.active || item.expanded,
+                'hover:bg-white/5': !item.active && !item.expanded
               }
             ]"
           >
-            <!-- Icon -->
-            <div :class="[
-              'w-8 h-8 flex items-center justify-center rounded-lg transition-all duration-300',
-              {
-                'bg-gradient-to-br from-primary-500 to-accent-500 shadow-neon-blue': item.active,
-                'bg-slate-600/50 group-hover:bg-slate-500/50': !item.active
-              }
-            ]">
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="item.icon"/>
-              </svg>
-            </div>
-
-            <!-- Label -->
-            <div v-if="!collapsed" class="flex-1">
-              <div class="font-medium">{{ item.label }}</div>
-              <div v-if="item.description" class="text-xs text-slate-400">{{ item.description }}</div>
-            </div>
-
-            <!-- Badge -->
-            <div
-              v-if="item.badge && !collapsed"
+            <button
+              @click="handleNavItemClick(item)"
               :class="[
-                'px-2 py-1 rounded-full text-xs font-medium',
-                item.badgeColor || 'bg-accent-500/20 text-accent-400'
+                'w-full flex items-center gap-3 p-3 text-left transition-all duration-300',
+                {
+                  'text-white': item.active || item.expanded,
+                  'text-slate-300 hover:text-white': !item.active && !item.expanded
+                }
               ]"
             >
-              {{ item.badge }}
-            </div>
+              <!-- Icon -->
+              <div :class="[
+                'w-8 h-8 flex items-center justify-center rounded-lg transition-all duration-300',
+                {
+                  'bg-gradient-to-br from-primary-500 to-accent-500 shadow-neon-blue': item.active || item.expanded,
+                  'bg-slate-600/50 group-hover:bg-slate-500/50': !item.active && !item.expanded
+                }
+              ]">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="item.icon"/>
+                </svg>
+              </div>
 
-            <!-- Active Indicator -->
+              <!-- Label -->
+              <div v-if="!collapsed" class="flex-1">
+                <div class="font-medium">{{ item.label }}</div>
+                <div v-if="item.description" class="text-xs text-slate-400">{{ item.description }}</div>
+              </div>
+
+              <!-- Expand/Collapse Arrow -->
+              <div
+                v-if="item.children && !collapsed"
+                :class="[
+                  'w-5 h-5 transition-transform duration-300',
+                  { 'rotate-90': item.expanded }
+                ]"
+              >
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                </svg>
+              </div>
+
+              <!-- Badge -->
+              <div
+                v-if="item.badge && !collapsed && !item.children"
+                :class="[
+                  'px-2 py-1 rounded-full text-xs font-medium',
+                  item.badgeColor || 'bg-accent-500/20 text-accent-400'
+                ]"
+              >
+                {{ item.badge }}
+              </div>
+
+              <!-- Active Indicator -->
+              <div
+                v-if="item.active"
+                class="absolute right-0 top-1/2 transform -translate-y-1/2 w-1 h-8 bg-gradient-to-b from-primary-400 to-accent-400 rounded-l-full pointer-events-none"
+              ></div>
+            </button>
+
+            <!-- Hover Glow Effect -->
             <div
-              v-if="item.active"
-              class="absolute right-0 top-1/2 transform -translate-y-1/2 w-1 h-8 bg-gradient-to-b from-primary-400 to-accent-400 rounded-l-full pointer-events-none"
+              v-if="!item.active && !item.expanded"
+              class="absolute inset-0 bg-gradient-to-r from-primary-600/0 via-primary-600/5 to-accent-600/0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl pointer-events-none"
             ></div>
-          </component>
+          </div>
 
-          <!-- Hover Glow Effect -->
+          <!-- Submenu Items -->
           <div
-            v-if="!item.active"
-            class="absolute inset-0 bg-gradient-to-r from-primary-600/0 via-primary-600/5 to-accent-600/0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl pointer-events-none"
-          ></div>
+            v-if="item.children && item.expanded && !collapsed"
+            class="mt-1 ml-4 space-y-1 animate-slideDown"
+          >
+            <router-link
+              v-for="child in item.children"
+              :key="child.id"
+              :to="child.path"
+              :class="[
+                'flex items-center gap-3 p-2 rounded-lg transition-all duration-200 group/child',
+                {
+                  'bg-primary-500/20 text-primary-300 shadow-glow-xs': child.active,
+                  'text-slate-400 hover:text-white hover:bg-white/5': !child.active
+                }
+              ]"
+            >
+              <div :class="[
+                'w-6 h-6 flex items-center justify-center rounded-md transition-all duration-200',
+                {
+                  'bg-primary-500/30': child.active,
+                  'bg-slate-600/30 group-hover/child:bg-slate-500/30': !child.active
+                }
+              ]">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="child.icon"/>
+                </svg>
+              </div>
+              <span class="text-sm font-medium">{{ child.label }}</span>
+              <span
+                v-if="child.badge"
+                :class="[
+                  'ml-auto px-1.5 py-0.5 rounded text-xs font-medium',
+                  child.badgeColor || 'bg-accent-500/20 text-accent-400'
+                ]"
+              >
+                {{ child.badge }}
+              </span>
+            </router-link>
+          </div>
         </div>
       </div>
     </div>
@@ -210,6 +268,18 @@ interface NavigationItem {
   description?: string;
   badgeColor?: string;
   requiresHostId?: boolean;
+  expanded?: boolean;
+  children?: NavigationChild[];
+}
+
+interface NavigationChild {
+  id: string;
+  label: string;
+  icon: string;
+  path: string;
+  active: boolean;
+  badge?: number;
+  badgeColor?: string;
 }
 
 interface Props {
@@ -239,7 +309,8 @@ const navigationItems = ref<NavigationItem[]>([
     label: 'Home',
     icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6',
     active: false,
-    path: '/'
+    path: '/',
+    expanded: false
   },
   {
     id: 'vms',
@@ -247,7 +318,24 @@ const navigationItems = ref<NavigationItem[]>([
     description: 'Browse all virtual machines',
     icon: 'M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z',
     active: false,
-    path: '/vms'
+    path: '/vms',
+    expanded: false,
+    children: [
+      {
+        id: 'managed-vms',
+        label: 'Managed VMs',
+        icon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z',
+        path: '/vms/managed',
+        active: false
+      },
+      {
+        id: 'discovered-vms',
+        label: 'Discovered VMs',
+        icon: 'M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z',
+        path: '/vms/discovered',
+        active: false
+      }
+    ]
   },
   {
     id: 'hosts',
@@ -255,7 +343,8 @@ const navigationItems = ref<NavigationItem[]>([
     description: 'Manage virtualization hosts',
     icon: 'M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01',
     active: false,
-    path: '/hosts'
+    path: '/hosts',
+    expanded: false
   },
   {
     id: 'network',
@@ -263,7 +352,31 @@ const navigationItems = ref<NavigationItem[]>([
     description: 'Network infrastructure',
     icon: 'M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0',
     active: false,
-    path: '/network'
+    path: '/network',
+    expanded: false,
+    children: [
+      {
+        id: 'networks-list',
+        label: 'Networks',
+        icon: 'M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0',
+        path: '/network/networks',
+        active: false
+      },
+      {
+        id: 'network-ports',
+        label: 'Ports',
+        icon: 'M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v14a2 2 0 002 2z',
+        path: '/network/ports',
+        active: false
+      },
+      {
+        id: 'network-topology',
+        label: 'Topology',
+        icon: 'M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z',
+        path: '/network/topology',
+        active: false
+      }
+    ]
   },
   {
     id: 'storage',
@@ -271,24 +384,65 @@ const navigationItems = ref<NavigationItem[]>([
     description: 'Storage pools and volumes',
     icon: 'M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4',
     active: false,
-    path: '/storage'
+    path: '/storage',
+    expanded: false,
+    children: [
+      {
+        id: 'storage-pools',
+        label: 'Storage Pools',
+        icon: 'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10',
+        path: '/storage/pools',
+        active: false
+      },
+      {
+        id: 'storage-volumes',
+        label: 'Volumes',
+        icon: 'M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z',
+        path: '/storage/volumes',
+        active: false
+      }
+    ]
   }
 ]);
 
 // Update active state based on current route
 const updateActiveState = () => {
   navigationItems.value.forEach(item => {
-    if (item.id === 'hosts') {
-      // Hosts page and host-specific dashboards (but NOT VM detail pages)
-      item.active = route.path === '/hosts' || (route.path.startsWith('/hosts/') && !route.path.includes('/vms/'));
-    } else if (item.id === 'vms') {
-      // VM list and VM detail pages
-      item.active = route.path === '/vms' || route.path.includes('/vms/');
-    } else {
-      item.active = route.path === item.path || 
-                    (item.path !== '/' && route.path.startsWith(item.path));
+    // Check if main item is active
+    item.active = route.path === item.path || 
+                 (item.path !== '/' && route.path.startsWith(item.path));
+    
+    // Check children for active state
+    if (item.children) {
+      let hasActiveChild = false;
+      item.children.forEach(child => {
+        child.active = route.path === child.path;
+        if (child.active) {
+          hasActiveChild = true;
+          item.expanded = true; // Auto-expand parent if child is active
+        }
+      });
+      
+      // If we have an active child, mark parent as active too
+      if (hasActiveChild) {
+        item.active = true;
+      }
     }
   });
+};
+
+// Handle navigation item click
+const handleNavItemClick = (item: NavigationItem) => {
+  if (item.children && item.children.length > 0) {
+    // If item has children, toggle expansion
+    item.expanded = !item.expanded;
+  } else if (item.requiresHostId) {
+    // Handle host navigation with dynamic host selection
+    handleHostNavigation();
+  } else {
+    // Navigate to the item's path
+    router.push(item.path);
+  }
 };
 
 // Watch for route changes
@@ -324,3 +478,22 @@ const handleHostNavigation = () => {
   }
 };
 </script>
+
+<style scoped>
+.animate-slideDown {
+  animation: slideDown 0.3s ease-out forwards;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+    max-height: 0;
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    max-height: 200px;
+  }
+}
+</style>

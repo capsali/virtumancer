@@ -8,7 +8,7 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/HomeView.vue')
   },
   {
-    path: '/hosts/:hostId',
+    path: '/hosts/:hostId/dashboard',
     name: 'host-dashboard',
     component: () => import('@/views/HostDashboard.vue'),
     props: true
@@ -31,25 +31,73 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/VNCView.vue'),
     props: true
   },
+  // Network routes
   {
     path: '/network',
-    name: 'networks',
-    component: () => import('@/views/NetworksView.vue')
+    name: 'network-overview',
+    component: () => import('@/views/network/NetworkOverview.vue')
   },
+  {
+    path: '/network/networks',
+    name: 'networks',
+    component: () => import('@/views/network/NetworksView.vue')
+  },
+  {
+    path: '/network/ports',
+    name: 'network-ports',
+    component: () => import('@/views/network/PortsView.vue')
+  },
+  {
+    path: '/network/topology',
+    name: 'network-topology',
+    component: () => import('@/views/network/TopologyView.vue')
+  },
+  
+  // Host routes
   {
     path: '/hosts',
-    name: 'hosts',
-    component: () => import('@/views/HostsView.vue')
+    name: 'hosts-overview',
+    component: () => import('@/views/hosts/HostsOverview.vue')
   },
+  {
+    path: '/hosts/:hostId',
+    name: 'host-detail',
+    component: () => import('@/views/hosts/HostDetailView.vue'),
+    props: true
+  },
+  
+  // VM routes
   {
     path: '/vms',
-    name: 'vms',
-    component: () => import('@/views/VMListView.vue')
+    name: 'vms-overview',
+    component: () => import('@/views/vms/VMOverview.vue')
   },
   {
+    path: '/vms/managed',
+    name: 'managed-vms',
+    component: () => import('@/views/vms/ManagedVMsView.vue')
+  },
+  {
+    path: '/vms/discovered',
+    name: 'discovered-vms',
+    component: () => import('@/views/vms/DiscoveredVMsView.vue')
+  },
+  
+  // Storage routes
+  {
     path: '/storage',
-    name: 'storage',
-    component: () => import('@/views/StorageView.vue')
+    name: 'storage-overview',
+    component: () => import('@/views/storage/StorageOverview.vue')
+  },
+  {
+    path: '/storage/pools',
+    name: 'storage-pools',
+    component: () => import('@/views/storage/StoragePoolsView.vue')
+  },
+  {
+    path: '/storage/volumes',
+    name: 'storage-volumes',
+    component: () => import('@/views/storage/StorageVolumesView.vue')
   },
   {
     path: '/settings',
