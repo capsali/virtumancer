@@ -12,7 +12,7 @@
     </div>
 
     <!-- Host Statistics Cards -->
-    <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+    <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
       <!-- Total Hosts Card -->
       <FCard class="card-glow hover:scale-105 transition-all duration-300" interactive>
         <div class="p-6">
@@ -32,24 +32,7 @@
         </div>
       </FCard>
       
-      <!-- Connected Hosts Card -->
-      <FCard class="card-glow hover:scale-105 transition-all duration-300" interactive>
-        <div class="p-6">
-          <div class="flex items-center justify-between mb-4">
-            <div class="flex items-center gap-3">
-              <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center shadow-lg shadow-green-500/25">
-                <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                </svg>
-              </div>
-            </div>
-          </div>
-          <div class="text-center">
-            <div class="text-3xl font-bold text-white mb-2">{{ hostStats.connected }}</div>
-            <div class="text-sm text-slate-400">Connected</div>
-          </div>
-        </div>
-      </FCard>
+      <!-- (Connected Hosts Card removed as per UI cleanup) -->
       
       <!-- Total VMs Card -->
       <FCard class="card-glow hover:scale-105 transition-all duration-300" interactive>
@@ -70,7 +53,7 @@
         </div>
       </FCard>
       
-      <!-- CPU Usage Card -->
+      <!-- Total vCPUs Card -->
       <FCard class="card-glow hover:scale-105 transition-all duration-300" interactive>
         <div class="p-6">
           <div class="flex items-center justify-between mb-4">
@@ -83,101 +66,71 @@
             </div>
           </div>
           <div class="text-center">
-            <div class="text-3xl font-bold text-white mb-2">{{ hostStats.avgCpuUsage }}%</div>
-            <div class="text-sm text-slate-400">Avg. CPU Usage</div>
+            <div class="text-3xl font-bold text-white mb-2">{{ hostStats.totalVcpus }}</div>
+            <div class="text-sm text-slate-400">Total vCPUs</div>
+          </div>
+        </div>
+      </FCard>
+
+      <!-- Total Memory Card -->
+      <FCard class="card-glow hover:scale-105 transition-all duration-300" interactive>
+        <div class="p-6">
+          <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-3">
+              <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-cyan-500 to-cyan-600 flex items-center justify-center shadow-lg shadow-cyan-500/25">
+                <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"/>
+                </svg>
+              </div>
+            </div>
+          </div>
+          <div class="text-center">
+            <div class="text-3xl font-bold text-white mb-2">{{ formatBytes(hostStats.totalMemory) }}</div>
+            <div class="text-sm text-slate-400">Total Memory</div>
+          </div>
+        </div>
+      </FCard>
+
+      <!-- Total Storage Card -->
+      <FCard class="card-glow hover:scale-105 transition-all duration-300" interactive>
+        <div class="p-6">
+          <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-3">
+              <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center shadow-lg shadow-orange-500/25">
+                <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"/>
+                </svg>
+              </div>
+            </div>
+          </div>
+          <div class="text-center">
+            <div class="text-3xl font-bold text-white mb-2">{{ formatBytes(hostStats.totalStorage) }}</div>
+            <div class="text-sm text-slate-400">Total Storage</div>
           </div>
         </div>
       </FCard>
     </div>
     
-    <!-- Hosts List -->
-    <FCard class="card-glow">
-      <div class="p-6">
-        <div class="flex items-center justify-between mb-6">
-          <h2 class="text-xl font-semibold text-white">Connected Hosts</h2>
-          <FButton variant="primary" size="sm">
-            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
-            </svg>
-            Add Host
-          </FButton>
-        </div>
-        
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          <router-link
-            v-for="host in hosts"
-            :key="host.id"
-            :to="`/hosts/${host.id}`"
-            class="group"
-          >
-            <div class="glass-panel rounded-xl p-4 border border-white/10 hover:shadow-glow-blue transition-all duration-300 group-hover:scale-105">
-              <div class="flex items-center justify-between mb-3">
-                <div class="flex items-center gap-3">
-                  <div :class="[
-                    'w-3 h-3 rounded-full',
-                    host.state === 'CONNECTED' ? 'bg-green-400' : 'bg-red-400'
-                  ]"></div>
-                  <span class="font-medium text-white">{{ host.name || host.uri }}</span>
-                </div>
-                <span :class="[
-                  'px-2 py-1 rounded-full text-xs font-medium',
-                  host.state === 'CONNECTED' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
-                ]">{{ host.state }}</span>
-              </div>
-              <div class="text-sm text-slate-400">
-                <div>URI: {{ host.uri }}</div>
-                <div>VMs: {{ getHostVMCount(host.id) }}</div>
-              </div>
-            </div>
-          </router-link>
-        </div>
-      </div>
-    </FCard>
-
       <!-- Hosts Grid -->
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <router-link 
-          v-for="host in hosts" 
-          :key="host.id" 
-          :to="`/hosts/${host.id}`" 
+        <router-link
+          v-for="host in hosts"
+          :key="host.id"
+          :to="`/hosts/${host.id}`"
           class="group"
         >
-          <div class="glass-panel rounded-xl p-6 border border-white/10 relative overflow-hidden group-hover:shadow-glow-blue transition-all duration-300">
-            <div class="absolute inset-0 bg-gradient-to-br from-blue-600/5 to-slate-600/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-            <div class="relative z-10">
-              <div class="flex items-start justify-between mb-4">
-                <div>
-                  <h3 class="text-xl font-bold text-white">{{ host.name || 'Unnamed Host' }}</h3>
-                  <p class="text-sm text-slate-400 mt-1 font-mono">{{ host.uri }}</p>
-                </div>
-                <div class="flex items-center gap-2">
-                  <!-- Connection Status -->
-                  <span :class="[
-                    'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium',
-                    host.state === 'CONNECTED' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
-                  ]">
-                    {{ host.state }}
-                  </span>
-                </div>
-              </div>
-              
-              <!-- Host Stats Grid -->
-              <div class="grid grid-cols-3 gap-4">
-                <div class="text-center p-3 glass-subtle rounded-lg">
-                  <div class="text-lg font-bold text-white">{{ getHostVMCount(host.id) }}</div>
-                  <div class="text-xs text-slate-400">VMs</div>
-                </div>
-                <div class="text-center p-3 glass-subtle rounded-lg">
-                  <div class="text-lg font-bold text-white">20</div> <!-- Placeholder -->
-                  <div class="text-xs text-slate-400">vCPUs</div>
-                </div>
-                <div class="text-center p-3 glass-subtle rounded-lg">
-                  <div class="text-lg font-bold text-white">96GB</div> <!-- Placeholder -->
-                  <div class="text-xs text-slate-400">Memory</div>
-                </div>
-              </div>
-            </div>
-          </div>
+          <HostCardSimple
+            :host="host"
+            :vmCount="getHostVMCount(host.id)"
+            :cpu="hostStore.hostStats[host.id]?.host_info?.cpu ?? hostStore.hostStats[host.id]?.resources?.cpu_count ?? null"
+            :memory="formatBytes(hostStore.hostStats[host.id]?.memory_total ?? null)"
+            :vcpuUsage="getHostVcpuUsage(host.id)"
+            :storage="formatBytes(hostStore.hostStats[host.id]?.disk_total ?? null)"
+            :diskTotal="hostStore.hostStats[host.id]?.disk_total ?? null"
+            :diskFree="hostStore.hostStats[host.id]?.disk_free ?? null"
+            :memoryAvailable="hostStore.hostStats[host.id]?.memory_available ?? null"
+            :memoryTotal="hostStore.hostStats[host.id]?.memory_total ?? null"
+          />
         </router-link>
   </div>
 </div>
@@ -190,6 +143,7 @@ import { useHostStore } from '@/stores/hostStore'
 import { useVMStore } from '@/stores/vmStore'
 import FCard from '@/components/ui/FCard.vue'
 import FBreadcrumbs from '@/components/ui/FBreadcrumbs.vue'
+import HostCardSimple from '@/components/host/HostCardSimple.vue'
 
 const router = useRouter()
 
@@ -197,7 +151,9 @@ interface HostStats {
   total: number
   connected: number
   totalVMs: number
-  avgCpuUsage: number
+  totalVcpus: number
+  totalMemory: number
+  totalStorage: number
 }
 
 const hostStore = useHostStore()
@@ -207,13 +163,35 @@ const hostStats = ref<HostStats>({
   total: 0,
   connected: 0,
   totalVMs: 0,
-  avgCpuUsage: 0
+  totalVcpus: 0,
+  totalMemory: 0,
+  totalStorage: 0
 })
 
 const hosts = computed(() => hostStore.hosts)
 
 const getHostVMCount = (hostId: string): number => {
   return vmStore.vms.filter(vm => vm.hostId === hostId).length
+}
+
+const getHostVcpuUsage = (hostId: string): number => {
+  return vmStore.vms
+    .filter(vm => vm.hostId === hostId && vm.state === 'ACTIVE')
+    .reduce((total, vm) => total + vm.vcpu_count, 0)
+}
+
+const formatBytes = (bytes: number | null | undefined): string => {
+  if (bytes == null) return '—'
+  const thresh = 1024
+  if (Math.abs(bytes) < thresh) return bytes + ' B'
+  const units = ['KB','MB','GB','TB','PB','EB','ZB','YB']
+  let u = -1
+  let b = Number(bytes)
+  do {
+    b /= thresh
+    ++u
+  } while (Math.abs(b) >= thresh && u < units.length - 1)
+  return b.toFixed( b >= 10 || u === 0 ? 0 : 1 ) + ' ' + units[u]
 }
 
 const loadHostStats = async () => {
@@ -223,15 +201,37 @@ const loadHostStats = async () => {
     
     // Count total VMs across all hosts
     let totalVMs = 0
+    let totalVcpus = 0
+    let totalMemory = 0
+    let totalStorage = 0
+    
     for (const host of hosts.value) {
       totalVMs += getHostVMCount(host.id)
+      totalVcpus += getHostVcpuUsage(host.id)
+      
+      const hostStatsData = hostStore.hostStats[host.id]
+      if (hostStatsData) {
+        totalMemory += hostStatsData.memory_total || 0
+        totalStorage += hostStatsData.disk_total || 0
+      }
+    }
+
+    // Fetch per-host detailed stats where available
+    for (const host of hosts.value) {
+      try {
+        await hostStore.fetchHostStats(host.id)
+      } catch (e) {
+        // ignore per-host stat errors
+      }
     }
     
     hostStats.value = {
       total: hosts.value.length,
       connected: connectedHosts.length,
       totalVMs: totalVMs,
-      avgCpuUsage: 45 // TODO: Calculate real average CPU usage
+      totalVcpus: totalVcpus,
+      totalMemory: totalMemory,
+      totalStorage: totalStorage
     }
   } catch (error) {
     console.error('Failed to load host stats:', error)
