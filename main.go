@@ -83,6 +83,8 @@ func main() {
 		r.Post("/hosts/{hostID}/disconnect", apiHandler.DisconnectHost)
 		r.Get("/hosts/{hostID}/info", apiHandler.GetHostInfo)
 		r.Get("/hosts/{hostID}/stats", apiHandler.GetHostStats)
+		r.Get("/hosts/{hostID}/capabilities", apiHandler.GetHostCapabilities)
+		r.Post("/hosts/{hostID}/capabilities/refresh", apiHandler.RefreshHostCapabilities)
 		r.Patch("/hosts/{hostID}", apiHandler.UpdateHost)
 		r.Delete("/hosts/{hostID}", apiHandler.DeleteHost)
 

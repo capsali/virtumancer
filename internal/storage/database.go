@@ -758,6 +758,48 @@ type GPUDevice struct {
 	ConfigJSON   string `gorm:"type:text"`
 }
 
+// --- Enhanced VM Configuration Models ---
+
+// ResourceClass defines resource allocation templates for VMs
+type ResourceClass struct {
+	gorm.Model
+	Name        string `gorm:"unique"`
+	Description string
+	CPUCores    int
+	MemoryMB    int
+	StorageGB   int
+	ConfigJSON  string `gorm:"type:text"` // Additional resource specifications
+}
+
+// HardwareTrait represents required hardware traits for VM placement
+type HardwareTrait struct {
+	gorm.Model
+	VMUUID    string `gorm:"index"`
+	TraitName string // 'avx2', 'ssd', 'sriov_nic', 'gpu_accel', etc.
+	Required  bool
+}
+
+// PlacementPolicy defines VM placement and scheduling policies
+type PlacementPolicy struct {
+	gorm.Model
+	VMUUID     string `gorm:"index"`
+	PolicyType string // 'automatic', 'performance', 'balanced', 'power-saving'
+	ConfigJSON string `gorm:"type:text"`
+}
+
+// QOSPolicy defines Quality of Service policies for storage and network
+type QOSPolicy struct {
+	gorm.Model
+	VMUUID       string `gorm:"index"`
+	ResourceType string // 'disk', 'network'
+	ResourceID   string // disk ID or network interface ID
+	ReadIOPS     *uint64
+	WriteIOPS    *uint64
+	ReadBPS      *uint64
+	WriteBPS     *uint64
+	ConfigJSON   string `gorm:"type:text"`
+}
+
 // GPUAttachment links a GPU device to a VM for passthrough or mediated assignments.
 type GPUAttachment struct {
 	gorm.Model
@@ -1324,6 +1366,15 @@ func InitDB(dataSourceName string) (*gorm.DB, error) {
 		&AuditLog{},
 		&Setting{},
 		&DiscoveredVM{},
+		// Host Capability and SR-IOV Management
+		&HostCapability{},
+		&SRIOVPool{},
+		&SRIOVFunction{},
+		// Enhanced VM Configuration Models
+		&ResourceClass{},
+		&HardwareTrait{},
+		&PlacementPolicy{},
+		&QOSPolicy{},
 	)
 	if err != nil {
 		return nil, err

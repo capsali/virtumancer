@@ -800,6 +800,36 @@ func (h *APIHandler) GetHostStats(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(stats)
 }
 
+// GetHostCapabilities returns discovered capabilities for a host
+func (h *APIHandler) GetHostCapabilities(w http.ResponseWriter, r *http.Request) {
+	hostID := chi.URLParam(r, "hostID")
+
+	capabilities, err := h.HostService.GetHostCapabilities(hostID)
+	if err != nil {
+		h.HandleError(w, err, fmt.Sprintf("get_host_capabilities_%s", hostID))
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(capabilities)
+}
+
+// RefreshHostCapabilities manually triggers host capability discovery
+func (h *APIHandler) RefreshHostCapabilities(w http.ResponseWriter, r *http.Request) {
+	hostID := chi.URLParam(r, "hostID")
+
+	if err := h.HostService.RefreshHostCapabilities(hostID); err != nil {
+		h.HandleError(w, err, fmt.Sprintf("refresh_host_capabilities_%s", hostID))
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Host capabilities refreshed successfully",
+	})
+}
+
 // --- Dashboard Endpoints ---
 
 // GetDashboardStats returns aggregated system-wide statistics.

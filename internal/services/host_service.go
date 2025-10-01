@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -230,21 +231,25 @@ type HostServiceProvider interface {
 	// Dashboard methods
 	GetDashboardStats() (*DashboardStats, error)
 	GetDashboardActivity(limit int) ([]ActivityEntry, error)
+	// Host capability methods
+	GetHostCapabilities(hostID string) (*HostCapabilityData, error)
+	RefreshHostCapabilities(hostID string) error
 }
 
 type HostService struct {
-	db              *gorm.DB
-	connector       *libvirt.Connector
-	hub             *ws.Hub
-	monitor         *MonitoringManager
-	hostMonitor     *HostMonitoringManager
-	syncMutex       sync.Map // map[string]*sync.Mutex for per-host sync locking
-	lastSync        sync.Map // map[string]time.Time for last sync time
-	vmPollers       sync.Map // map[string]chan struct{} for stopping VM state polling
-	prevCpuSamples  sync.Map // key: "hostID:vmName" -> struct{cpuTime uint64; at time.Time}
-	prevDiskSamples sync.Map // key: "hostID:vmName" -> struct{readBytes int64; writeBytes int64; readReq int64; writeReq int64; at time.Time}
-	prevNetSamples  sync.Map // key: "hostID:vmName" -> struct{rxBytes int64; txBytes int64; at time.Time}
-	hostCores       sync.Map // key: hostID -> uint (number of cores)
+	db                *gorm.DB
+	connector         *libvirt.Connector
+	hub               *ws.Hub
+	monitor           *MonitoringManager
+	hostMonitor       *HostMonitoringManager
+	capabilityService *HostCapabilityService
+	syncMutex         sync.Map // map[string]*sync.Mutex for per-host sync locking
+	lastSync          sync.Map // map[string]time.Time for last sync time
+	vmPollers         sync.Map // map[string]chan struct{} for stopping VM state polling
+	prevCpuSamples    sync.Map // key: "hostID:vmName" -> struct{cpuTime uint64; at time.Time}
+	prevDiskSamples   sync.Map // key: "hostID:vmName" -> struct{readBytes int64; writeBytes int64; readReq int64; writeReq int64; at time.Time}
+	prevNetSamples    sync.Map // key: "hostID:vmName" -> struct{rxBytes int64; txBytes int64; at time.Time}
+	hostCores         sync.Map // key: hostID -> uint (number of cores)
 	// smoothing state: store last smoothed host-normalized percent per vm
 	cpuSmoothStore sync.Map // key: "hostID:vmName" -> float64
 	// disk smoothing store: key: "hostID:vmName" -> struct{read float64; write float64; readIOPS float64; writeIOPS float64}
@@ -265,6 +270,7 @@ func NewHostService(db *gorm.DB, connector *libvirt.Connector, hub *ws.Hub) *Hos
 	}
 	s.monitor = NewMonitoringManager(s)
 	s.hostMonitor = NewHostMonitoringManager(s)
+	s.capabilityService = NewHostCapabilityService(db, connector)
 	// default smoothing alpha
 	s.cpuSmoothAlpha = 0.3
 	// default network smoothing alpha (more responsive)
@@ -374,6 +380,16 @@ func (s *HostService) EnsureHostConnected(hostID string) error {
 	// Notify clients that the host is now connected
 	s.broadcastHostConnectionChanged(hostID, true)
 	s.broadcastHostsChanged()
+
+	// Discover and store host capabilities
+	go func() {
+		log.Debugf("Starting host capability discovery for %s", hostID)
+		if err := s.capabilityService.RefreshHostCapabilities(context.Background(), hostID); err != nil {
+			log.Verbosef("Failed to discover host capabilities for %s: %v", hostID, err)
+		} else {
+			log.Debugf("Successfully discovered host capabilities for %s", hostID)
+		}
+	}()
 
 	// Start VM state polling for this host
 	s.startVMPolling(hostID)
@@ -5357,4 +5373,37 @@ func (s *HostService) syncDevicePerformance(tx *gorm.DB, vmUUID string, devicePe
 	}
 
 	return changed, nil
+}
+
+// RefreshHostCapabilities manually triggers host capability discovery for a given host
+func (s *HostService) RefreshHostCapabilities(hostID string) error {
+	log.Debugf("Manual host capability refresh triggered for %s", hostID)
+
+	// Check if host is connected
+	var host storage.Host
+	if err := s.db.Where("id = ? AND state = ?", hostID, storage.HostStateConnected).First(&host).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return fmt.Errorf("host %s not found or not connected", hostID)
+		}
+		return fmt.Errorf("failed to check host state: %w", err)
+	}
+
+	// Ensure connection exists
+	if _, err := s.connector.GetConnection(hostID); err != nil {
+		return fmt.Errorf("host %s not connected to libvirt: %w", hostID, err)
+	}
+
+	// Perform capability discovery
+	if err := s.capabilityService.RefreshHostCapabilities(context.Background(), hostID); err != nil {
+		log.Verbosef("Failed to refresh host capabilities for %s: %v", hostID, err)
+		return fmt.Errorf("failed to refresh host capabilities: %w", err)
+	}
+
+	log.Debugf("Successfully refreshed host capabilities for %s", hostID)
+	return nil
+}
+
+// GetHostCapabilities retrieves stored capabilities for a host
+func (s *HostService) GetHostCapabilities(hostID string) (*HostCapabilityData, error) {
+	return s.capabilityService.GetHostCapabilities(hostID)
 }
