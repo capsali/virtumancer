@@ -16,6 +16,7 @@ export const useHostStore = defineStore('hosts', () => {
   const hosts = ref<Host[]>([]);
   const selectedHostId = ref<string | null>(null);
   const hostStats = ref<Record<string, HostStats>>({});
+  const hostCapabilities = ref<Record<string, any>>({});
   const discoveredVMs = ref<Record<string, DiscoveredVM[]>>({});
   const globalDiscoveredVMs = ref<DiscoveredVMWithHost[]>([]);
   const errors = ref<Record<string, AppError>>({});
@@ -36,6 +37,7 @@ export const useHostStore = defineStore('hosts', () => {
     hostImportAll: null,
     connectHost: {},
     hostStats: {},
+    hostCapabilities: {},
     globalDiscoveredVMs: false,
     refreshDiscoveredVMs: false
   });
@@ -278,6 +280,25 @@ export const useHostStore = defineStore('hosts', () => {
     }
   };
 
+  const fetchHostCapabilities = async (id: string): Promise<void> => {
+    clearError('fetchHostCapabilities');
+
+    try {
+      loading.value.hostCapabilities[id] = true;
+      console.log('Fetching host capabilities for:', id);
+      const capabilities = await hostApi.getHostCapabilities(id);
+      console.log('Received host capabilities:', capabilities);
+      hostCapabilities.value[id] = capabilities;
+      console.log('Host capabilities stored:', hostCapabilities.value[id]);
+    } catch (error) {
+      console.error('Error fetching host capabilities:', error);
+      handleError('fetchHostCapabilities', error);
+      // Don't throw here, capabilities are optional
+    } finally {
+      loading.value.hostCapabilities[id] = false;
+    }
+  };
+
   const refreshDiscoveredVMs = async (hostId: string): Promise<DiscoveredVM[]> => {
     clearError('refreshDiscoveredVMs');
     
@@ -447,6 +468,7 @@ export const useHostStore = defineStore('hosts', () => {
     hosts: readonly(hosts),
     selectedHostId,
     hostStats: readonly(hostStats),
+    hostCapabilities: readonly(hostCapabilities),
     discoveredVMs: readonly(discoveredVMs),
     globalDiscoveredVMs: readonly(globalDiscoveredVMs),
     allDiscoveredVMs,
@@ -472,6 +494,7 @@ export const useHostStore = defineStore('hosts', () => {
     connectHost,
     disconnectHost,
     fetchHostStats,
+    fetchHostCapabilities,
     refreshDiscoveredVMs,
     importAllVMs,
     importSelectedVMs,

@@ -11,6 +11,20 @@
       <p class="text-slate-400 text-lg">Manage and monitor virtualization hosts</p>
     </div>
 
+    <!-- Add Host Button -->
+    <div class="flex justify-center">
+      <FButton
+        variant="primary"
+        @click="showAddHostModal = true"
+        class="button-glow apply"
+      >
+        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+        </svg>
+        Add New Host
+      </FButton>
+    </div>
+
     <!-- Host Statistics Cards -->
     <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
       <!-- Total Hosts Card -->
@@ -134,6 +148,13 @@
         </router-link>
   </div>
 </div>
+
+<!-- Add Host Modal -->
+<AddHostModal
+  :open="showAddHostModal"
+  @close="showAddHostModal = false"
+  @hostAdded="onHostAdded"
+/>
 </template>
 
 <script setup lang="ts">
@@ -142,8 +163,10 @@ import { useRouter } from 'vue-router'
 import { useHostStore } from '@/stores/hostStore'
 import { useVMStore } from '@/stores/vmStore'
 import FCard from '@/components/ui/FCard.vue'
+import FButton from '@/components/ui/FButton.vue'
 import FBreadcrumbs from '@/components/ui/FBreadcrumbs.vue'
 import HostCardSimple from '@/components/host/HostCardSimple.vue'
+import AddHostModal from '@/components/modals/AddHostModal.vue'
 
 const router = useRouter()
 
@@ -167,6 +190,8 @@ const hostStats = ref<HostStats>({
   totalMemory: 0,
   totalStorage: 0
 })
+
+const showAddHostModal = ref(false)
 
 const hosts = computed(() => hostStore.hosts)
 
@@ -236,6 +261,12 @@ const loadHostStats = async () => {
   } catch (error) {
     console.error('Failed to load host stats:', error)
   }
+}
+
+const onHostAdded = () => {
+  showAddHostModal.value = false
+  // Refresh the host stats after adding a new host
+  loadHostStats()
 }
 
 onMounted(() => {

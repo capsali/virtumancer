@@ -248,6 +248,14 @@ export const hostApi = {
 
   async getPorts(id: string): Promise<any[]> {
     return apiClient.get<any[]>(`/hosts/${id}/ports`);
+  },
+
+  async getHostCapabilities(id: string): Promise<any> {
+    return apiClient.get<any>(`/hosts/${id}/capabilities`);
+  },
+
+  async refreshHostCapabilities(id: string): Promise<void> {
+    return apiClient.post(`/hosts/${id}/capabilities/refresh`);
   }
 };
 

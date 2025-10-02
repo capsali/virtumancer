@@ -267,6 +267,7 @@ export interface LoadingStates {
   hostImportAll: string | null;
   connectHost: Record<string, boolean>;
   hostStats: Record<string, boolean>;
+  hostCapabilities: Record<string, boolean>;
   [key: string]: boolean | null | string | Record<string, boolean>;
 }
 
