@@ -647,7 +647,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { useVMStore } from '@/stores/vmStore'
 import { useHostStore } from '@/stores/hostStore'
 import { useUserPreferences, type ViewMode } from '@/composables/useUserPreferences'
@@ -660,6 +660,7 @@ import { vClickAway } from '@/directives/clickAway'
 
 // Router and stores
 const router = useRouter()
+const route = useRoute()
 const vmStore = useVMStore()
 const hostStore = useHostStore()
 const { preferences } = useUserPreferences()
@@ -948,6 +949,18 @@ onMounted(async () => {
   // Fetch VMs for all hosts
   for (const host of hostStore.hosts) {
     await vmStore.fetchVMs(host.id)
+  }
+  
+  // Check for hostId query parameter and set filter
+  if (route.query.hostId && typeof route.query.hostId === 'string') {
+    hostFilter.value = route.query.hostId
+  }
+})
+
+// Watch for route changes to handle navigation from host detail
+watch(() => route.query.hostId, (newHostId) => {
+  if (newHostId && typeof newHostId === 'string') {
+    hostFilter.value = newHostId
   }
 })
 </script>

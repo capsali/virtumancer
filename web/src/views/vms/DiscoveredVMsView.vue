@@ -539,7 +539,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { useHostStore } from '@/stores/hostStore'
 import { useUserPreferences } from '@/composables/useUserPreferences'
 import type { DiscoveredVMWithHost } from '@/types'
@@ -549,6 +550,7 @@ import FButton from '@/components/ui/FButton.vue'
 import { vClickAway } from '@/directives/clickAway'
 
 // Store instances
+const route = useRoute()
 const hostStore = useHostStore()
 const { vmListPreferences } = useUserPreferences()
 
@@ -776,6 +778,18 @@ const formatDate = (dateString: string): string => {
 onMounted(() => {
   hostStore.fetchGlobalDiscoveredVMs()
   hostStore.fetchHosts()
+  
+  // Check for hostId query parameter and set filter
+  if (route.query.hostId && typeof route.query.hostId === 'string') {
+    hostFilter.value = route.query.hostId
+  }
+})
+
+// Watch for route changes to handle navigation from host detail
+watch(() => route.query.hostId, (newHostId) => {
+  if (newHostId && typeof newHostId === 'string') {
+    hostFilter.value = newHostId
+  }
 })
 </script>
 
