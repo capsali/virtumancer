@@ -1,5 +1,6 @@
 import { ref, reactive } from 'vue';
 import type { ApiError } from '@/services/api';
+import { useHostStore } from '@/stores/hostStore';
 
 // Error severity levels
 export type ErrorSeverity = 'low' | 'medium' | 'high' | 'critical';
@@ -61,6 +62,13 @@ class ErrorRecoveryService {
     context?: Record<string, any>
   ): EnhancedError {
     const enhancedError = this.classifyError(error, operation, context);
+    
+    // Don't add errors for manually disconnected hosts
+    if (enhancedError.code === 'HOST_DISCONNECTED' && enhancedError.severity === 'low' && !enhancedError.retryable) {
+      // This is a manually disconnected host error, don't show it
+      return enhancedError;
+    }
+    
     this.errors.set(enhancedError.id, enhancedError);
 
     // Automatically attempt recovery for retryable errors
@@ -106,12 +114,28 @@ class ErrorRecoveryService {
             recoveryActions = this.getNetworkRecoveryActions(operation);
             break;
 
-          case 'HOST_DISCONNECTED':
-            severity = 'medium';
-            retryable = true;
-            maxRetries = 2;
-            recoveryActions = this.getHostRecoveryActions(context?.hostId);
+          case 'HOST_DISCONNECTED': {
+            // Check if auto-reconnection is disabled for this host
+            const hostStore = useHostStore();
+            const host = context?.hostId ? hostStore.hosts.find(h => h.id === context.hostId) : null;
+            const autoReconnectDisabled = host?.auto_reconnect_disabled;
+            
+            if (autoReconnectDisabled) {
+              // Host was manually disconnected, don't show reconnection messages
+              severity = 'low';
+              retryable = false;
+              maxRetries = 0;
+              recoveryActions = [];
+              message = 'The host is disconnected. Connect manually when ready.';
+            } else {
+              // Host disconnected unexpectedly, show reconnection options but don't auto-retry
+              severity = 'medium';
+              retryable = false; // Don't auto-retry host operations
+              maxRetries = 0;
+              recoveryActions = this.getHostRecoveryActions(context?.hostId);
+            }
             break;
+          }
 
           case 'VM_BUSY':
           case 'VM_STATE_ERROR':
@@ -151,7 +175,7 @@ class ErrorRecoveryService {
 
     return {
       id,
-      message: this.humanizeErrorMessage(message, code),
+      message: this.humanizeErrorMessage(message, code, context),
       code,
       severity,
       timestamp,
@@ -171,7 +195,16 @@ class ErrorRecoveryService {
   }
 
   // Convert technical error messages to user-friendly ones
-  private humanizeErrorMessage(message: string, code: string): string {
+  private humanizeErrorMessage(message: string, code: string, context?: Record<string, any>): string {
+    // Check if this is a HOST_DISCONNECTED error with auto_reconnect_disabled
+    if (code === 'HOST_DISCONNECTED' && context?.hostId) {
+      const hostStore = useHostStore();
+      const host = hostStore.hosts.find(h => h.id === context.hostId);
+      if (host?.auto_reconnect_disabled) {
+        return 'The host is disconnected. Connect manually when ready.';
+      }
+    }
+
     const errorMessages: Record<string, string> = {
       'NETWORK_ERROR': 'Unable to connect to the server. Please check your internet connection.',
       'SERVICE_UNAVAILABLE': 'The service is temporarily unavailable. Please try again later.',

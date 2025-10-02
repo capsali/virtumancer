@@ -15,6 +15,8 @@ import type {
 
 // Import error recovery service for automatic error handling
 import { errorRecoveryService } from './errorRecovery';
+import { useHostStore } from '@/stores/hostStore';
+import { useUIStore } from '@/stores/uiStore';
 
 // Base API configuration
 const API_BASE_URL = import.meta.env.DEV 
@@ -87,6 +89,26 @@ class ApiClient {
           errorCode,
           errorDetails
         );
+
+        // Special handling for HOST_DISCONNECTED errors on manually disconnected hosts
+        if (errorCode === 'HOST_DISCONNECTED') {
+          // Try to extract host ID from operation
+          const operationStr = operation || `${options.method || 'GET'} ${endpoint}`;
+          const hostIdMatch = operationStr.match(/hosts\/([^\/]+)/);
+          const hostId = hostIdMatch ? hostIdMatch[1] : null;
+          
+          if (hostId) {
+            const hostStore = useHostStore();
+            const host = hostStore.hosts.find(h => h.id === hostId);
+            
+            if (host?.auto_reconnect_disabled) {
+              // Host was manually disconnected, show a toast instead of error notification
+              const uiStore = useUIStore();
+              uiStore.addToast('Host disconnected successfully', 'info', 10000);
+              throw apiError;
+            }
+          }
+        }
 
         // Add error to recovery service for automatic handling
         errorRecoveryService.addError(

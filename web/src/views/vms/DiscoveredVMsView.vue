@@ -595,6 +595,12 @@ const totalVMs = computed(() => discoveredVMs.value.length)
 const filteredVMs = computed(() => {
   let filtered = discoveredVMs.value
 
+  // Filter out VMs from disconnected hosts first
+  filtered = filtered.filter((vm: DiscoveredVMWithHost) => {
+    const host = hosts.value.find(h => h.id === vm.host_id)
+    return host && host.state === 'CONNECTED'
+  })
+
   // Search filter
   if (searchQuery.value) {
     const query = searchQuery.value.toLowerCase()

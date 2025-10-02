@@ -725,7 +725,13 @@ onMounted(async () => {
   await hostStore.fetchGlobalDiscoveredVMs() // Fetch discovered VMs on mount
   if (hostId.value) {
     await vmStore.fetchVMs(hostId.value)
-    await hostStore.fetchHostStats(hostId.value)
+    
+    // Only fetch host stats if the host is connected
+    const host = hostStore.hosts.find(h => h.id === hostId.value)
+    if (host && host.state === 'CONNECTED') {
+      await hostStore.fetchHostStats(hostId.value)
+    }
+    
     await hostStore.fetchHostCapabilities(hostId.value)
   }
 })

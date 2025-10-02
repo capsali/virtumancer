@@ -1,10 +1,10 @@
 <template>
-  <FCard class="card-glow hover:scale-105 transition-all duration-200" interactive>
+  <FCard :class="['card-glow hover:scale-105 transition-all duration-200', isHostDisconnected ? 'opacity-50' : '']" interactive>
     <div class="p-4" role="article" :aria-label="`VM ${vm.name || vm.uuid}`">
       <div class="flex items-start justify-between">
         <div class="flex items-center gap-3">
           <div :class="[
-            'w-10 h-10 rounded-lg flex items-center justify-center',
+            'w-10 h-10 rounded-lg flex items-center justify-center relative',
             vm.state === 'ACTIVE' ? 'bg-green-500/20 text-green-400' :
             vm.state === 'STOPPED' ? 'bg-slate-600/20 text-slate-300' :
             vm.state === 'ERROR' ? 'bg-red-500/20 text-red-400' :
@@ -13,6 +13,8 @@
             <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
               <path d="M3 13h14v-2H3v2zm0 4h14v-2H3v2zM3 5h14V3H3v2z" />
             </svg>
+            <!-- Disconnected indicator -->
+            <div v-if="isHostDisconnected" class="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border border-slate-900"></div>
           </div>
           <div class="min-w-0">
             <div class="text-sm font-semibold text-white truncate">{{ vm.name || 'Unnamed VM' }}</div>
@@ -84,6 +86,7 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import { useRouter } from 'vue-router';
 import FCard from '@/components/ui/FCard.vue';
 import FButton from '@/components/ui/FButton.vue';
@@ -111,6 +114,11 @@ const getHostName = (id: string) => {
   const host = hostStore.hosts.find(h => h.id === id);
   return host ? (host.name || host.uri) : 'Unknown';
 };
+
+const isHostDisconnected = computed(() => {
+  const host = hostStore.hosts.find(h => h.id === props.hostId);
+  return host ? host.state !== 'CONNECTED' : true;
+});
 
 const formatBytes = (bytes: number) => {
   if (!bytes) return '0 B';

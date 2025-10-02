@@ -241,8 +241,8 @@ const loadHostStats = async () => {
       }
     }
 
-    // Fetch per-host detailed stats where available
-    for (const host of hosts.value) {
+    // Fetch per-host detailed stats where available (only for connected hosts)
+    for (const host of connectedHosts) {
       try {
         await hostStore.fetchHostStats(host.id)
       } catch (e) {

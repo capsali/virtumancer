@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"encoding/json"
 	"time"
 
 	log "github.com/capsali/virtumancer/internal/logging"
@@ -1555,6 +1556,40 @@ func InitDB(dataSourceName string) (*gorm.DB, error) {
 	if err := db.Exec("CREATE INDEX IF NOT EXISTS idx_iothread_name ON io_threads(name);").Error; err != nil {
 		log.Verbosef("failed to create index idx_iothread_name: %v", err)
 		return nil, err
+	}
+
+	// Create default metrics settings if they don't exist
+	defaultMetricsSettings := map[string]interface{}{
+		"diskSmoothAlpha":   0.3,
+		"netSmoothAlpha":    0.6,
+		"cpuDisplayDefault": "host",
+		"previewScale":      "fit",
+		"units":             map[string]string{"disk": "kib", "network": "mb"},
+	}
+
+	settingsJSON, err := json.Marshal(defaultMetricsSettings)
+	if err != nil {
+		log.Errorf("failed to marshal default metrics settings: %v", err)
+		return nil, err
+	}
+
+	// Create global metrics settings if they don't exist
+	if err := db.Where("key = ?", "metrics:global").First(&Setting{}).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			defaultSetting := Setting{
+				Key:       "metrics:global",
+				ValueJSON: string(settingsJSON),
+				OwnerType: "global",
+			}
+			if err := db.Create(&defaultSetting).Error; err != nil {
+				log.Errorf("failed to create default metrics settings: %v", err)
+				return nil, err
+			}
+			log.Infof("Created default metrics settings")
+		} else {
+			log.Errorf("failed to check for existing metrics settings: %v", err)
+			return nil, err
+		}
 	}
 
 	return db, nil

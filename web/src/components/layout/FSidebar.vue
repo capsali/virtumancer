@@ -10,19 +10,7 @@
     <div class="p-6 border-b border-white/10">
       <div class="flex items-center gap-3">
         <!-- Enhanced Logo Icon with VM Symbol -->
-        <div class="relative w-12 h-12 bg-gradient-to-br from-prim    ho    hostsItem.children = hostStore.hosts.map(host => ({
-      id: `host-${host.id}`,
-      label: host.name || host.uri || 'Unknown Host',
-      icon: host.state === 'CONNECTED' ? 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z' : 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.464 0L4.35 15.5c-.77.833.192 2.5 1.732 2.5z',
-      path: `/hosts/${host.id}`,
-      active: false
-    }));hildren = hostStore.hosts.map(host => ({
-      id: `host-${host.id}`,
-      label: host.name || host.uri || 'Unknown Host',
-      icon: host.state === 'CONNECTED' ? 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z' : 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.464 0L4.35 15.5c-.77.833.192 2.5 1.732 2.5z',
-      path: `/hosts/${host.id}`,
-      active: false
-    }));ia-accent-500 to-secondary-500 rounded-xl flex items-center justify-center shadow-neon-blue group hover:scale-105 transition-transform duration-300">
+        <div class="relative w-12 h-12 bg-gradient-to-br from-primary-500 to-secondary-500 rounded-xl flex items-center justify-center shadow-neon-blue group hover:scale-105 transition-transform duration-300">
           <!-- Main VM/Server Icon -->
           <svg class="w-7 h-7 text-white relative z-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"/>
@@ -45,13 +33,12 @@
           <p class="text-xs text-slate-400 mt-1">Hypervisor Management Platform</p>
         </div>
       </div>
-      
+
       <!-- Optional: Animated Glow Effect on Hover -->
       <div class="absolute inset-0 bg-gradient-to-r from-primary-600/5 via-accent-600/5 to-secondary-600/5 opacity-0 hover:opacity-100 transition-opacity duration-500 rounded-xl pointer-events-none"></div>
     </div>
 
     <!-- Navigation Items -->
-        <!-- Navigation Items -->
     <div class="flex-1 p-4 space-y-4 overflow-y-auto">
       <!-- Main Navigation -->
       <div class="space-y-2">
@@ -420,16 +407,30 @@ const navigationItems = ref<NavigationItem[]>([
 
 // Update active state based on current route
 const updateActiveState = () => {
-  // Update hosts children with current hosts
+  // Update hosts children with current hosts - only if changed
   const hostsItem = navigationItems.value.find(item => item.id === 'hosts');
   if (hostsItem) {
-    hostsItem.children = hostStore.hosts.map(host => ({
+    const newChildren = hostStore.hosts.map(host => ({
       id: `host-${host.id}`,
       label: host.name || host.uri || 'Unknown Host',
       icon: host.state === 'CONNECTED' ? 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z' : 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.464 0L4.35 15.5c-.77.833.192 2.5 1.732 2.5z',
       path: `/hosts/${host.id}`,
       active: false
     }));
+    
+    // Only update if the children actually changed
+    const childrenChanged = !hostsItem.children || 
+      hostsItem.children.length !== newChildren.length ||
+      hostsItem.children.some((child, index) => 
+        !newChildren[index] || 
+        child.id !== newChildren[index].id || 
+        child.label !== newChildren[index].label ||
+        child.icon !== newChildren[index].icon
+      );
+    
+    if (childrenChanged) {
+      hostsItem.children = newChildren;
+    }
   }
   
   navigationItems.value.forEach(item => {
@@ -472,18 +473,19 @@ onMounted(() => {
   updateActiveState();
 });
 
-onUpdated(() => {
-  updateActiveState();
-});
+// Remove onUpdated to prevent recursive updates
+// onUpdated(() => {
+//   updateActiveState();
+// });
 
 watch(route, () => {
   updateActiveState();
 });
 
-// Watch route changes to update active state
-watch(() => route.path, () => {
-  updateActiveState();
-}, { immediate: true });
+// Remove redundant watcher - route watcher above already handles this
+// watch(() => route.path, () => {
+//   updateActiveState();
+// }, { immediate: true });
 
 const sidebarClasses = computed(() => [
   collapsed.value ? 'w-20' : 'w-72',

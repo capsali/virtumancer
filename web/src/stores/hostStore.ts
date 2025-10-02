@@ -272,7 +272,12 @@ export const useHostStore = defineStore('hosts', () => {
       hostStats.value[id] = stats;
       console.log('Host stats stored:', hostStats.value[id]);
     } catch (error) {
-      console.error('Error fetching host stats:', error);
+      // Handle HOST_DISCONNECTED errors gracefully for stats (they're optional)
+      if (error instanceof ApiError && error.code === 'HOST_DISCONNECTED') {
+        console.log('Host stats unavailable (host disconnected):', id);
+      } else {
+        console.error('Error fetching host stats:', error);
+      }
       handleError('fetchHostStats', error);
       // Don't throw here, stats are optional
     } finally {
@@ -385,7 +390,11 @@ export const useHostStore = defineStore('hosts', () => {
     };
     
     errors.value[operation] = appError;
-    console.error(`Host store error in ${operation}:`, appError);
+    
+    // Don't log HOST_DISCONNECTED errors for stats fetching (they're optional)
+    if (!(operation === 'fetchHostStats' && error instanceof ApiError && error.code === 'HOST_DISCONNECTED')) {
+      console.error(`Host store error in ${operation}:`, appError);
+    }
 
     // Also add to error recovery service for enhanced handling
     errorRecoveryService.addError(

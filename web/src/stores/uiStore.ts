@@ -140,7 +140,7 @@ export const useUIStore = defineStore('ui', () => {
   const addToast = (
     message: string, 
     type: 'success' | 'error' | 'warning' | 'info' = 'success', 
-    timeout: number = type === 'error' ? 15000 : type === 'warning' ? 12000 : 8000
+    timeout: number = type === 'error' ? 20000 : type === 'warning' ? 15000 : type === 'info' ? 12000 : 10000
   ): string => {
     const id = (nextToastId++).toString();
     const toast: ToastMessage = { id, message, type, duration: timeout };
