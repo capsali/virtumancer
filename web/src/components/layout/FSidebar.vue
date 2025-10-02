@@ -48,12 +48,12 @@
           class="group relative overflow-hidden rounded-xl transition-all duration-300"
         >
           <!-- Main Navigation Item -->
-          <div
+            <div
             :class="[
               'relative overflow-hidden transition-all duration-300',
               {
-                'bg-gradient-to-r from-primary-600/20 to-accent-600/20 shadow-glow-sm': item.active || item.expanded,
-                'hover:bg-white/5': !item.active && !item.expanded
+                'bg-gradient-to-r from-primary-600/20 to-accent-600/20 shadow-glow-sm': item.active,
+                'hover:bg-white/5': !item.active
               }
             ]"
           >
@@ -62,8 +62,8 @@
               :class="[
                 'w-full flex items-center gap-3 p-3 text-left transition-all duration-300',
                 {
-                  'text-white': item.active || item.expanded,
-                  'text-slate-300 hover:text-white': !item.active && !item.expanded
+                  'text-white': item.active,
+                  'text-slate-300 hover:text-white': !item.active
                 }
               ]"
             >
@@ -71,8 +71,8 @@
               <div :class="[
                 'w-8 h-8 flex items-center justify-center rounded-lg transition-all duration-300',
                 {
-                  'bg-gradient-to-br from-primary-500 to-accent-500 shadow-neon-blue': item.active || item.expanded,
-                  'bg-slate-600/50 group-hover:bg-slate-500/50': !item.active && !item.expanded
+                  'bg-gradient-to-br from-primary-500 to-accent-500 shadow-neon-blue': item.active,
+                  'bg-slate-600/50 group-hover:bg-slate-500/50': !item.active
                 }
               ]">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -86,13 +86,10 @@
                 <div v-if="item.description" class="text-xs text-slate-400">{{ item.description }}</div>
               </div>
 
-              <!-- Expand/Collapse Arrow -->
+              <!-- Expand Arrow (always shows as expandable since clicking expands/keeps expanded) -->
               <div
                 v-if="item.children && !collapsed"
-                :class="[
-                  'w-5 h-5 transition-transform duration-300',
-                  { 'rotate-90': item.expanded }
-                ]"
+                class="w-5 h-5 text-slate-400"
               >
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
@@ -434,25 +431,18 @@ const updateActiveState = () => {
   }
   
   navigationItems.value.forEach(item => {
-    // Check if main item is active
-    item.active = route.path === item.path || 
-                 (item.path !== '/' && route.path.startsWith(item.path));
-    
+    // Check if main item is active (exact match only)
+    item.active = route.path === item.path;
+
     // Check children for active state
     if (item.children) {
-      let hasActiveChild = false;
       item.children.forEach(child => {
         child.active = route.path === child.path;
         if (child.active) {
-          hasActiveChild = true;
-          item.expanded = true; // Auto-expand parent if child is active
+          // Auto-expand parent if a child is active, but do NOT mark parent as active
+          item.expanded = true;
         }
       });
-      
-      // If we have an active child, mark parent as active too
-      if (hasActiveChild) {
-        item.active = true;
-      }
     }
   });
 };
@@ -461,10 +451,10 @@ const updateActiveState = () => {
 const handleNavItemClick = (item: NavigationItem) => {
   // Always navigate to the overview page first
   router.push(item.path);
-  
-  // If item has children, also toggle expansion for secondary navigation
+
+  // If item has children, expand it (but never collapse - only collapse icon controls collapse)
   if (item.children && item.children.length > 0) {
-    item.expanded = !item.expanded;
+    item.expanded = true;
   }
 };
 
