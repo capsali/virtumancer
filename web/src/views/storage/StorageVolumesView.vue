@@ -207,82 +207,58 @@
                 </div>
               </div>
             </div>
+
+            <!-- View Mode Toggle -->
+            <button
+              @click="cycleViewMode"
+              class="p-2 text-slate-400 hover:text-white transition-all duration-200 rounded hover:bg-slate-700/50"
+              :title="`Current view: ${viewMode === 'cards' ? 'Cards' : viewMode === 'compact' ? 'Compact' : 'List'}. Click to change.`"
+            >
+              <!-- Cards View Icon -->
+              <svg v-if="viewMode === 'cards'" class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM11 13a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+              </svg>
+              <!-- Compact View Icon -->
+              <svg v-else-if="viewMode === 'compact'" class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M3 7a1.5 1.5 0 011.5-1.5h11a1.5 1.5 0 110 3h-11A1.5 1.5 0 013 7zM3 13a1.5 1.5 0 011.5-1.5h11a1.5 1.5 0 110 3h-11A1.5 1.5 0 013 13z" />
+              </svg>
+              <!-- List View Icon -->
+              <svg v-else class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd" />
+              </svg>
+            </button>
           </div>
         </div>
       </div>
 
-      <!-- Sorting Header -->
-      <div class="grid grid-cols-12 gap-4 px-5 py-2 bg-slate-800/20 rounded-lg border border-slate-600/20 backdrop-blur-sm text-sm font-medium text-slate-300 mx-6 mt-4">
-        <div class="col-span-1"></div> <!-- Status column -->
-        <button
-          @click="handleSort('name')"
-          class="col-span-3 flex items-center gap-2 hover:text-white transition-colors cursor-pointer select-none text-left"
-        >
-          Name {{ getSortIcon('name') }}
-        </button>
-        <button
-          @click="handleSort('format')"
-          class="col-span-2 hidden md:flex items-center gap-2 hover:text-white transition-colors cursor-pointer select-none"
-        >
-          Format {{ getSortIcon('format') }}
-        </button>
-        <button
-          @click="handleSort('type')"
-          class="col-span-2 flex items-center gap-2 hover:text-white transition-colors cursor-pointer select-none"
-        >
-          Type {{ getSortIcon('type') }}
-        </button>
-        <button
-          @click="handleSort('capacity_bytes')"
-          class="col-span-2 hidden lg:flex items-center gap-2 hover:text-white transition-colors cursor-pointer select-none"
-        >
-          Size {{ getSortIcon('capacity_bytes') }}
-        </button>
-        <div class="col-span-2 text-center">
-          Actions
-        </div>
-      </div>
-
-      <!-- Volume List Items -->
-      <div class="px-6 pb-6">
-        <div
-          v-for="volume in sortedPaginatedVolumes"
-          :key="volume.id"
-          class="group relative bg-slate-800/30 hover:bg-slate-700/40 rounded-lg p-4 border border-slate-600/20 hover:border-slate-500/40 transition-all duration-300 cursor-pointer backdrop-blur-sm mt-2"
-          @click="selectVolume(volume)"
-        >
-          <!-- Grid Layout to Match Header -->
-          <div class="grid grid-cols-12 gap-4 items-center">
-            <!-- Status Orb -->
-            <div class="col-span-1">
-              <div :class="[
-                'w-3 h-3 rounded-full transition-all duration-300',
-                getVolumeStatus(volume.id) === 'available' ? 'bg-emerald-400 animate-pulse shadow-lg shadow-emerald-400/50' :
-                getVolumeStatus(volume.id) === 'in-use' ? 'bg-blue-400 animate-pulse shadow-lg shadow-blue-400/50' :
-                'bg-slate-400'
-              ]"></div>
-            </div>
-
-            <!-- Volume Name & Format -->
-            <div class="col-span-3 min-w-0">
-              <h3 class="text-base font-semibold text-white truncate group-hover:text-blue-300 transition-colors">
-                {{ volume.name || 'Unnamed Volume' }}
-              </h3>
-              <p class="text-xs text-slate-400 truncate">
-                {{ volume.format.toUpperCase() }}
-              </p>
-            </div>
-
-            <!-- Pool Info -->
-            <div class="col-span-2 hidden md:flex items-center gap-2 text-slate-300 min-w-0">
-              <svg class="w-3 h-3 text-slate-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z" />
-              </svg>
-              <span class="text-sm truncate">{{ getPoolName(volume.storage_pool_id) }}</span>
-            </div>
-
-            <!-- Status Badge -->
-            <div class="col-span-2 flex items-center">
+      <!-- Volume Content -->
+      <div class="p-6">
+        <!-- Cards View -->
+        <div v-if="viewMode === 'cards'" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          <div
+            v-for="volume in sortedPaginatedVolumes"
+            :key="volume.id"
+            class="group relative bg-slate-800/30 hover:bg-slate-700/40 rounded-xl p-6 border border-slate-600/20 hover:border-slate-500/40 transition-all duration-300 cursor-pointer backdrop-blur-sm card-glow"
+            @click="selectVolume(volume)"
+          >
+            <!-- Card Header -->
+            <div class="flex items-start justify-between mb-4">
+              <div class="flex items-center gap-3">
+                <div :class="[
+                  'w-4 h-4 rounded-full transition-all duration-300',
+                  getVolumeStatus(volume.id) === 'available' ? 'bg-emerald-400 shadow-lg shadow-emerald-400/50' :
+                  getVolumeStatus(volume.id) === 'in-use' ? 'bg-blue-400 shadow-lg shadow-blue-400/50' :
+                  'bg-slate-400'
+                ]"></div>
+                <div class="min-w-0">
+                  <h3 class="text-lg font-semibold text-white truncate group-hover:text-blue-300 transition-colors">
+                    {{ volume.name || 'Unnamed Volume' }}
+                  </h3>
+                  <p class="text-sm text-slate-400 truncate">{{ volume.format.toUpperCase() }}</p>
+                </div>
+              </div>
+              
+              <!-- Status Badge -->
               <span :class="[
                 'px-2 py-1 rounded-full text-xs font-medium backdrop-blur-sm border',
                 getVolumeStatus(volume.id) === 'available' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' :
@@ -293,20 +269,56 @@
               </span>
             </div>
 
-            <!-- Size Information -->
-            <div class="col-span-2 hidden lg:flex items-center gap-3 text-xs text-slate-400">
-              <div class="flex items-center gap-1">
-                <div class="w-2 h-2 rounded-full bg-purple-400"></div>
-                <span>{{ formatBytes(volume.capacity_bytes) }}</span>
+            <!-- Card Content -->
+            <div class="space-y-3">
+              <!-- Pool Info -->
+              <div class="flex items-center gap-2 text-slate-300 bg-slate-700/30 rounded-lg p-3">
+                <svg class="w-4 h-4 text-slate-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z" />
+                </svg>
+                <div>
+                  <div class="text-xs text-slate-400">Pool</div>
+                  <div class="text-sm font-medium truncate">{{ getPoolName(volume.storage_pool_id) }}</div>
+                </div>
+              </div>
+
+              <!-- Volume Info -->
+              <div class="grid grid-cols-2 gap-3">
+                <!-- Size -->
+                <div class="flex items-center gap-2 text-slate-300 bg-slate-700/30 rounded-lg p-3">
+                  <svg class="w-4 h-4 text-purple-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z" />
+                  </svg>
+                  <div>
+                    <div class="text-xs text-slate-400">Size</div>
+                    <div class="text-sm font-medium">{{ formatBytes(volume.capacity_bytes || 0) }}</div>
+                  </div>
+                </div>
+
+                <!-- Type -->
+                <div class="flex items-center gap-2 text-slate-300 bg-slate-700/30 rounded-lg p-3">
+                  <svg class="w-4 h-4 text-amber-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M2 5a2 2 0 012-2h8a2 2 0 012 2v10a2 2 0 002 2H4a2 2 0 01-2-2V5zm3 1h6v4H5V6zm6 6H5v2h6v-2z" clip-rule="evenodd" />
+                  </svg>
+                  <div>
+                    <div class="text-xs text-slate-400">Type</div>
+                    <div class="text-sm font-medium">{{ volume.type }}</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Path Info -->
+              <div v-if="volume.path" class="text-xs text-slate-400 truncate mt-2 p-2 bg-slate-800/30 rounded border border-slate-600/20">
+                <span class="font-medium">Path:</span> {{ volume.path }}
               </div>
             </div>
 
-            <!-- Action Buttons Column -->
-            <div class="col-span-2 flex items-center justify-center gap-1" @click.stop>
+            <!-- Action Buttons -->
+            <div class="flex justify-end gap-2 mt-4 opacity-0 group-hover:opacity-100 transition-all duration-300">
               <FButton
                 variant="ghost"
                 size="sm"
-                @click="handleVolumeAction('edit', volume)"
+                @click.stop="handleVolumeAction('edit', volume)"
                 class="p-2 text-blue-400 hover:bg-blue-500/20 hover:text-blue-300 transition-all duration-200 rounded-lg"
                 title="Edit Volume"
               >
@@ -317,7 +329,7 @@
               <FButton
                 variant="ghost"
                 size="sm"
-                @click="handleVolumeAction('clone', volume)"
+                @click.stop="handleVolumeAction('clone', volume)"
                 class="p-2 text-purple-400 hover:bg-purple-500/20 hover:text-purple-300 transition-all duration-200 rounded-lg"
                 title="Clone Volume"
               >
@@ -329,7 +341,7 @@
               <FButton
                 variant="ghost"
                 size="sm"
-                @click="handleVolumeAction('delete', volume)"
+                @click.stop="handleVolumeAction('delete', volume)"
                 class="p-2 text-red-400 hover:bg-red-500/20 hover:text-red-300 transition-all duration-200 rounded-lg"
                 title="Delete Volume"
               >
@@ -339,28 +351,300 @@
               </FButton>
             </div>
           </div>
+        </div>
 
-          <!-- Mobile Size Info (shown on smaller screens) -->
-          <div class="lg:hidden mt-3 pt-3 border-t border-slate-600/20 flex items-center gap-4 text-sm text-slate-400">
-            <div class="flex items-center gap-2">
-              <div class="w-2 h-2 rounded-full bg-purple-400"></div>
-              <span>{{ formatBytes(volume.capacity_bytes) }}</span>
+        <!-- Compact View -->
+        <div v-else-if="viewMode === 'compact'" class="space-y-2">
+          <div
+            v-for="volume in sortedPaginatedVolumes"
+            :key="volume.id"
+            class="group relative bg-slate-800/30 hover:bg-slate-700/40 rounded-lg p-4 border border-slate-600/20 hover:border-slate-500/40 transition-all duration-300 cursor-pointer backdrop-blur-sm"
+            @click="selectVolume(volume)"
+          >
+            <div class="flex items-center justify-between">
+              <!-- Left Side: Status, Name, and Quick Info -->
+              <div class="flex items-center gap-4 min-w-0 flex-1">
+                <!-- Status Orb -->
+                <div :class="[
+                  'w-3 h-3 rounded-full transition-all duration-300 flex-shrink-0',
+                  getVolumeStatus(volume.id) === 'available' ? 'bg-emerald-400 animate-pulse shadow-lg shadow-emerald-400/50' :
+                  getVolumeStatus(volume.id) === 'in-use' ? 'bg-blue-400 animate-pulse shadow-lg shadow-blue-400/50' :
+                  'bg-slate-400'
+                ]"></div>
+                
+                <!-- Volume Info -->
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-center gap-4">
+                    <h3 class="text-base font-semibold text-white truncate group-hover:text-blue-300 transition-colors">
+                      {{ volume.name || 'Unnamed Volume' }}
+                    </h3>
+                    <span class="text-xs text-slate-400 bg-slate-700/50 px-2 py-1 rounded">
+                      {{ volume.format.toUpperCase() }}
+                    </span>
+                    <span class="text-xs text-slate-400">
+                      {{ getPoolName(volume.storage_pool_id) }}
+                    </span>
+                    <span class="text-xs text-slate-300 font-medium">
+                      {{ formatBytes(volume.capacity_bytes || 0) }}
+                    </span>
+                  </div>
+                  <div v-if="volume.path" class="text-xs text-slate-500 truncate mt-1">
+                    {{ volume.path }}
+                  </div>
+                </div>
+              </div>
+
+              <!-- Right Side: Status and Actions -->
+              <div class="flex items-center gap-3">
+                <!-- Status Badge -->
+                <span :class="[
+                  'px-2 py-1 rounded-full text-xs font-medium backdrop-blur-sm border',
+                  getVolumeStatus(volume.id) === 'available' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' :
+                  getVolumeStatus(volume.id) === 'in-use' ? 'bg-blue-500/20 text-blue-300 border-blue-500/30' :
+                  'bg-slate-500/20 text-slate-300 border-slate-500/30'
+                ]">
+                  {{ getVolumeStatus(volume.id) }}
+                </span>
+
+                <!-- Actions -->
+                <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all duration-300">
+                  <FButton
+                    variant="ghost"
+                    size="sm"
+                    @click.stop="handleVolumeAction('edit', volume)"
+                    class="p-2 text-blue-400 hover:bg-blue-500/20 hover:text-blue-300 transition-all duration-200 rounded-lg"
+                    title="Edit Volume"
+                  >
+                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                    </svg>
+                  </FButton>
+                  <FButton
+                    variant="ghost"
+                    size="sm"
+                    @click.stop="toggleVolumeDropdown(volume.id)"
+                    class="p-2 text-slate-400 hover:text-white hover:bg-slate-600/30 transition-all duration-200 rounded-lg"
+                    title="More Actions"
+                  >
+                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+                    </svg>
+                  </FButton>
+                </div>
+              </div>
             </div>
-            <div class="md:hidden flex items-center gap-2">
-              <svg class="w-3 h-3 text-slate-500" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z" />
-              </svg>
-              <span>{{ getPoolName(volume.storage_pool_id) }}</span>
+
+            <!-- Dropdown Menu -->
+            <div 
+              v-if="activeVolumeDropdown === volume.id"
+              v-click-away="() => activeVolumeDropdown = null"
+              class="absolute right-4 top-full mt-1 w-48 bg-slate-800/95 border border-slate-600/50 rounded-lg shadow-lg z-50 backdrop-blur-sm"
+            >
+              <div class="py-1">
+                <button
+                  @click.stop="handleVolumeAction('clone', volume)"
+                  class="w-full px-4 py-2 text-left text-sm text-slate-300 hover:bg-slate-700/50 hover:text-white transition-colors flex items-center gap-3"
+                >
+                  <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M8 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z" />
+                    <path d="M6 3a2 2 0 00-2 2v11a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2 3 3 0 01-3 3H9a3 3 0 01-3-3z" />
+                  </svg>
+                  Clone Volume
+                </button>
+                <button
+                  @click.stop="handleVolumeAction('delete', volume)"
+                  class="w-full px-4 py-2 text-left text-sm text-red-400 hover:bg-red-500/20 hover:text-red-300 transition-colors flex items-center gap-3"
+                >
+                  <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" />
+                  </svg>
+                  Delete Volume
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- List View -->
+        <div v-else class="space-y-2">
+
+          <!-- Sorting Header -->
+          <div class="grid grid-cols-12 gap-4 px-5 py-2 bg-slate-800/20 rounded-lg border border-slate-600/20 backdrop-blur-sm text-sm font-medium text-slate-300">
+            <div class="col-span-1"></div> <!-- Status column -->
+            <button
+              @click="handleSort('name')"
+              class="col-span-2 flex items-center gap-2 hover:text-white transition-colors cursor-pointer select-none text-left"
+            >
+              Name {{ getSortIcon('name') }}
+            </button>
+            <button
+              @click="handleSort('format')"
+              class="col-span-1 hidden md:flex items-center gap-2 hover:text-white transition-colors cursor-pointer select-none"
+            >
+              Format {{ getSortIcon('format') }}
+            </button>
+            <button
+              @click="handleSort('pool')"
+              class="col-span-2 hidden md:flex items-center gap-2 hover:text-white transition-colors cursor-pointer select-none"
+            >
+              Pool {{ getSortIcon('pool') }}
+            </button>
+            <button
+              @click="handleSort('type')"
+              class="col-span-1 flex items-center gap-2 hover:text-white transition-colors cursor-pointer select-none"
+            >
+              Type {{ getSortIcon('type') }}
+            </button>
+            <button
+              @click="handleSort('capacity_bytes')"
+              class="col-span-2 hidden lg:flex items-center gap-2 hover:text-white transition-colors cursor-pointer select-none"
+            >
+              Size {{ getSortIcon('capacity_bytes') }}
+            </button>
+            <button
+              @click="handleSort('status')"
+              class="col-span-1 flex items-center gap-2 hover:text-white transition-colors cursor-pointer select-none"
+            >
+              Status {{ getSortIcon('status') }}
+            </button>
+            <div class="col-span-2 text-center">
+              Actions
             </div>
           </div>
 
-          <!-- Usage Information (if in use) -->
-          <div v-if="getVolumeUsedBy(volume.id)" class="mt-3 pt-3 border-t border-slate-600/20">
-            <div class="flex items-center gap-2 text-sm text-slate-400">
-              <svg class="w-4 h-4 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <span>Used by: <span class="text-blue-300">{{ getVolumeUsedBy(volume.id) }}</span></span>
+          <!-- Volume List Items -->
+          <div
+            v-for="volume in sortedPaginatedVolumes"
+            :key="volume.id"
+            class="group relative bg-slate-800/30 hover:bg-slate-700/40 rounded-lg p-4 border border-slate-600/20 hover:border-slate-500/40 transition-all duration-300 cursor-pointer backdrop-blur-sm mt-2"
+            @click="selectVolume(volume)"
+          >
+            <!-- Grid Layout to Match Header -->
+            <div class="grid grid-cols-12 gap-4 items-center">
+              <!-- Status Orb -->
+              <div class="col-span-1">
+                <div :class="[
+                  'w-3 h-3 rounded-full transition-all duration-300',
+                  getVolumeStatus(volume.id) === 'available' ? 'bg-emerald-400 animate-pulse shadow-lg shadow-emerald-400/50' :
+                  getVolumeStatus(volume.id) === 'in-use' ? 'bg-blue-400 animate-pulse shadow-lg shadow-blue-400/50' :
+                  'bg-slate-400'
+                ]"></div>
+              </div>
+
+              <!-- Volume Name -->
+              <div class="col-span-2 min-w-0">
+                <h3 class="text-base font-semibold text-white truncate group-hover:text-blue-300 transition-colors">
+                  {{ volume.name || 'Unnamed Volume' }}
+                </h3>
+                <p v-if="volume.path" class="text-xs text-slate-500 truncate">
+                  {{ volume.path }}
+                </p>
+              </div>
+
+              <!-- Format -->
+              <div class="col-span-1 hidden md:flex items-center text-slate-300 min-w-0">
+                <span class="text-sm font-medium bg-slate-700/50 px-2 py-1 rounded">
+                  {{ volume.format.toUpperCase() }}
+                </span>
+              </div>
+
+              <!-- Pool Info -->
+              <div class="col-span-2 hidden md:flex items-center gap-2 text-slate-300 min-w-0">
+                <svg class="w-3 h-3 text-slate-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z" />
+                </svg>
+                <span class="text-sm truncate">{{ getPoolName(volume.storage_pool_id) }}</span>
+              </div>
+
+              <!-- Type -->
+              <div class="col-span-1 flex items-center text-slate-300 min-w-0">
+                <span class="text-sm">{{ volume.type }}</span>
+              </div>
+
+              <!-- Size Information -->
+              <div class="col-span-2 hidden lg:flex items-center gap-1 text-slate-400">
+                <div class="w-2 h-2 rounded-full bg-purple-400"></div>
+                <span class="text-sm font-medium">{{ formatBytes(volume.capacity_bytes || 0) }}</span>
+              </div>
+
+              <!-- Status Badge -->
+              <div class="col-span-1 flex items-center">
+                <span :class="[
+                  'px-2 py-1 rounded-full text-xs font-medium backdrop-blur-sm border',
+                  getVolumeStatus(volume.id) === 'available' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' :
+                  getVolumeStatus(volume.id) === 'in-use' ? 'bg-blue-500/20 text-blue-300 border-blue-500/30' :
+                  'bg-slate-500/20 text-slate-300 border-slate-500/30'
+                ]">
+                  {{ getVolumeStatus(volume.id) }}
+                </span>
+              </div>
+
+              <!-- Action Buttons Column -->
+              <div class="col-span-2 flex items-center justify-center gap-1" @click.stop>
+                <FButton
+                  variant="ghost"
+                  size="sm"
+                  @click="handleVolumeAction('edit', volume)"
+                  class="p-2 text-blue-400 hover:bg-blue-500/20 hover:text-blue-300 transition-all duration-200 rounded-lg"
+                  title="Edit Volume"
+                >
+                  <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                  </svg>
+                </FButton>
+                <FButton
+                  variant="ghost"
+                  size="sm"
+                  @click="handleVolumeAction('clone', volume)"
+                  class="p-2 text-purple-400 hover:bg-purple-500/20 hover:text-purple-300 transition-all duration-200 rounded-lg"
+                  title="Clone Volume"
+                >
+                  <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M8 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z" />
+                    <path d="M6 3a2 2 0 00-2 2v11a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2 3 3 0 01-3 3H9a3 3 0 01-3-3z" />
+                  </svg>
+                </FButton>
+                <FButton
+                  variant="ghost"
+                  size="sm"
+                  @click="handleVolumeAction('delete', volume)"
+                  class="p-2 text-red-400 hover:bg-red-500/20 hover:text-red-300 transition-all duration-200 rounded-lg"
+                  title="Delete Volume"
+                >
+                  <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" />
+                  </svg>
+                </FButton>
+              </div>
+            </div>
+
+            <!-- Mobile Info (shown on smaller screens) -->
+            <div class="lg:hidden mt-3 pt-3 border-t border-slate-600/20 flex items-center gap-4 text-sm text-slate-400">
+              <div class="flex items-center gap-2">
+                <div class="w-2 h-2 rounded-full bg-purple-400"></div>
+                <span>{{ formatBytes(volume.capacity_bytes || 0) }}</span>
+              </div>
+              <div class="md:hidden flex items-center gap-2">
+                <span class="text-slate-300 bg-slate-700/50 px-2 py-1 rounded text-xs">
+                  {{ volume.format.toUpperCase() }}
+                </span>
+              </div>
+              <div class="md:hidden flex items-center gap-2">
+                <svg class="w-3 h-3 text-slate-500" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z" />
+                </svg>
+                <span>{{ getPoolName(volume.storage_pool_id) }}</span>
+              </div>
+            </div>
+
+            <!-- Usage Information (if in use) -->
+            <div v-if="getVolumeUsedBy(volume.id)" class="mt-3 pt-3 border-t border-slate-600/20">
+              <div class="flex items-center gap-2 text-sm text-slate-400">
+                <svg class="w-4 h-4 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span>Used by: <span class="text-blue-300">{{ getVolumeUsedBy(volume.id) }}</span></span>
+              </div>
             </div>
           </div>
         </div>
@@ -398,19 +682,34 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import FCard from '@/components/ui/FCard.vue'
 import FBreadcrumbs from '@/components/ui/FBreadcrumbs.vue'
+import FButton from '@/components/ui/FButton.vue'
 import { useStorageStore } from '@/stores/storageStore'
+import { useUserPreferences, type ViewMode } from '@/composables/useUserPreferences'
+import { vClickAway } from '@/directives/clickAway'
 import type { StorageVolume, DiskAttachment, StoragePool } from '@/types'
 
 const storageStore = useStorageStore()
+const { preferences } = useUserPreferences()
 
 // Reactive data
 const storageVolumes = computed(() => storageStore.storageVolumes)
 const diskAttachments = computed(() => storageStore.diskAttachments)
 const storagePools = computed(() => storageStore.storagePools as StoragePool[])
 const selectedVolume = ref<StorageVolume | null>(null)
+
+// View mode settings
+const viewMode = ref<ViewMode>('list')
+const activeVolumeDropdown = ref<string | null>(null)
+
+// Watch viewMode changes and save to preferences
+watch(viewMode, (newMode) => {
+  if (preferences.value.storageVolumes) {
+    preferences.value.storageVolumes.viewMode = newMode
+  }
+})
 
 // Search and filter state
 const searchQuery = ref('')
@@ -423,7 +722,7 @@ const currentPage = ref(1)
 const itemsPerPage = ref<number | 'all'>(10)
 
 // Sorting state
-const sortField = ref<'name' | 'type' | 'format' | 'capacity_bytes'>('name')
+const sortField = ref<'name' | 'type' | 'format' | 'capacity_bytes' | 'pool' | 'status'>('name')
 const sortDirection = ref<'asc' | 'desc'>('asc')
 
 // Computed properties
@@ -461,12 +760,24 @@ const filteredVolumes = computed(() => {
 
 const sortedVolumes = computed(() => {
   const sorted = [...filteredVolumes.value].sort((a, b) => {
-    let aValue: any = a[sortField.value]
-    let bValue: any = b[sortField.value]
+    let aValue: any, bValue: any
 
-    if (sortField.value === 'capacity_bytes') {
-      aValue = a.capacity_bytes
-      bValue = b.capacity_bytes
+    switch (sortField.value) {
+      case 'pool':
+        aValue = getPoolName(a.storage_pool_id)
+        bValue = getPoolName(b.storage_pool_id)
+        break
+      case 'status':
+        aValue = getVolumeStatus(a.id)
+        bValue = getVolumeStatus(b.id)
+        break
+      case 'capacity_bytes':
+        aValue = a.capacity_bytes || 0
+        bValue = b.capacity_bytes || 0
+        break
+      default:
+        aValue = a[sortField.value]
+        bValue = b[sortField.value]
     }
 
     if (typeof aValue === 'string') {
@@ -563,6 +874,16 @@ const getPoolName = (poolId?: string) => {
   return pool ? pool.name : poolId
 }
 
+const cycleViewMode = () => {
+  const modes: ViewMode[] = ['cards', 'compact', 'list']
+  const currentIndex = modes.indexOf(viewMode.value)
+  viewMode.value = modes[(currentIndex + 1) % modes.length]
+}
+
+const toggleVolumeDropdown = (volumeId: string) => {
+  activeVolumeDropdown.value = activeVolumeDropdown.value === volumeId ? null : volumeId
+}
+
 const getVolumeStatus = (volumeId: string): string => {
   return isVolumeAttached(volumeId) ? 'in-use' : 'available'
 }
@@ -606,7 +927,7 @@ const getSortIcon = (field: string): string => {
   return sortDirection.value === 'asc' ? '↑' : '↓'
 }
 
-const handleSort = (field: 'name' | 'type' | 'format' | 'capacity_bytes') => {
+const handleSort = (field: 'name' | 'type' | 'format' | 'capacity_bytes' | 'pool' | 'status') => {
   if (sortField.value === field) {
     sortDirection.value = sortDirection.value === 'asc' ? 'desc' : 'asc'
   } else {
