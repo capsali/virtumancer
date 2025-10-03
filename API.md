@@ -58,6 +58,288 @@ Virtumancer exposes a RESTful HTTP API for management operations and a WebSocket
   }  
 * **Response**: 202 Accepted
 
+### **Storage Management**
+
+#### **GET /api/v1/storage/pools**
+
+* **Description**: Retrieves a list of all storage pools across all hosts.  
+* **Response**: 200 OK  
+  \[  
+    {  
+      "id": "pool-uuid",  
+      "host_id": "kvmsrv",  
+      "name": "default",  
+      "type": "dir",  
+      "path": "/var/lib/libvirt/images",  
+      "capacity_bytes": 100000000000,  
+      "allocation_bytes": 50000000000  
+    }  
+  \]
+
+#### **GET /api/v1/storage/volumes**
+
+* **Description**: Retrieves a list of all storage volumes across all hosts.  
+* **Response**: 200 OK  
+  \[  
+    {  
+      "id": "vol-uuid",  
+      "storage_pool_id": "pool-uuid",  
+      "name": "ubuntu-20.04.qcow2",  
+      "type": "DISK",  
+      "format": "qcow2",  
+      "capacity_bytes": 21474836480,  
+      "allocation_bytes": 8589934592  
+    }  
+  \]
+
+#### **GET /api/v1/storage/disk-attachments**
+
+* **Description**: Retrieves a list of all disk attachments across all VMs.  
+* **Response**: 200 OK  
+  \[  
+    {  
+      "id": "attachment-uuid",  
+      "vm_uuid": "vm-uuid",  
+      "disk_id": "disk-uuid",  
+      "device_name": "vda",  
+      "bus_type": "virtio",  
+      "size_bytes": 21474836480  
+    }  
+  \]
+
+#### **GET /api/v1/hosts/:hostId/storage/pools**
+
+* **Description**: Retrieves storage pools for a specific host.  
+* **URL Parameters**:  
+  * hostId (string): The ID of the host.  
+* **Response**: 200 OK (same format as global pools endpoint)
+
+#### **GET /api/v1/hosts/:hostId/storage/volumes**
+
+* **Description**: Retrieves storage volumes for a specific host.  
+* **URL Parameters**:  
+  * hostId (string): The ID of the host.  
+* **Response**: 200 OK (same format as global volumes endpoint)
+
+### **Network Management**
+
+#### **GET /api/v1/networks**
+
+* **Description**: Retrieves a list of all networks across all hosts.  
+* **Response**: 200 OK  
+  \[  
+    {  
+      "id": "network-uuid",  
+      "host_id": "kvmsrv",  
+      "name": "default",  
+      "uuid": "network-uuid",  
+      "bridge_name": "virbr0",  
+      "mode": "nat"  
+    }  
+  \]
+
+#### **GET /api/v1/ports**
+
+* **Description**: Retrieves a list of all network ports across all VMs.  
+* **Response**: 200 OK  
+  \[  
+    {  
+      "id": "port-uuid",  
+      "mac_address": "52:54:00:11:22:33",  
+      "model_name": "virtio",  
+      "host_id": "kvmsrv"  
+    }  
+  \]
+
+#### **GET /api/v1/port-attachments**
+
+* **Description**: Retrieves a list of all port attachments across all VMs.  
+* **Response**: 200 OK  
+  \[  
+    {  
+      "id": "attachment-uuid",  
+      "vm_uuid": "vm-uuid",  
+      "port_id": "port-uuid",  
+      "device_name": "eth0"  
+    }  
+  \]
+
+#### **GET /api/v1/hosts/:hostId/networks**
+
+* **Description**: Retrieves networks for a specific host.  
+* **URL Parameters**:  
+  * hostId (string): The ID of the host.  
+* **Response**: 200 OK (same format as global networks endpoint)
+
+#### **GET /api/v1/hosts/:hostId/ports**
+
+* **Description**: Retrieves network ports for a specific host.  
+* **URL Parameters**:  
+  * hostId (string): The ID of the host.  
+* **Response**: 200 OK  
+  \[  
+    {  
+      "id": "port-uuid",  
+      "vm_uuid": "vm-uuid",  
+      "port_id": "port-uuid",  
+      "device_name": "eth0",  
+      "mac_address": "52:54:00:11:22:33"  
+    }  
+  \]
+
+#### **GET /api/v1/hosts/:hostId/vms/:vmName/port-attachments**
+
+* **Description**: Retrieves port attachments for a specific VM.  
+* **URL Parameters**:  
+  * hostId (string): The ID of the host.  
+  * vmName (string): The name of the virtual machine.  
+* **Response**: 200 OK (same format as global port attachments endpoint)
+
+### **Video/Graphics Management**
+
+#### **GET /api/v1/video/models**
+
+* **Description**: Retrieves a list of all known video model templates.  
+* **Response**: 200 OK  
+  \[  
+    {  
+      "id": 1,  
+      "model_name": "qxl",  
+      "vram": 65536,  
+      "heads": 1,  
+      "accel_3d": false  
+    }  
+  \]
+
+#### **GET /api/v1/hosts/:hostId/video/devices**
+
+* **Description**: Retrieves physical video devices discovered on a host.  
+* **URL Parameters**:  
+  * hostId (string): The ID of the host.  
+* **Response**: 200 OK  
+  \[  
+    {  
+      "id": 1,  
+      "host_device_id": 1,  
+      "vendor": "NVIDIA",  
+      "model_name": "GeForce RTX 3080",  
+      "uuid": "GPU-uuid"  
+    }  
+  \]
+
+#### **GET /api/v1/hosts/:hostId/vms/:vmName/video-attachments**
+
+* **Description**: Retrieves video attachments for a specific VM.  
+* **URL Parameters**:  
+  * hostId (string): The ID of the host.  
+  * vmName (string): The name of the virtual machine.  
+* **Response**: 200 OK  
+  \[  
+    {  
+      "id": 1,  
+      "vm_uuid": "vm-uuid",  
+      "video_model_id": 1,  
+      "monitor_index": 0,  
+      "primary": true  
+    }  
+  \]
+
+### **Console Management**
+
+#### **GET /api/v1/hosts/:hostId/vms/:vmName/console**
+
+* **Description**: Establishes a console connection for a VM (VNC/SPICE proxy).  
+* **URL Parameters**:  
+  * hostId (string): The ID of the host.  
+  * vmName (string): The name of the virtual machine.  
+* **Response**: WebSocket upgrade or proxy connection
+
+#### **GET /api/v1/hosts/:hostId/vms/:vmName/spice**
+
+* **Description**: Establishes a SPICE console connection for a VM.  
+* **URL Parameters**:  
+  * hostId (string): The ID of the host.  
+  * vmName (string): The name of the virtual machine.  
+* **Response**: SPICE protocol connection
+
+### **Dashboard & Statistics**
+
+#### **GET /api/v1/dashboard/stats**
+
+* **Description**: Retrieves aggregated system-wide statistics for the dashboard.  
+* **Response**: 200 OK  
+  {  
+    "total_hosts": 3,  
+    "connected_hosts": 2,  
+    "total_vms": 15,  
+    "active_vms": 12,  
+    "total_storage_gb": 500,  
+    "used_storage_gb": 250  
+  }
+
+#### **GET /api/v1/dashboard/activity**
+
+* **Description**: Retrieves recent system activity events.  
+* **Query Parameters**:  
+  * limit (integer): Maximum number of activities to return (default: 10).  
+* **Response**: 200 OK  
+  \[  
+    {  
+      "id": 1,  
+      "timestamp": "2023-10-27T15:30:00Z",  
+      "type": "vm_started",  
+      "message": "VM ubuntu-vm-01 started on host kvmsrv",  
+      "host_id": "kvmsrv",  
+      "vm_name": "ubuntu-vm-01"  
+    }  
+  \]
+
+#### **GET /api/v1/dashboard/overview**
+
+* **Description**: Retrieves combined dashboard data for initial page load.  
+* **Response**: 200 OK  
+  {  
+    "stats": { ... },  
+    "recent_activity": [ ... ]  
+  }
+
+### **Settings & Configuration**
+
+#### **GET /api/v1/settings/metrics**
+
+* **Description**: Retrieves persistent metrics settings (smoothing, units, CPU defaults).  
+* **Response**: 200 OK  
+  {  
+    "cpu_smoothing_window": 10,  
+    "memory_display_unit": "GB",  
+    "default_cpu_view": "percentage"  
+  }
+
+#### **PUT /api/v1/settings/metrics**
+
+* **Description**: Updates and persists metrics settings.  
+* **Request Body**:  
+  {  
+    "cpu_smoothing_window": 15,  
+    "memory_display_unit": "MB"  
+  }  
+* **Response**: 200 OK
+
+#### **GET /api/v1/settings/metrics/runtime**
+
+* **Description**: Retrieves the current runtime metrics settings from the host service.  
+* **Response**: 200 OK (same format as persistent settings)
+
+### **Health Check**
+
+#### **GET /api/v1/health**
+
+* **Description**: Basic health check endpoint.  
+* **Response**: 200 OK  
+  {  
+    "ok": true  
+  }
+
 ## **WebSocket API** updates and monitoring.
 
 ## **REST API**
