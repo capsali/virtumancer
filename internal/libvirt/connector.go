@@ -693,6 +693,9 @@ type StoragePoolInfo struct {
 	CapacityBytes   uint64 `json:"capacity_bytes"`
 	AllocationBytes uint64 `json:"allocation_bytes"`
 	AvailableBytes  uint64 `json:"available_bytes"`
+	// New: path on the host (for dir/backing stores) and pool type (dir, logical, netfs, rbd, etc)
+	Path string `json:"path"`
+	Type string `json:"type"`
 }
 
 // DomainDiskStats holds I/O statistics for a single disk device.
@@ -1975,14 +1978,40 @@ func (c *Connector) storagePoolToInfo(l *libvirt.Libvirt, pool libvirt.StoragePo
 		uuidStr = parsedUUID.String()
 	}
 
-	return &StoragePoolInfo{
+	// Default info
+	info := &StoragePoolInfo{
 		Name:            pool.Name,
 		UUID:            uuidStr,
 		State:           int(state),
 		CapacityBytes:   capacity,
 		AllocationBytes: allocation,
 		AvailableBytes:  available,
-	}, nil
+		Path:            "",
+		Type:            "unknown",
+	}
+
+	// Try to get pool XML desc to extract pool type and target path when available
+	if poolXML, err := l.StoragePoolGetXMLDesc(pool, 0); err == nil {
+		// Simple parsing for common pool types (dir, logical, etc.)
+		// Look for <target><path>..</path></target> and <pool type='...'>
+		var def struct {
+			XMLName xml.Name `xml:"pool"`
+			Type    string   `xml:"type,attr"`
+			Target  struct {
+				Path string `xml:"path"`
+			} `xml:"target"`
+		}
+		if xml.Unmarshal([]byte(poolXML), &def) == nil {
+			if def.Type != "" {
+				info.Type = def.Type
+			}
+			if def.Target.Path != "" {
+				info.Path = def.Target.Path
+			}
+		}
+	}
+
+	return info, nil
 }
 
 // GetDomainStats retrieves real-time statistics for a single domain (VM).
@@ -3993,6 +4022,9 @@ type VolumeDetail struct {
 	Path        string
 	Format      string
 	BackingPath string
+	// Pool linkage when available
+	PoolName string
+	PoolUUID string
 }
 
 // GetEnhancedDiskInfo retrieves comprehensive disk information using APIs where possible
@@ -4138,12 +4170,32 @@ func (c *Connector) getVolumeDetailFromPath(conn *libvirt.Libvirt, diskPath stri
 					}
 				}
 
+				// Attempt to discover pool name/uuid from pool XML
+				poolName := ""
+				poolUUID := ""
+				if pXML, err := conn.StoragePoolGetXMLDesc(pool, 0); err == nil {
+					var pdef struct {
+						XMLName xml.Name `xml:"pool"`
+						Name    string   `xml:"name"`
+					}
+					if xml.Unmarshal([]byte(pXML), &pdef) == nil {
+						poolName = pdef.Name
+					}
+				}
+				// Try to parse pool.UUID if available (pool.UUID is a [16]byte)
+				if parsed, err := uuid.FromBytes(pool.UUID[:]); err == nil {
+					poolUUID = parsed.String()
+				}
+
 				return &VolumeDetail{
+					Name:       filepath.Base(volPath),
 					Type:       volType,
 					Capacity:   capacity,
 					Allocation: allocation,
 					Path:       volPath,
 					Format:     format,
+					PoolName:   poolName,
+					PoolUUID:   poolUUID,
 				}, nil
 			}
 		}

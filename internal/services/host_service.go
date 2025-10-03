@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -280,6 +281,20 @@ func NewHostService(db *gorm.DB, connector *libvirt.Connector, hub *ws.Hub) *Hos
 	// default disk smoothing alpha
 	s.diskSmoothAlpha = 0.3
 	return s
+}
+
+// normalizeStorageName returns a stable short name for volumes/disks by
+// taking the basename and stripping the last extension if present.
+func normalizeStorageName(pathOrName string) string {
+	if pathOrName == "" {
+		return ""
+	}
+	base := filepath.Base(pathOrName)
+	// Strip trailing compression/format extension (only last dot)
+	if idx := strings.LastIndex(base, "."); idx > 0 {
+		return base[:idx]
+	}
+	return base
 }
 
 // ReloadMetricsSettings reads persisted global metrics settings from the database
@@ -2798,31 +2813,62 @@ func (s *HostService) syncVMDisks(tx *gorm.DB, vmUUID, hostID string, disks []li
 		var volume *storage.Volume
 		if enhancedDisk.VolumeInfo != nil {
 			// Use API-sourced volume information
+			normalized := normalizeStorageName(enhancedDisk.VolumeInfo.Path)
 			var vol storage.Volume
-			tx.FirstOrCreate(&vol, storage.Volume{Name: enhancedDisk.VolumeInfo.Path}, storage.Volume{
-				Name:            enhancedDisk.VolumeInfo.Path,
+			tx.FirstOrCreate(&vol, storage.Volume{StoragePoolID: "", Name: normalized}, storage.Volume{
+				Name:            normalized,
+				Path:            enhancedDisk.VolumeInfo.Path,
 				Format:          enhancedDisk.VolumeInfo.Format,
 				Type:            "DISK",
 				CapacityBytes:   enhancedDisk.VolumeInfo.Capacity,
 				AllocationBytes: enhancedDisk.VolumeInfo.Allocation,
 			})
+			// Try to associate with a pool if pool info present
+			if enhancedDisk.VolumeInfo.PoolUUID != "" {
+				var pool storage.StoragePool
+				if err := s.db.Where("host_id = ? AND uuid = ?", hostID, enhancedDisk.VolumeInfo.PoolUUID).First(&pool).Error; err == nil {
+					vol.StoragePoolID = pool.ID
+					tx.Save(&vol)
+				}
+			} else if enhancedDisk.VolumeInfo.PoolName != "" {
+				var pool storage.StoragePool
+				if err := s.db.Where("host_id = ? AND name = ?", hostID, enhancedDisk.VolumeInfo.PoolName).First(&pool).Error; err == nil {
+					vol.StoragePoolID = pool.ID
+					tx.Save(&vol)
+				}
+			}
 			volume = &vol
 		} else if disk.Source.File != "" {
 			// Fallback to XML-based volume creation
+			normalized := normalizeStorageName(disk.Source.File)
 			var vol storage.Volume
-			tx.FirstOrCreate(&vol, storage.Volume{Name: disk.Source.File}, storage.Volume{
-				Name: disk.Source.File, Format: disk.Driver.Type, Type: "DISK",
+			tx.FirstOrCreate(&vol, storage.Volume{Name: normalized}, storage.Volume{
+				Name:   normalized,
+				Path:   disk.Source.File,
+				Format: disk.Driver.Type,
+				Type:   "DISK",
 			})
+			// Try to associate volume with a pool by matching pool.Path
+			if disk.Source.File != "" {
+				var pool storage.StoragePool
+				if err := s.db.Where("host_id = ? AND path = ?", hostID, filepath.Dir(disk.Source.File)).First(&pool).Error; err == nil {
+					vol.StoragePoolID = pool.ID
+					tx.Save(&vol)
+				}
+			}
 			volume = &vol
 		}
 
 		// Create or update Disk resource with enhanced API data
 		var diskRes storage.Disk
-		diskName := disk.Source.File
-		if diskName == "" {
-			diskName = disk.Source.Dev // block device
-		}
-		if diskName == "" {
+		// Normalize disk name for DB (basename without extension when possible)
+		var diskName string
+		if disk.Source.File != "" {
+			diskName = normalizeStorageName(disk.Source.File)
+		} else if disk.Source.Dev != "" {
+			// Use device name without path
+			diskName = filepath.Base(disk.Source.Dev)
+		} else {
 			diskName = fmt.Sprintf("disk-%s", disk.Target.Dev) // fallback
 		}
 
@@ -2905,7 +2951,13 @@ func (s *HostService) syncVMDisks(tx *gorm.DB, vmUUID, hostID string, disks []li
 		}
 
 		var diskResList []storage.Disk
-		tx.Where("name = ?", diskName).Limit(1).Find(&diskResList)
+		// Prefer lookup by path when available to avoid collisions across pools
+		if path != "" {
+			tx.Where("path = ?", path).Limit(1).Find(&diskResList)
+		}
+		if len(diskResList) == 0 {
+			tx.Where("name = ?", diskName).Limit(1).Find(&diskResList)
+		}
 		if len(diskResList) == 0 {
 			diskRes = storage.Disk{Name: diskName}
 			for k, v := range updates {
@@ -3066,22 +3118,35 @@ func (s *HostService) syncVMDisksXMLOnly(tx *gorm.DB, vmUUID, hostID string, dis
 		// First, handle Volume if it's pool-managed (has a pool path)
 		var volume *storage.Volume
 		if disk.Source.File != "" {
-			// Assume file-based disk; create Volume if not exists
+			// Assume file-based disk; create Volume with normalized name
+			normalized := normalizeStorageName(disk.Source.File)
 			var vol storage.Volume
-			tx.FirstOrCreate(&vol, storage.Volume{Name: disk.Source.File}, storage.Volume{
-				Name: disk.Source.File, Format: disk.Driver.Type, Type: "DISK",
+			tx.FirstOrCreate(&vol, storage.Volume{Name: normalized}, storage.Volume{
+				Name:   normalized,
+				Path:   disk.Source.File,
+				Format: disk.Driver.Type,
+				Type:   "DISK",
 			})
+			// Try to associate with pool by path
+			if disk.Source.File != "" {
+				var pool storage.StoragePool
+				if err := s.db.Where("host_id = ? AND path = ?", hostID, filepath.Dir(disk.Source.File)).First(&pool).Error; err == nil {
+					vol.StoragePoolID = pool.ID
+					tx.Save(&vol)
+				}
+			}
 			volume = &vol
 		}
 
 		// Create or update Disk resource
 		var diskRes storage.Disk
-		diskName := disk.Source.File
-		if diskName == "" {
-			diskName = disk.Source.Dev // block device
-		}
-		if diskName == "" {
-			diskName = fmt.Sprintf("disk-%s", disk.Target.Dev) // fallback
+		var diskName string
+		if disk.Source.File != "" {
+			diskName = normalizeStorageName(disk.Source.File)
+		} else if disk.Source.Dev != "" {
+			diskName = filepath.Base(disk.Source.Dev)
+		} else {
+			diskName = fmt.Sprintf("disk-%s", disk.Target.Dev)
 		}
 		// For driver options, serialize to JSON
 		driverJSON, _ := json.Marshal(map[string]interface{}{
@@ -3136,7 +3201,16 @@ func (s *HostService) syncVMDisksXMLOnly(tx *gorm.DB, vmUUID, hostID string, dis
 		}
 
 		var diskResList []storage.Disk
-		tx.Where("name = ?", diskName).Limit(1).Find(&diskResList)
+		diskPathLookup := disk.Source.File
+		if diskPathLookup == "" {
+			diskPathLookup = disk.Source.Dev
+		}
+		if diskPathLookup != "" {
+			tx.Where("path = ?", diskPathLookup).Limit(1).Find(&diskResList)
+		}
+		if len(diskResList) == 0 {
+			tx.Where("name = ?", diskName).Limit(1).Find(&diskResList)
+		}
 		if len(diskResList) == 0 {
 			diskRes = storage.Disk{Name: diskName}
 			for k, v := range updates {
@@ -4156,6 +4230,17 @@ func (s *HostService) syncHostStoragePools(hostID string) (bool, error) {
 	for _, poolInfo := range livePools {
 		livePoolUUIDs[poolInfo.UUID] = struct{}{}
 
+		// Map numeric libvirt pool state to friendly string
+		poolState := "unknown"
+		switch poolInfo.State {
+		case 1:
+			poolState = "active"
+		case 2:
+			poolState = "inactive"
+		default:
+			poolState = "unknown"
+		}
+
 		// Check if storage pool is already in the database
 		var existing []storage.StoragePool
 		s.db.Where("host_id = ? AND uuid = ?", hostID, poolInfo.UUID).Limit(1).Find(&existing)
@@ -4165,8 +4250,9 @@ func (s *HostService) syncHostStoragePools(hostID string) (bool, error) {
 				HostID:          hostID,
 				Name:            poolInfo.Name,
 				UUID:            poolInfo.UUID,
-				Type:            "unknown", // TODO: get from libvirt
-				Path:            "",        // TODO: get from libvirt
+				Type:            poolInfo.Type,
+				Path:            poolInfo.Path,
+				State:           poolState,
 				CapacityBytes:   poolInfo.CapacityBytes,
 				AllocationBytes: poolInfo.AllocationBytes,
 			}
@@ -4184,6 +4270,15 @@ func (s *HostService) syncHostStoragePools(hostID string) (bool, error) {
 			}
 			if existing[0].AllocationBytes != poolInfo.AllocationBytes {
 				updates["allocation_bytes"] = poolInfo.AllocationBytes
+			}
+			if existing[0].Path != poolInfo.Path && poolInfo.Path != "" {
+				updates["path"] = poolInfo.Path
+			}
+			if existing[0].Type != poolInfo.Type && poolInfo.Type != "" {
+				updates["type"] = poolInfo.Type
+			}
+			if existing[0].State != poolState {
+				updates["state"] = poolState
 			}
 			if len(updates) > 0 {
 				if err := s.db.Model(&existing[0]).Updates(updates).Error; err != nil {

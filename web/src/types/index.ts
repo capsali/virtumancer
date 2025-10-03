@@ -394,3 +394,57 @@ export interface ViewState {
   sortBy: string;
   sortOrder: 'asc' | 'desc';
 }
+
+// Storage types
+export interface StoragePool {
+  id: string;
+  host_id: string;
+  name: string;
+  uuid: string;
+  type: string;
+  path: string;
+  capacity_bytes: number;
+  allocation_bytes: number;
+  // Optional runtime state (e.g., 'active'|'inactive') surfaced by the UI
+  state?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StorageVolume {
+  id: string;
+  storage_pool_id: string;
+  name: string;
+  path?: string;
+  type: string;
+  format: string;
+  capacity_bytes: number;
+  allocation_bytes: number;
+  pool_name?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DiskAttachment {
+  id: string;
+  vm_uuid: string;
+  disk_id: string;
+  device_name: string;
+  bus_type: string;
+  size_bytes: number;
+  read_only: boolean;
+  shareable: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StorageStats {
+  totalPools: number;
+  activePools: number;
+  totalVolumes: number;
+  attachedDisks: number;
+  totalCapacity: number;
+  usedSpace: number;
+  availableSpace: number;
+  utilization: number;
+}

@@ -159,33 +159,33 @@
             <div class="mb-6">
               <div class="flex justify-between text-sm mb-2">
                 <span class="text-slate-400">Storage Usage</span>
-                <span class="text-white">{{ formatBytes(pool.used) }} / {{ formatBytes(pool.capacity) }}</span>
+                <span class="text-white">{{ formatBytes(pool.allocation_bytes) }} / {{ formatBytes(pool.capacity_bytes) }}</span>
               </div>
               <div class="w-full bg-slate-700 rounded-full h-3 overflow-hidden">
                 <div
                   class="h-full transition-all duration-300"
-                  :class="getUsageColor(pool.used / pool.capacity)"
-                  :style="{ width: `${(pool.used / pool.capacity) * 100}%` }"
+                  :class="getUsageColor(pool.capacity_bytes > 0 ? pool.allocation_bytes / pool.capacity_bytes : 0)"
+                  :style="{ width: `${pool.capacity_bytes > 0 ? (pool.allocation_bytes / pool.capacity_bytes) * 100 : 0}%` }"
                 ></div>
               </div>
               <div class="flex justify-between text-xs text-slate-400 mt-1">
-                <span>{{ Math.round((pool.used / pool.capacity) * 100) }}% used</span>
-                <span>{{ formatBytes(pool.available) }} available</span>
+                <span>{{ pool.capacity_bytes > 0 ? Math.round((pool.allocation_bytes / pool.capacity_bytes) * 100) : 0 }}% used</span>
+                <span>{{ formatBytes(pool.capacity_bytes - pool.allocation_bytes) }} available</span>
               </div>
             </div>
 
             <!-- Pool Stats Grid -->
             <div class="grid grid-cols-3 gap-4 mb-4">
               <div class="text-center p-3 glass-subtle rounded-lg">
-                <div class="text-lg font-bold text-white">{{ pool.volumes }}</div>
+                <div class="text-lg font-bold text-white">{{ getPoolVolumeCount(pool.id) }}</div>
                 <div class="text-xs text-slate-400">Volumes</div>
               </div>
               <div class="text-center p-3 glass-subtle rounded-lg">
-                <div class="text-lg font-bold text-white">{{ pool.allocation_percent }}%</div>
+                <div class="text-lg font-bold text-white">{{ pool.capacity_bytes > 0 ? Math.round((pool.allocation_bytes / pool.capacity_bytes) * 100) : 0 }}%</div>
                 <div class="text-xs text-slate-400">Allocated</div>
               </div>
               <div class="text-center p-3 glass-subtle rounded-lg">
-                <div class="text-lg font-bold text-white">{{ pool.available_percent }}%</div>
+                <div class="text-lg font-bold text-white">{{ pool.capacity_bytes > 0 ? Math.round(((pool.capacity_bytes - pool.allocation_bytes) / pool.capacity_bytes) * 100) : 0 }}%</div>
                 <div class="text-xs text-slate-400">Available</div>
               </div>
             </div>
@@ -244,33 +244,25 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import FCard from '@/components/ui/FCard.vue'
+import { useStorageStore } from '@/stores/storageStore'
+import type { StoragePool } from '@/types'
 
-interface StoragePool {
-  id: string
-  name: string
-  type: string
-  state: string
-  capacity: number
-  used: number
-  available: number
-  allocation_percent: number
-  available_percent: number
-  volumes: number
-  path: string
-}
+const storageStore = useStorageStore()
 
-const storagePools = ref<StoragePool[]>([])
+const storagePools = computed(() => storageStore.storagePools)
+const storageVolumes = computed(() => storageStore.storageVolumes)
 const selectedPool = ref<StoragePool | null>(null)
 
 const totalPoolsCount = computed(() => storagePools.value.length)
-const activePoolsCount = computed(() => storagePools.value.filter(pool => pool.state === 'active').length)
+const activePools = computed(() => storagePools.value.filter(pool => pool.state === 'running'))
+const activePoolsCount = computed(() => activePools.value.length)
 
 const totalCapacity = computed(() =>
-  storagePools.value.reduce((sum, pool) => sum + pool.capacity, 0)
+  storagePools.value.reduce((sum, pool) => sum + pool.capacity_bytes, 0)
 )
 
 const totalUsed = computed(() =>
-  storagePools.value.reduce((sum, pool) => sum + pool.used, 0)
+  storagePools.value.reduce((sum, pool) => sum + pool.allocation_bytes, 0)
 )
 
 const poolTypeCounts = computed(() => {
@@ -280,6 +272,32 @@ const poolTypeCounts = computed(() => {
   })
   return counts
 })
+
+const getPoolVolumeCount = (poolId: string) => {
+  // First try to match by storage_pool_id
+  let count = storageVolumes.value.filter(volume => volume.storage_pool_id === poolId).length
+
+  // If no matches, try to match by known pool name to path mappings
+  if (count === 0) {
+    const pool = storagePools.value.find(p => p.id === poolId)
+    if (pool) {
+      const pathMappings: Record<string, string> = {
+        'default': '/var/lib/libvirt/images/',
+        'vms-data': '/vms-data/',
+        'vms': '/vms/'
+      }
+
+      const pathPrefix = pathMappings[pool.name]
+      if (pathPrefix) {
+        count = storageVolumes.value.filter(volume =>
+          (volume.path && volume.path.startsWith(pathPrefix)) || (volume.name && volume.name.startsWith(pathPrefix))
+        ).length
+      }
+    }
+  }
+
+  return count
+}
 
 const formatBytes = (bytes: number): string => {
   if (bytes === 0) return '0 B'
@@ -310,52 +328,10 @@ const selectPool = (pool: StoragePool) => {
 }
 
 const loadStoragePools = async () => {
-  try {
-    // TODO: Fetch real storage pools from API
-    storagePools.value = [
-      {
-        id: '1',
-        name: 'default',
-        type: 'dir',
-        state: 'active',
-        capacity: 1000000000000, // 1TB
-        used: 300000000000, // 300GB
-        available: 700000000000, // 700GB
-        allocation_percent: 30,
-        available_percent: 70,
-        volumes: 8,
-        path: '/var/lib/libvirt/images'
-      },
-      {
-        id: '2',
-        name: 'ssd-pool',
-        type: 'logical',
-        state: 'active',
-        capacity: 500000000000, // 500GB
-        used: 200000000000, // 200GB
-        available: 300000000000, // 300GB
-        allocation_percent: 40,
-        available_percent: 60,
-        volumes: 4,
-        path: '/dev/vg-ssd/storage'
-      },
-      {
-        id: '3',
-        name: 'backup-pool',
-        type: 'netfs',
-        state: 'inactive',
-        capacity: 2000000000000, // 2TB
-        used: 0,
-        available: 2000000000000, // 2TB
-        allocation_percent: 0,
-        available_percent: 100,
-        volumes: 0,
-        path: 'nfs://backup-server/storage'
-      }
-    ]
-  } catch (error) {
-    console.error('Failed to load storage pools:', error)
-  }
+  await Promise.all([
+    storageStore.fetchStoragePools(),
+    storageStore.fetchStorageVolumes()
+  ])
 }
 
 onMounted(() => {

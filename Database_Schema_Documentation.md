@@ -79,6 +79,7 @@ Represents libvirt storage pools (LVM, directories, etc.).
 | uuid | TEXT | UNIQUE | The libvirt-assigned UUID. |
 | type | TEXT |  | The type of pool (dir, lvm, etc.). |
 | path | TEXT |  | The path to the pool. |
+| state | TEXT |  | Human-friendly observed pool state (e.g. "active", "inactive", "unknown"). Stored from libvirt when available. |
 | capacity_bytes | INTEGER |  | Total capacity in bytes. |
 | allocation_bytes | INTEGER |  | Currently allocated bytes. |
 | created_at | DATETIME |  | Timestamp of creation. |
@@ -92,7 +93,8 @@ Represents storage volumes (virtual disks, ISOs).
 | :---- | :---- | :---- | :---- |
 | id | TEXT | PRIMARY KEY | Auto-generated UUID primary key. |
 | storage_pool_id | TEXT |  | Foreign key to storage_pools. |
-| name | TEXT | UNIQUE | The unique name/path of the storage volume. |
+| name | TEXT | UNIQUE | The unique short name of the storage volume. Note: Virtumancer normalizes stored volume and disk names by taking the basename and stripping the last extension (e.g. `/var/lib/libvirt/images/ubuntu-20.04.qcow2` -> `ubuntu-20.04`). The original full path (when available) is preserved in the `path` column. |
+| path | TEXT |  | Original full path of the volume when available (preserved for tooling, debugging, and tooltips). |
 | type | TEXT |  | The type of volume (DISK, ISO). |
 | format | TEXT |  | The disk format (qcow2, raw). |
 | capacity_bytes | INTEGER |  | Total capacity in bytes. |

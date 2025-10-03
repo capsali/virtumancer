@@ -171,6 +171,8 @@ Direct libvirt API calls for comprehensive VM configuration:
 - **Security APIs**: Current security labels and enforcement status
 - **IOThread APIs**: IOThread configuration and CPU mappings
 
+Note: Storage discovery now prefers libvirt storage APIs for pool/volume/block information and only falls back to XML parsing when necessary. The server now persists `StoragePool.path`, `StoragePool.type`, and a human-friendly `StoragePool.state`. Volume objects also include a preserved `Volume.path` when available, while `Volume.name` and `Disk.name` are normalized (basename with last extension stripped) for UI clarity.
+
 ### **Storage Management**
 Complete storage infrastructure management:
 - **Storage Pools**: LVM, directory, and other pool types across all hosts

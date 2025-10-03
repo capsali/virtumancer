@@ -164,11 +164,13 @@ type CreateVMRequest struct {
 // StoragePool represents a libvirt storage pool (e.g., LVM, a directory).
 type StoragePool struct {
 	Base
-	HostID          string `json:"host_id"`
-	Name            string `json:"name"`
-	UUID            string `gorm:"uniqueIndex" json:"uuid"`
-	Type            string `json:"type"`
-	Path            string `json:"path"`
+	HostID string `json:"host_id"`
+	Name   string `json:"name"`
+	UUID   string `gorm:"uniqueIndex" json:"uuid"`
+	Type   string `json:"type"`
+	Path   string `json:"path"`
+	// Human-friendly state, e.g. 'active', 'inactive', 'unknown'
+	State           string `json:"state"`
 	CapacityBytes   uint64 `json:"capacity_bytes"`
 	AllocationBytes uint64 `json:"allocation_bytes"`
 }
@@ -178,6 +180,7 @@ type Volume struct {
 	Base
 	StoragePoolID   string `json:"storage_pool_id"`
 	Name            string `json:"name"`
+	Path            string `json:"path"`
 	Type            string `json:"type"` // 'DISK' or 'ISO'
 	Format          string `json:"format"`
 	CapacityBytes   uint64 `json:"capacity_bytes"`

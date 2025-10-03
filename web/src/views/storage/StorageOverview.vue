@@ -238,33 +238,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import FCard from '@/components/ui/FCard.vue'
+import { useStorageStore } from '@/stores/storageStore'
 
 const router = useRouter()
+const storageStore = useStorageStore()
 
-interface StorageStats {
-  totalPools: number
-  activePools: number
-  totalVolumes: number
-  attachedDisks: number
-  totalCapacity: number
-  usedSpace: number
-  availableSpace: number
-  utilization: number
-}
-
-const storageStats = ref<StorageStats>({
-  totalPools: 0,
-  activePools: 0,
-  totalVolumes: 0,
-  attachedDisks: 0,
-  totalCapacity: 0,
-  usedSpace: 0,
-  availableSpace: 0,
-  utilization: 0
-})
+const storageStats = computed(() => storageStore.storageStats)
 
 const formatBytes = (bytes: number): string => {
   if (bytes === 0) return '0 B'
@@ -275,24 +257,7 @@ const formatBytes = (bytes: number): string => {
 }
 
 const loadStorageStats = async () => {
-  try {
-    // TODO: Fetch real storage statistics from API
-    // For now, using mock data
-    const mockData = {
-      totalPools: 3,
-      activePools: 3,
-      totalVolumes: 12,
-      attachedDisks: 8,
-      totalCapacity: 2199023255552, // 2TB in bytes
-      usedSpace: 1099511627776, // 1TB in bytes
-      availableSpace: 1099511627776, // 1TB in bytes
-      utilization: 50
-    }
-
-    storageStats.value = mockData
-  } catch (error) {
-    console.error('Failed to load storage stats:', error)
-  }
+  await storageStore.fetchAllStorageData()
 }
 
 onMounted(() => {

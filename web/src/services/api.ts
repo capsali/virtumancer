@@ -10,7 +10,10 @@ import type {
   PaginatedResponse,
   CreateVMData,
   VMTaskState,
-  SyncStatus
+  SyncStatus,
+  StoragePool,
+  StorageVolume,
+  DiskAttachment
 } from '@/types';
 
 // Import error recovery service for automatic error handling
@@ -625,6 +628,29 @@ export const settingsApi = {
 
   async updateMetrics(payload: any): Promise<void> {
     return apiClient.put(`/settings/metrics`, payload, `update_metrics_settings`);
+  }
+}
+
+// Storage API
+export const storageApi = {
+  async getStoragePools(): Promise<StoragePool[]> {
+    return apiClient.get<StoragePool[]>('/storage/pools', 'get_storage_pools');
+  },
+
+  async getStorageVolumes(): Promise<StorageVolume[]> {
+    return apiClient.get<StorageVolume[]>('/storage/volumes', 'get_storage_volumes');
+  },
+
+  async getDiskAttachments(): Promise<DiskAttachment[]> {
+    return apiClient.get<DiskAttachment[]>('/storage/disk-attachments', 'get_disk_attachments');
+  },
+
+  async getStoragePoolsForHost(hostId: string): Promise<StoragePool[]> {
+    return apiClient.get<StoragePool[]>(`/hosts/${hostId}/storage/pools`, `get_storage_pools_for_host_${hostId}`);
+  },
+
+  async getStorageVolumesForHost(hostId: string): Promise<StorageVolume[]> {
+    return apiClient.get<StorageVolume[]>(`/hosts/${hostId}/storage/volumes`, `get_storage_volumes_for_host_${hostId}`);
   }
 }
 

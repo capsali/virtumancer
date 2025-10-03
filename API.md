@@ -63,6 +63,7 @@ Virtumancer exposes a RESTful HTTP API for management operations and a WebSocket
 #### **GET /api/v1/storage/pools**
 
 * **Description**: Retrieves a list of all storage pools across all hosts.  
+* **Description**: Retrieves a list of all storage pools across all hosts. The server prefers libvirt API calls for metadata and will fall back to pool XML parsing when necessary.  
 * **Response**: 200 OK  
   \[  
     {  
@@ -71,6 +72,7 @@ Virtumancer exposes a RESTful HTTP API for management operations and a WebSocket
       "name": "default",  
       "type": "dir",  
       "path": "/var/lib/libvirt/images",  
+      "state": "active",  
       "capacity_bytes": 100000000000,  
       "allocation_bytes": 50000000000  
     }  
@@ -80,17 +82,20 @@ Virtumancer exposes a RESTful HTTP API for management operations and a WebSocket
 
 * **Description**: Retrieves a list of all storage volumes across all hosts.  
 * **Response**: 200 OK  
-  \[  
+  [  
     {  
       "id": "vol-uuid",  
       "storage_pool_id": "pool-uuid",  
-      "name": "ubuntu-20.04.qcow2",  
+      "name": "ubuntu-20.04",  
+      "path": "/var/lib/libvirt/images/ubuntu-20.04.qcow2",  
       "type": "DISK",  
       "format": "qcow2",  
       "capacity_bytes": 21474836480,  
       "allocation_bytes": 8589934592  
     }  
-  \]
+  ]
+
+Note: Virtumancer normalizes stored `name` values for volumes and disks by taking the basename and stripping the last extension (for example `/var/lib/libvirt/images/ubuntu-20.04.qcow2` becomes `ubuntu-20.04`). The original full path is preserved in the `path` field when available.
 
 #### **GET /api/v1/storage/disk-attachments**
 

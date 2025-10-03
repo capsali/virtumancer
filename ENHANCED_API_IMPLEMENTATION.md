@@ -73,6 +73,11 @@ Modified `syncVMHardware()` to:
 4. Gracefully handle API failures (fallback to XML parsing)
 5. Log comprehensive data collection summary
 
+### Storage discovery and naming
+- The connector now prefers direct libvirt storage APIs (pool/volume/volume-by-path/block info) to collect pool metadata, volume capacity and allocation, and block device details. When the API doesn't expose a piece of information, the implementation falls back to parsing libvirt XML as a last resort.
+- During sync we persist additional storage metadata: `StoragePool.path`, `StoragePool.type`, and a human-friendly `StoragePool.state` (derived from libvirt pool state where available).
+- To avoid confusing long filesystem paths in UI lists and to make volume/disk names stable and user-friendly, Virtumancer normalizes stored `Volume.Name` and `Disk.Name` by taking the basename and stripping the last extension (for example `/var/lib/libvirt/images/ubuntu-20.04.qcow2` -> `ubuntu-20.04`). The original full path is preserved in `Volume.Path` for debugging, tooltips, and copy-to-clipboard actions in the UI.
+
 ## Verification Results ✅
 
 ### Test Environment

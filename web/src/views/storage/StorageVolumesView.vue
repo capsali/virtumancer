@@ -221,22 +221,22 @@
           Name {{ getSortIcon('name') }}
         </button>
         <button
-          @click="handleSort('pool')"
+          @click="handleSort('format')"
           class="col-span-2 hidden md:flex items-center gap-2 hover:text-white transition-colors cursor-pointer select-none"
         >
-          Pool {{ getSortIcon('pool') }}
+          Format {{ getSortIcon('format') }}
         </button>
         <button
-          @click="handleSort('status')"
+          @click="handleSort('type')"
           class="col-span-2 flex items-center gap-2 hover:text-white transition-colors cursor-pointer select-none"
         >
-          Status {{ getSortIcon('status') }}
+          Type {{ getSortIcon('type') }}
         </button>
         <button
-          @click="handleSort('capacity')"
+          @click="handleSort('capacity_bytes')"
           class="col-span-2 hidden lg:flex items-center gap-2 hover:text-white transition-colors cursor-pointer select-none"
         >
-          Size {{ getSortIcon('capacity') }}
+          Size {{ getSortIcon('capacity_bytes') }}
         </button>
         <div class="col-span-2 text-center">
           Actions
@@ -257,8 +257,8 @@
             <div class="col-span-1">
               <div :class="[
                 'w-3 h-3 rounded-full transition-all duration-300',
-                volume.status === 'available' ? 'bg-emerald-400 animate-pulse shadow-lg shadow-emerald-400/50' :
-                volume.status === 'in-use' ? 'bg-blue-400 animate-pulse shadow-lg shadow-blue-400/50' :
+                getVolumeStatus(volume.id) === 'available' ? 'bg-emerald-400 animate-pulse shadow-lg shadow-emerald-400/50' :
+                getVolumeStatus(volume.id) === 'in-use' ? 'bg-blue-400 animate-pulse shadow-lg shadow-blue-400/50' :
                 'bg-slate-400'
               ]"></div>
             </div>
@@ -278,18 +278,18 @@
               <svg class="w-3 h-3 text-slate-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                 <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z" />
               </svg>
-              <span class="text-sm truncate">{{ volume.pool }}</span>
+              <span class="text-sm truncate">{{ getPoolName(volume.storage_pool_id) }}</span>
             </div>
 
             <!-- Status Badge -->
             <div class="col-span-2 flex items-center">
               <span :class="[
                 'px-2 py-1 rounded-full text-xs font-medium backdrop-blur-sm border',
-                volume.status === 'available' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' :
-                volume.status === 'in-use' ? 'bg-blue-500/20 text-blue-300 border-blue-500/30' :
+                getVolumeStatus(volume.id) === 'available' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' :
+                getVolumeStatus(volume.id) === 'in-use' ? 'bg-blue-500/20 text-blue-300 border-blue-500/30' :
                 'bg-slate-500/20 text-slate-300 border-slate-500/30'
               ]">
-                {{ volume.status }}
+                {{ getVolumeStatus(volume.id) }}
               </span>
             </div>
 
@@ -297,7 +297,7 @@
             <div class="col-span-2 hidden lg:flex items-center gap-3 text-xs text-slate-400">
               <div class="flex items-center gap-1">
                 <div class="w-2 h-2 rounded-full bg-purple-400"></div>
-                <span>{{ formatBytes(volume.capacity) }}</span>
+                <span>{{ formatBytes(volume.capacity_bytes) }}</span>
               </div>
             </div>
 
@@ -344,23 +344,23 @@
           <div class="lg:hidden mt-3 pt-3 border-t border-slate-600/20 flex items-center gap-4 text-sm text-slate-400">
             <div class="flex items-center gap-2">
               <div class="w-2 h-2 rounded-full bg-purple-400"></div>
-              <span>{{ formatBytes(volume.capacity) }}</span>
+              <span>{{ formatBytes(volume.capacity_bytes) }}</span>
             </div>
             <div class="md:hidden flex items-center gap-2">
               <svg class="w-3 h-3 text-slate-500" fill="currentColor" viewBox="0 0 20 20">
                 <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z" />
               </svg>
-              <span>{{ volume.pool }}</span>
+              <span>{{ getPoolName(volume.storage_pool_id) }}</span>
             </div>
           </div>
 
           <!-- Usage Information (if in use) -->
-          <div v-if="volume.usedBy" class="mt-3 pt-3 border-t border-slate-600/20">
+          <div v-if="getVolumeUsedBy(volume.id)" class="mt-3 pt-3 border-t border-slate-600/20">
             <div class="flex items-center gap-2 text-sm text-slate-400">
               <svg class="w-4 h-4 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
                 <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <span>Used by: <span class="text-blue-300">{{ volume.usedBy }}</span></span>
+              <span>Used by: <span class="text-blue-300">{{ getVolumeUsedBy(volume.id) }}</span></span>
             </div>
           </div>
         </div>
@@ -401,20 +401,15 @@
 import { ref, computed, onMounted } from 'vue'
 import FCard from '@/components/ui/FCard.vue'
 import FBreadcrumbs from '@/components/ui/FBreadcrumbs.vue'
+import { useStorageStore } from '@/stores/storageStore'
+import type { StorageVolume, DiskAttachment, StoragePool } from '@/types'
 
-interface StorageVolume {
-  id: string
-  name: string
-  pool: string
-  format: string
-  capacity: number
-  status: string
-  usedBy?: string
-  path: string
-}
+const storageStore = useStorageStore()
 
 // Reactive data
-const storageVolumes = ref<StorageVolume[]>([])
+const storageVolumes = computed(() => storageStore.storageVolumes)
+const diskAttachments = computed(() => storageStore.diskAttachments)
+const storagePools = computed(() => storageStore.storagePools as StoragePool[])
 const selectedVolume = ref<StorageVolume | null>(null)
 
 // Search and filter state
@@ -428,12 +423,12 @@ const currentPage = ref(1)
 const itemsPerPage = ref<number | 'all'>(10)
 
 // Sorting state
-const sortField = ref<'name' | 'pool' | 'status' | 'capacity'>('name')
+const sortField = ref<'name' | 'type' | 'format' | 'capacity_bytes'>('name')
 const sortDirection = ref<'asc' | 'desc'>('asc')
 
 // Computed properties
 const availablePools = computed(() => {
-  const pools = new Set(storageVolumes.value.map(volume => volume.pool))
+  const pools = new Set(storageVolumes.value.map(volume => volume.storage_pool_id))
   return Array.from(pools).sort()
 })
 
@@ -445,16 +440,15 @@ const filteredVolumes = computed(() => {
     const query = searchQuery.value.toLowerCase()
     filtered = filtered.filter(volume =>
       volume.name.toLowerCase().includes(query) ||
-      volume.pool.toLowerCase().includes(query) ||
+      volume.storage_pool_id.toLowerCase().includes(query) ||
       volume.format.toLowerCase().includes(query) ||
-      volume.status.toLowerCase().includes(query) ||
-      (volume.usedBy && volume.usedBy.toLowerCase().includes(query))
+      volume.type.toLowerCase().includes(query)
     )
   }
 
   // Apply pool filter
   if (poolFilter.value) {
-    filtered = filtered.filter(volume => volume.pool === poolFilter.value)
+    filtered = filtered.filter(volume => volume.storage_pool_id === poolFilter.value)
   }
 
   // Apply format filter
@@ -470,9 +464,9 @@ const sortedVolumes = computed(() => {
     let aValue: any = a[sortField.value]
     let bValue: any = b[sortField.value]
 
-    if (sortField.value === 'capacity') {
-      aValue = a.capacity
-      bValue = b.capacity
+    if (sortField.value === 'capacity_bytes') {
+      aValue = a.capacity_bytes
+      bValue = b.capacity_bytes
     }
 
     if (typeof aValue === 'string') {
@@ -517,15 +511,15 @@ const endItem = computed(() => {
 })
 
 const availableVolumesCount = computed(() =>
-  filteredVolumes.value.filter(volume => volume.status === 'available').length
+  filteredVolumes.value.filter(volume => !isVolumeAttached(volume.id)).length
 )
 
 const inUseVolumesCount = computed(() =>
-  filteredVolumes.value.filter(volume => volume.status !== 'available').length
+  filteredVolumes.value.filter(volume => isVolumeAttached(volume.id)).length
 )
 
 const totalCapacity = computed(() =>
-  filteredVolumes.value.reduce((sum, volume) => sum + volume.capacity, 0)
+  filteredVolumes.value.reduce((sum, volume) => sum + volume.capacity_bytes, 0)
 )
 
 const averageVolumeSize = computed(() => {
@@ -535,7 +529,7 @@ const averageVolumeSize = computed(() => {
 
 const largestVolumeSize = computed(() => {
   if (filteredVolumes.value.length === 0) return 0
-  return Math.max(...filteredVolumes.value.map(volume => volume.capacity))
+  return Math.max(...filteredVolumes.value.map(volume => volume.capacity_bytes))
 })
 
 const formatCounts = computed(() => {
@@ -557,6 +551,30 @@ const activeFiltersCount = computed(() => {
   if (formatFilter.value) count++
   return count
 })
+
+// Helper functions
+const isVolumeAttached = (volumeId: string): boolean => {
+  return diskAttachments.value.some(attachment => attachment.disk_id === volumeId)
+}
+
+const getPoolName = (poolId?: string) => {
+  if (!poolId) return ''
+  const pool = storagePools.value.find(p => p.id === poolId)
+  return pool ? pool.name : poolId
+}
+
+const getVolumeStatus = (volumeId: string): string => {
+  return isVolumeAttached(volumeId) ? 'in-use' : 'available'
+}
+
+const getVolumeUsedBy = (volumeId: string): string | undefined => {
+  const attachment = diskAttachments.value.find(att => att.disk_id === volumeId)
+  if (attachment) {
+    // This would need VM data to get the VM name, for now return the VM UUID
+    return attachment.vm_uuid
+  }
+  return undefined
+}
 
 const itemsPerPageOptions = [
   { value: 10, label: '10' },
@@ -588,7 +606,7 @@ const getSortIcon = (field: string): string => {
   return sortDirection.value === 'asc' ? '↑' : '↓'
 }
 
-const handleSort = (field: 'name' | 'pool' | 'status' | 'capacity') => {
+const handleSort = (field: 'name' | 'type' | 'format' | 'capacity_bytes') => {
   if (sortField.value === field) {
     sortDirection.value = sortDirection.value === 'asc' ? 'desc' : 'asc'
   } else {
@@ -605,8 +623,18 @@ const toggleItemsDropdown = () => {
   showItemsDropdown.value = !showItemsDropdown.value
 }
 
-const setItemsPerPage = (value: number | 'all') => {
-  itemsPerPage.value = value
+const setItemsPerPage = (value: any) => {
+  // coerce numeric strings to numbers and otherwise accept 'all'
+  if (value === 'all') {
+    itemsPerPage.value = 'all'
+  } else if (typeof value === 'string' && !isNaN(Number(value))) {
+    itemsPerPage.value = Number(value)
+  } else if (typeof value === 'number') {
+    itemsPerPage.value = value
+  } else {
+    // fallback to 10
+    itemsPerPage.value = 10
+  }
   currentPage.value = 1
   showItemsDropdown.value = false
 }
@@ -643,70 +671,10 @@ const refreshVolumes = async () => {
 }
 
 const loadStorageVolumes = async () => {
-  try {
-    // TODO: Fetch real storage volumes from API
-    storageVolumes.value = [
-      {
-        id: '1',
-        name: 'ubuntu-20.04.qcow2',
-        pool: 'default',
-        format: 'qcow2',
-        capacity: 21474836480, // 20GB
-        status: 'in-use',
-        usedBy: 'ubuntu-vm-01',
-        path: '/var/lib/libvirt/images/ubuntu-20.04.qcow2'
-      },
-      {
-        id: '2',
-        name: 'centos-8-stream.qcow2',
-        pool: 'default',
-        format: 'qcow2',
-        capacity: 32212254720, // 30GB
-        status: 'in-use',
-        usedBy: 'centos-vm-01',
-        path: '/var/lib/libvirt/images/centos-8-stream.qcow2'
-      },
-      {
-        id: '3',
-        name: 'data-disk-01.qcow2',
-        pool: 'ssd-pool',
-        format: 'qcow2',
-        capacity: 107374182400, // 100GB
-        status: 'available',
-        path: '/dev/vg-ssd/storage/data-disk-01.qcow2'
-      },
-      {
-        id: '4',
-        name: 'backup-image.raw',
-        pool: 'default',
-        format: 'raw',
-        capacity: 53687091200, // 50GB
-        status: 'available',
-        path: '/var/lib/libvirt/images/backup-image.raw'
-      },
-      {
-        id: '5',
-        name: 'windows-server-2019.qcow2',
-        pool: 'ssd-pool',
-        format: 'qcow2',
-        capacity: 85899345920, // 80GB
-        status: 'in-use',
-        usedBy: 'windows-vm-01',
-        path: '/dev/vg-ssd/storage/windows-server-2019.qcow2'
-      },
-      {
-        id: '6',
-        name: 'database-disk.raw',
-        pool: 'ssd-pool',
-        format: 'raw',
-        capacity: 268435456000, // 250GB
-        status: 'available',
-        path: '/dev/vg-ssd/storage/database-disk.raw'
-      }
-    ]
-  } catch (error) {
-    console.error('Failed to load storage volumes:', error)
-  }
+  await Promise.all([
+    storageStore.fetchStorageVolumes(),
+    storageStore.fetchDiskAttachments()
+  ])
 }
 
 onMounted(() => {
