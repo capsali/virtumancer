@@ -837,7 +837,46 @@
                 </svg>
                 Storage
               </h4>
-              <div class="space-y-3">
+              <div v-if="vm.disks && vm.disks.length > 0" class="space-y-4">
+                <div v-for="(disk, index) in vm.disks" :key="index" class="border border-slate-700/30 rounded-lg p-4 bg-slate-800/20">
+                  <div class="flex items-center justify-between mb-3">
+                    <h5 class="text-sm font-semibold text-white flex items-center gap-2">
+                      <svg class="w-4 h-4 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z"/>
+                      </svg>
+                      Disk {{ index + 1 }} ({{ disk.deviceName }})
+                    </h5>
+                    <span class="text-xs text-slate-400 bg-slate-700/50 px-2 py-1 rounded">
+                      {{ disk.busType }}
+                    </span>
+                  </div>
+                  <div class="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <span class="text-slate-400 font-medium">Path:</span>
+                      <span class="text-white ml-2 font-mono text-xs">{{ disk.path }}</span>
+                    </div>
+                    <div>
+                      <span class="text-slate-400 font-medium">Size:</span>
+                      <span class="text-white ml-2">{{ disk.capacityGB }} GB</span>
+                    </div>
+                    <div>
+                      <span class="text-slate-400 font-medium">Format:</span>
+                      <span class="text-white ml-2">{{ disk.format }}</span>
+                    </div>
+                    <div>
+                      <span class="text-slate-400 font-medium">Type:</span>
+                      <span class="text-white ml-2">{{ disk.readOnly ? 'Read-only' : 'Read-write' }}</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="border-t border-slate-700/30 pt-3 mt-4">
+                  <div class="grid grid-cols-3 gap-4 text-sm">
+                    <span class="text-slate-400 font-medium">Total Disk Space:</span>
+                    <span class="col-span-2 text-white font-semibold">{{ vm.disks.reduce((total: number, disk: any) => total + disk.capacityGB, 0) }} GB</span>
+                  </div>
+                </div>
+              </div>
+              <div v-else class="space-y-3">
                 <div class="grid grid-cols-3 gap-4 text-sm">
                   <span class="text-slate-400 font-medium">Disk Size:</span>
                   <span class="col-span-2 text-white">{{ vm.diskSizeGB || 0 }} GB</span>
@@ -1174,7 +1213,7 @@ import FModal from '@/components/ui/FModal.vue';
 import VMHardwareConfigModalExtended from '@/components/modals/VMHardwareConfigModalExtended.vue';
 import MetricSettingsModal from '@/components/modals/MetricSettingsModal.vue';
 // Types will be inferred from store usage
-import { wsManager } from '@/services/api';
+import { wsManager, vmApi } from '@/services/api';
 import { getConsoleRoute, getConsoleType, getConsoleDisplayName } from '@/utils/console';
 // @ts-ignore
 import RFB from '@novnc/novnc/lib/rfb';
@@ -1564,6 +1603,26 @@ const loadVM = async (): Promise<void> => {
     const foundVM = vmStore.vmsByHost(props.hostId).find((v: any) => v.name === props.vmName);
     if (foundVM) {
       vm.value = foundVM;
+      
+      // Fetch extended hardware data including disk details
+      try {
+        const extendedHardware = await vmApi.getExtendedVMHardware(props.hostId, props.vmName);
+        if (extendedHardware && extendedHardware.disk_attachments) {
+          // Transform disk attachments to HardwareDiskInfo format
+          vm.value.disks = extendedHardware.disk_attachments.map((attachment: any) => ({
+            deviceName: attachment.device_name,
+            busType: attachment.bus_type,
+            capacityGB: attachment.disk?.capacity_bytes ? Math.round(attachment.disk.capacity_bytes / (1024 * 1024 * 1024) * 100) / 100 : 0,
+            format: attachment.disk?.format || 'unknown',
+            readOnly: attachment.read_only || false,
+            shareable: attachment.shareable || false,
+            path: attachment.disk?.path || attachment.disk?.name || attachment.device_name
+          }));
+        }
+      } catch (hardwareErr) {
+        console.warn('Failed to load extended hardware data:', hardwareErr);
+        // Continue without extended hardware data
+      }
       
       // Start monitoring if VM is active
       if (foundVM.state === 'ACTIVE') {

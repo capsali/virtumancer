@@ -51,6 +51,7 @@ export interface VirtualMachine {
   bootDevice?: string;
   diskSizeGB?: number;
   networkInterface?: string;
+  disks?: HardwareDiskInfo[];
 }
 
 export interface DiscoveredVM {
