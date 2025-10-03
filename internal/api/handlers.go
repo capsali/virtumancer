@@ -1369,6 +1369,30 @@ func (h *APIHandler) ListHostStorageVolumes(w http.ResponseWriter, r *http.Reque
 	json.NewEncoder(w).Encode(response)
 }
 
+// DeleteStorageVolume removes a storage volume by its database ID. It will
+// attempt to delete the backing libvirt storage volume and remove the DB row.
+func (h *APIHandler) DeleteStorageVolume(w http.ResponseWriter, r *http.Request) {
+	// volume id expected as query param id or path param 'id'
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		id = r.URL.Query().Get("id")
+	}
+	if id == "" {
+		http.Error(w, "missing volume id", http.StatusBadRequest)
+		return
+	}
+
+	// Optional pool name
+	pool := r.URL.Query().Get("pool")
+
+	if err := h.HostService.DeleteVolume(id, pool); err != nil {
+		h.HandleError(w, err, "delete_storage_volume")
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // --- Network Endpoints ---
 
 // ListNetworks returns all networks across all hosts.

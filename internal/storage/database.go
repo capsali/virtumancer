@@ -69,6 +69,27 @@ const (
 	StatusDrifted SyncStatus = "DRIFTED"
 )
 
+// StorageState defines allowed stable states for storage resources (volumes/disks).
+type StorageState string
+
+const (
+	StorageStateUnknown   StorageState = "UNKNOWN"
+	StorageStateAvailable StorageState = "AVAILABLE"
+	StorageStateInUse     StorageState = "IN_USE"
+	StorageStateError     StorageState = "ERROR"
+)
+
+// StorageTaskState defines transient task states for storage operations.
+type StorageTaskState string
+
+const (
+	StorageTaskCreating  StorageTaskState = "CREATING"
+	StorageTaskDeleting  StorageTaskState = "DELETING"
+	StorageTaskMigrating StorageTaskState = "MIGRATING"
+	StorageTaskResizing  StorageTaskState = "RESIZING"
+	StorageTaskCloning   StorageTaskState = "CLONING"
+)
+
 // --- Core Entities ---
 
 // Host represents a libvirt host connection configuration.
@@ -185,6 +206,10 @@ type Volume struct {
 	Format          string `json:"format"`
 	CapacityBytes   uint64 `json:"capacity_bytes"`
 	AllocationBytes uint64 `json:"allocation_bytes"`
+	// Stable state of the volume (AVAILABLE, IN_USE, ERROR, etc.)
+	State string `gorm:"size:32;default:'AVAILABLE'" json:"state"`
+	// Transient task state for operations in progress (CREATING, DELETING, MIGRATING)
+	TaskState string `gorm:"size:32" json:"task_state"`
 }
 
 // --- Network Management ---
@@ -551,6 +576,10 @@ type Disk struct {
 	SourceFormat    string `json:"source_format"`           // Source format if different
 	Encryption      string `json:"encryption"`              // Encryption info from API
 	IOTune          string `gorm:"type:text" json:"iotune"` // I/O tuning parameters as JSON
+	// Stable state of the disk (AVAILABLE, IN_USE, ERROR, etc.)
+	State string `gorm:"size:32;default:'AVAILABLE'" json:"state"`
+	// Transient task state for disk operations
+	TaskState string `gorm:"size:32" json:"task_state"`
 }
 
 // DiskAttachment links a Disk (or volume) to a VM and stores per-VM metadata.
@@ -1478,6 +1507,24 @@ func InitDB(dataSourceName string) (*gorm.DB, error) {
 	// New attachment indexes
 	if err := db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS uniq_disk_attachment_vm_dev ON disk_attachments(vm_uuid, device_name) WHERE vm_uuid IS NOT NULL AND device_name IS NOT NULL;").Error; err != nil {
 		log.Verbosef("failed to create unique index uniq_disk_attachment_vm_dev: %v", err)
+		return nil, err
+	}
+
+	// Index storage state & task_state for fast filtering
+	if err := db.Exec("CREATE INDEX IF NOT EXISTS idx_volumes_state ON volumes(state);").Error; err != nil {
+		log.Verbosef("failed to create index idx_volumes_state: %v", err)
+		return nil, err
+	}
+	if err := db.Exec("CREATE INDEX IF NOT EXISTS idx_volumes_task_state ON volumes(task_state);").Error; err != nil {
+		log.Verbosef("failed to create index idx_volumes_task_state: %v", err)
+		return nil, err
+	}
+	if err := db.Exec("CREATE INDEX IF NOT EXISTS idx_disks_state ON disks(state);").Error; err != nil {
+		log.Verbosef("failed to create index idx_disks_state: %v", err)
+		return nil, err
+	}
+	if err := db.Exec("CREATE INDEX IF NOT EXISTS idx_disks_task_state ON disks(task_state);").Error; err != nil {
+		log.Verbosef("failed to create index idx_disks_task_state: %v", err)
 		return nil, err
 	}
 

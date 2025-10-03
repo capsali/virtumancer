@@ -2498,6 +2498,34 @@ func (c *Connector) CreateStorageVolume(hostID, poolName, volumeName string, cap
 	return volumePath, nil
 }
 
+// DeleteStorageVolume deletes a storage volume from the named pool on the host.
+func (c *Connector) DeleteStorageVolume(hostID, poolName, volumeName string) error {
+	conn, err := c.GetConnection(hostID)
+	if err != nil {
+		return fmt.Errorf("failed to get libvirt connection: %w", err)
+	}
+
+	// Lookup pool
+	pool, err := conn.StoragePoolLookupByName(poolName)
+	if err != nil {
+		return fmt.Errorf("failed to find storage pool %s: %w", poolName, err)
+	}
+
+	// Lookup volume by name
+	vol, err := conn.StorageVolLookupByName(pool, volumeName)
+	if err != nil {
+		return fmt.Errorf("failed to find storage volume %s in pool %s: %w", volumeName, poolName, err)
+	}
+
+	// Delete the volume
+	if err := conn.StorageVolDelete(vol, 0); err != nil {
+		return fmt.Errorf("failed to delete storage volume %s: %w", volumeName, err)
+	}
+
+	log.Debugf("Successfully deleted storage volume: %s in pool %s", volumeName, poolName)
+	return nil
+}
+
 // GetDiskSize gets the actual size of a disk file from the host
 func (c *Connector) GetDiskSize(hostID, diskPath string) (uint64, error) {
 	conn, err := c.GetConnection(hostID)

@@ -224,6 +224,10 @@ type HostServiceProvider interface {
 	DeleteSelectedDiscoveredVMs(hostID string, domainUUIDs []string) error
 	// VM creation and management
 	CreateVM(hostID string, vmData storage.CreateVMRequest) (*storage.VirtualMachine, error)
+	// Delete a storage volume by its ID. This will attempt to remove the backing
+	// libvirt storage volume and delete the DB row. It sets transient task_state
+	// during the operation.
+	DeleteVolume(volumeID string, poolName string) error
 	SyncVMFromLibvirt(hostID, vmName string) error
 	RebuildVMFromDB(hostID, vmName string) error
 	StartVM(hostID, vmName string) error
@@ -912,6 +916,52 @@ func (s *HostService) GetVMsForHostFromDB(hostID string) ([]VMView, error) {
 	return vmViews, nil
 }
 
+// DeleteVolume deletes a storage volume, marking task_state during the operation.
+func (s *HostService) DeleteVolume(volumeID string, poolName string) error {
+	var vol storage.Volume
+	if err := s.db.Where("id = ?", volumeID).First(&vol).Error; err != nil {
+		return fmt.Errorf("volume not found: %w", err)
+	}
+
+	// Set task state to DELETING
+	if err := s.db.Model(&storage.Volume{}).Where("id = ?", vol.ID).Updates(map[string]interface{}{"task_state": string(storage.StorageTaskDeleting)}).Error; err != nil {
+		log.Verbosef("Failed to set task_state for volume %s: %v", vol.ID, err)
+	}
+
+	// Attempt deletion on the host connector. Best-effort: if poolName is empty,
+	// try to infer from the volume.Path (not implemented here) and fall back to
+	// deleting DB row if connector fails.
+	volumeName := vol.Name
+	if volumeName == "" {
+		// Nothing to delete on host if no name present
+		if err := s.db.Where("id = ?", vol.ID).Delete(&storage.Volume{}).Error; err != nil {
+			return fmt.Errorf("failed to delete volume row: %w", err)
+		}
+		return nil
+	}
+
+	// Call connector to delete the volume (ignore poolName if empty -> use 'default')
+	targetPool := poolName
+	if targetPool == "" {
+		targetPool = "default"
+	}
+
+	if err := s.connector.DeleteStorageVolume(vol.StoragePoolID, targetPool, volumeName); err != nil {
+		// Mark volume as errored and clear task_state
+		s.db.Model(&storage.Volume{}).Where("id = ?", vol.ID).Updates(map[string]interface{}{"state": string(storage.StorageStateError), "task_state": ""})
+		return fmt.Errorf("failed to delete storage volume on host: %w", err)
+	}
+
+	// Remove DB row
+	if err := s.db.Where("id = ?", vol.ID).Delete(&storage.Volume{}).Error; err != nil {
+		// Clear task state and mark error
+		s.db.Model(&storage.Volume{}).Where("id = ?", vol.ID).Updates(map[string]interface{}{"task_state": "", "state": string(storage.StorageStateError)})
+		return fmt.Errorf("failed to delete volume row after host deletion: %w", err)
+	}
+
+	return nil
+}
+
 // calculateVMDiskSize calculates the total disk size in GB for a VM based on disk attachments
 func (s *HostService) calculateVMDiskSize(vmUUID string) float64 {
 	var totalSizeBytes uint64 = 0
@@ -1361,11 +1411,63 @@ func (s *HostService) CreateVM(hostID string, vmData storage.CreateVMRequest) (*
 		vmData.BootDevice = "hd"
 	}
 
-	// Create storage volume for the VM disk
+	// Create storage volume record in DB with a CREATING task state before provisioning
 	volumeName := fmt.Sprintf("%s.qcow2", vmData.Name)
+	newVol := storage.Volume{
+		StoragePoolID:   "",
+		Name:            volumeName,
+		Path:            "",
+		Type:            "DISK",
+		Format:          "qcow2",
+		CapacityBytes:   uint64(vmData.DiskSizeGB) * 1024 * 1024 * 1024,
+		AllocationBytes: 0,
+		State:           string(storage.StorageStateUnknown),
+		TaskState:       string(storage.StorageTaskCreating),
+	}
+
+	if err := s.db.Create(&newVol).Error; err != nil {
+		return nil, fmt.Errorf("failed to create volume record: %w", err)
+	}
+
+	// Provision the actual storage volume on the host
 	diskPath, err := s.connector.CreateStorageVolume(hostID, "default", volumeName, uint64(vmData.DiskSizeGB)*1024*1024*1024)
 	if err != nil {
+		// mark the volume as errored and clear task state
+		s.db.Model(&storage.Volume{}).Where("id = ?", newVol.ID).Updates(map[string]interface{}{"state": string(storage.StorageStateError), "task_state": ""})
 		return nil, fmt.Errorf("failed to create storage volume: %w", err)
+	}
+
+	// Update volume record with path and clear task state
+	if err := s.db.Model(&storage.Volume{}).Where("id = ?", newVol.ID).Updates(map[string]interface{}{"path": diskPath, "task_state": "", "state": string(storage.StorageStateAvailable)}).Error; err != nil {
+		log.Verbosef("Warning: failed to update volume record after creation: %v", err)
+	}
+
+	// Create a Disk record that references the created Volume
+	newDisk := storage.Disk{
+		Name:          vmData.Name,
+		VolumeID:      &newVol.ID,
+		Path:          diskPath,
+		Format:        "qcow2",
+		CapacityBytes: uint64(vmData.DiskSizeGB) * 1024 * 1024 * 1024,
+		State:         string(storage.StorageStateAvailable),
+		TaskState:     "",
+	}
+	if err := s.db.Create(&newDisk).Error; err != nil {
+		log.Verbosef("Warning: failed to create disk record for VM: %v", err)
+	}
+
+	// Create DiskAttachment linking Disk to VM (will attach after domain is defined)
+	newAttachment := storage.DiskAttachment{
+		VMUUID:     vmUUID,
+		DiskID:     newDisk.ID,
+		Disk:       newDisk,
+		DeviceName: "vda",
+		BusType:    "virtio",
+		ReadOnly:   false,
+		Shareable:  false,
+	}
+	if err := s.db.Create(&newAttachment).Error; err != nil {
+		log.Verbosef("Warning: failed to create disk attachment record for VM: %v", err)
 	}
 
 	// Generate VM XML configuration

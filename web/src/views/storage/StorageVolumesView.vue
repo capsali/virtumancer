@@ -267,6 +267,10 @@
               ]">
                 {{ getVolumeStatus(volume.id) }}
               </span>
+              <!-- Task State Badge (if any) -->
+              <span v-if="getVolumeTaskState(volume.id)" class="ml-2 px-2 py-0.5 rounded-full text-xs font-medium backdrop-blur-sm border bg-yellow-500/10 text-amber-300 border-amber-500/20">
+                {{ getVolumeTaskState(volume.id) }}
+              </span>
             </div>
 
             <!-- Card Content -->
@@ -404,6 +408,11 @@
                   'bg-slate-500/20 text-slate-300 border-slate-500/30'
                 ]">
                   {{ getVolumeStatus(volume.id) }}
+                </span>
+
+                <!-- Task State Badge (compact) -->
+                <span v-if="getVolumeTaskState(volume.id)" class="ml-2 px-2 py-0.5 rounded-full text-xs font-medium backdrop-blur-sm border bg-yellow-500/10 text-amber-300 border-amber-500/20">
+                  {{ getVolumeTaskState(volume.id) }}
                 </span>
 
                 <!-- Actions -->
@@ -886,6 +895,12 @@ const toggleVolumeDropdown = (volumeId: string) => {
 
 const getVolumeStatus = (volumeId: string): string => {
   return isVolumeAttached(volumeId) ? 'in-use' : 'available'
+}
+
+const getVolumeTaskState = (volumeId: string): string | undefined => {
+  const vol = storageVolumes.value.find((v: any) => v.id === volumeId)
+  if (!vol) return undefined
+  return (vol as any).task_state || (vol as any).taskState || undefined
 }
 
 const getVolumeUsedBy = (volumeId: string): string | undefined => {

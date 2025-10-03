@@ -420,6 +420,8 @@ export interface StorageVolume {
   format: string;
   capacity_bytes: number;
   allocation_bytes: number;
+  state?: string;
+  task_state?: string;
   pool_name?: string;
   created_at: string;
   updated_at: string;
@@ -432,6 +434,8 @@ export interface DiskAttachment {
   device_name: string;
   bus_type: string;
   size_bytes: number;
+  state?: string;
+  task_state?: string;
   read_only: boolean;
   shareable: boolean;
   created_at: string;

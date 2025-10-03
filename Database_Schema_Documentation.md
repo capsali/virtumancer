@@ -82,6 +82,8 @@ Represents libvirt storage pools (LVM, directories, etc.).
 | state | TEXT |  | Human-friendly observed pool state (e.g. "active", "inactive", "unknown"). Stored from libvirt when available. |
 | capacity_bytes | INTEGER |  | Total capacity in bytes. |
 | allocation_bytes | INTEGER |  | Currently allocated bytes. |
+| state | TEXT | DEFAULT 'AVAILABLE' | Stable human-friendly state for the volume (AVAILABLE, IN_USE, ERROR, UNKNOWN). |
+| task_state | TEXT |  | Transient task state for operations in progress (CREATING, DELETING, MIGRATING, etc.). |
 | created_at | DATETIME |  | Timestamp of creation. |
 | updated_at | DATETIME |  | Timestamp of last update. |
 
@@ -125,6 +127,8 @@ Enhanced disk representation with detailed metadata.
 | iotune | TEXT |  | I/O tuning parameters as JSON. |
 | created_at | DATETIME |  | Timestamp of creation. |
 | updated_at | DATETIME |  | Timestamp of last update. |
+| state | TEXT | DEFAULT 'AVAILABLE' | Stable human-friendly state for the disk (AVAILABLE, IN_USE, ERROR, UNKNOWN). |
+| task_state | TEXT |  | Transient task state for disk operations (CREATING, DELETING, MIGRATING, etc.). |
 
 ### **disk_attachments**
 

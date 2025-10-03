@@ -116,6 +116,7 @@ func main() {
 		// Storage routes
 		r.Get("/storage/pools", apiHandler.ListStoragePools)
 		r.Get("/storage/volumes", apiHandler.ListStorageVolumes)
+		r.Delete("/storage/volumes/{id}", apiHandler.DeleteStorageVolume)
 		r.Get("/storage/disk-attachments", apiHandler.ListDiskAttachments)
 		r.Get("/hosts/{hostID}/storage/pools", apiHandler.ListHostStoragePools)
 		r.Get("/hosts/{hostID}/storage/volumes", apiHandler.ListHostStorageVolumes)
