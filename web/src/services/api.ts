@@ -336,6 +336,9 @@ function transformBackendVMToFrontend(backendVM: BackendVMResponse, hostId: stri
     libvirtState: backendVM.libvirtState as any,
   taskState: backendVM.task_state as VMTaskState,
     vcpuCount: backendVM.vcpu_count,
+  // CamelCase aliases for convenience in frontend components
+  memoryBytes: backendVM.memory_bytes,
+  currentMemory: backendVM.memory ?? backendVM.memory_bytes,
     cpuModel: backendVM.cpu_model,
     memoryMB: Math.round(backendVM.memory_bytes / (1024 * 1024)), // Convert bytes to MB
     osType: backendVM.os_type,

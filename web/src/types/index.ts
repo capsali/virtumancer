@@ -39,6 +39,8 @@ export interface VirtualMachine {
   hostId?: string;
   domainUuid?: string;
   vcpuCount?: number;
+  memoryBytes?: number; // added alias for backend memory_bytes
+  currentMemory?: number;
   memoryMB?: number;
   cpuModel?: string;
   osType?: string;
