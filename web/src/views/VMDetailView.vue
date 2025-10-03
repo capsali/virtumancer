@@ -131,142 +131,285 @@
       </div>
     </div>
 
-    <!-- Main Content Layout - Two Columns for Active VMs -->
-    <div v-if="vm && vm.state === 'ACTIVE'" class="grid grid-cols-1 xl:grid-cols-3 gap-6">
-      <!-- Left Column: Performance Metrics -->
-      <div class="xl:col-span-2 space-y-6">
+    <!-- Main Content Layout - Standalone Cards for Active VMs -->
+    <div v-if="vm && vm.state === 'ACTIVE'" class="space-y-6">
+      <!-- Host disconnected message -->
+      <div v-if="!isHostConnected" class="text-center">
         <FCard class="card-glow">
-          <div class="p-6">
-            <div class="flex items-center gap-3 mb-6">
-              <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center">
-                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+          <div class="p-12 relative">
+            <div class="absolute inset-0 bg-gradient-to-r from-red-500/5 to-orange-500/5 rounded-2xl border border-red-500/20"></div>
+            <div class="relative z-10">
+              <div class="w-20 h-20 mx-auto mb-6 rounded-full bg-gradient-to-br from-red-500/20 to-orange-500/20 flex items-center justify-center">
+                <svg class="w-10 h-10 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
                 </svg>
               </div>
-              <h3 class="text-xl font-bold text-white">Performance Metrics</h3>
-            </div>
-
-            <!-- Host disconnected message -->
-            <div v-if="!isHostConnected" class="text-center py-8">
-              <svg class="w-16 h-16 mx-auto mb-4 text-slate-600" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
-              </svg>
-              <h4 class="text-white font-semibold mb-2">Host Not Connected</h4>
-              <p class="text-slate-400 text-sm">Performance metrics are only available when the host is connected.</p>
-            </div>
-
-            <!-- Show metrics data if available -->
-            <div v-else-if="vmStats" class="space-y-6">
-              <!-- CPU and Memory on the left, Disk I/O and Network I/O on the right -->
-              <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <!-- Left Column: CPU and Memory -->
-                <div class="space-y-6">
-                  <!-- CPU Details -->
-                  <div>
-                    <div class="flex justify-between items-center mb-3">
-                      <span class="text-sm font-medium text-white">CPU Usage</span>
-                      <span class="text-sm font-medium text-white">{{ cpuValue.toFixed(1) }}%</span>
-                    </div>
-                    <div class="w-full bg-slate-700 rounded-full h-3 overflow-hidden">
-                      <div
-                        class="h-3 bg-gradient-to-r from-purple-500 to-purple-600 rounded-full transition-all duration-500"
-                        :style="{ width: `${cpuValue}%` }"
-                      ></div>
-                    </div>
-                    <div class="flex justify-between text-xs text-slate-500 mt-2">
-                      <span>{{ vm?.vcpu_count || 0 }} vCPUs allocated</span>
-                      <span>{{ cpuLabel }}</span>
-                    </div>
-                  </div>
-
-                  <!-- Memory Details -->
-                  <div>
-                    <div class="flex justify-between items-center mb-3">
-                      <span class="text-sm font-medium text-white">Memory Usage</span>
-                      <span class="text-sm font-medium text-white">{{ vmStats ? formatBytes((vmStats.memory_mb || 0) * 1024 * 1024) : 'N/A' }}</span>
-                    </div>
-                    <div class="w-full bg-slate-700 rounded-full h-3 overflow-hidden">
-                      <div
-                        class="h-3 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-full transition-all duration-500"
-                        :style="{ width: vm && vmStats ? `${Math.min(100, ((vmStats.memory_mb || 0) / (vm.memory_bytes || 1)) * 100)}` : '0%' }"
-                      ></div>
-                    </div>
-                    <div class="flex justify-between text-xs text-slate-500 mt-2">
-                      <span>{{ vmStats ? formatBytes((vmStats.memory_mb || 0) * 1024 * 1024) : '0 B' }} used</span>
-                      <span>{{ vm ? formatBytes(vm.memory_bytes) : 'N/A' }} total</span>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Right Column: Disk I/O and Network I/O -->
-                <div class="space-y-6">
-                  <!-- Disk I/O Details -->
-                  <div>
-                    <div class="flex justify-between items-center mb-3">
-                      <span class="text-sm font-medium text-white">Disk I/O</span>
-                      <span class="text-sm font-medium text-white">{{ vmStats ? (vmStats.disk_read_kib_per_sec || 0).toFixed(1) : '0' }} / {{ vmStats ? (vmStats.disk_write_kib_per_sec || 0).toFixed(1) : '0' }} KiB/s</span>
-                    </div>
-                    <div class="w-full bg-slate-700 rounded-full h-3 overflow-hidden">
-                      <div
-                        class="h-3 bg-gradient-to-r from-green-500 via-green-400 to-orange-500 rounded-full transition-all duration-500"
-                        :style="{ width: vmStats && (vmStats.disk_read_kib_per_sec || 0) + (vmStats.disk_write_kib_per_sec || 0) > 0 ? '100%' : '0%' }"
-                      ></div>
-                    </div>
-                    <div class="flex justify-between text-xs text-slate-500 mt-2">
-                      <span class="text-green-400">Read: {{ vmStats ? (vmStats.disk_read_kib_per_sec || 0).toFixed(1) : '0' }} KiB/s</span>
-                      <span class="text-orange-400">Write: {{ vmStats ? (vmStats.disk_write_kib_per_sec || 0).toFixed(1) : '0' }} KiB/s</span>
-                    </div>
-                  </div>
-
-                  <!-- Network I/O Details -->
-                  <div>
-                    <div class="flex justify-between items-center mb-3">
-                      <span class="text-sm font-medium text-white">Network I/O</span>
-                      <span class="text-sm font-medium text-white">{{ vmStats ? (vmStats.network_rx_mbps || vmStats.network_rx_mb || 0).toFixed(2) : '0' }} / {{ vmStats ? (vmStats.network_tx_mbps || vmStats.network_tx_mb || 0).toFixed(2) : '0' }} {{ settings.units.network === 'kb' ? 'KB/s' : 'MB/s' }}</span>
-                    </div>
-                    <div class="w-full bg-slate-700 rounded-full h-3 overflow-hidden">
-                      <div
-                        class="h-3 bg-gradient-to-r from-blue-500 via-blue-400 to-purple-500 rounded-full transition-all duration-500"
-                        :style="{ width: vmStats && ((vmStats.network_rx_mbps || vmStats.network_rx_mb || 0) + (vmStats.network_tx_mbps || vmStats.network_tx_mb || 0)) > 0 ? '100%' : '0%' }"
-                      ></div>
-                    </div>
-                    <div class="flex justify-between text-xs text-slate-500 mt-2">
-                      <span class="text-blue-400">RX: {{ vmStats ? (vmStats.network_rx_mbps || vmStats.network_rx_mb || 0).toFixed(2) : '0' }} {{ settings.units.network === 'kb' ? 'KB/s' : 'MB/s' }}</span>
-                      <span class="text-purple-400">TX: {{ vmStats ? (vmStats.network_tx_mbps || vmStats.network_tx_mb || 0).toFixed(2) : '0' }} {{ settings.units.network === 'kb' ? 'KB/s' : 'MB/s' }}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- No data available -->
-            <div v-else class="text-center py-8">
-              <svg class="w-16 h-16 mx-auto mb-4 text-slate-600" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
-              </svg>
-              <h4 class="text-white font-semibold mb-2">No Performance Data</h4>
-              <p class="text-slate-400 text-sm">Performance metrics are not available for this virtual machine.</p>
+              <h4 class="text-xl font-bold text-white mb-3">Host Connection Lost</h4>
+              <p class="text-slate-400">Telemetry data and console preview unavailable - host system is not responding</p>
             </div>
           </div>
         </FCard>
-
       </div>
 
-      <!-- Right Column: Console Preview -->
-      <div class="xl:col-span-1">
-        <div v-if="getConsoleType(vm)" class="space-y-6">
-          <FCard class="card-glow cursor-pointer hover:shadow-xl hover:bg-slate-800/20 transition-all duration-300 hover:scale-[1.02]" @click="openConsole">
-            <div class="p-4">
+      <!-- Performance Metrics + Console Access Grid - Always Visible -->
+      <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+        <!-- Performance Metrics Card -->
+        <div class="lg:col-span-3">
+          <FCard class="card-glow h-full">
+            <div class="p-6 h-full flex flex-col">
+              <!-- Metrics Header -->
+              <div class="flex items-center justify-between mb-6">
+                <div class="flex items-center gap-3">
+                  <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-slate-500 to-gray-500 flex items-center justify-center">
+                    <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                    </svg>
+                  </div>
+                  <div>
+                    <span class="font-semibold text-white">Performance Metrics</span>
+                    <div class="text-xs text-slate-400">Real-time VM statistics</div>
+                  </div>
+                </div>
+                <!-- Status indicator -->
+                <div class="flex items-center gap-2 px-3 py-1 rounded-full bg-slate-800/50 border border-slate-700/50">
+                  <div :class="[
+                    'w-2 h-2 rounded-full',
+                    isHostConnected && vmStats ? 'bg-green-400 animate-pulse' : 'bg-red-400'
+                  ]"></div>
+                  <span class="text-xs font-medium text-slate-300">
+                    {{ isHostConnected && vmStats ? 'ONLINE' : 'OFFLINE' }}
+                  </span>
+                </div>
+              </div>
+
+              <!-- Performance Metrics Content -->
+              <div v-if="vmStats && isHostConnected" class="flex-1">
+                <!-- Primary Metrics Grid -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+                  <!-- CPU Metric -->
+                  <div class="bg-slate-900/30 rounded-xl p-4 border border-purple-500/20">
+                    <div class="flex items-center justify-between">
+                      <div class="flex items-center gap-3">
+                        <div class="w-6 h-6 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+                          <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/>
+                          </svg>
+                        </div>
+                        <div>
+                          <span class="text-sm font-semibold text-white">CPU</span>
+                          <div class="text-xs text-slate-400">{{ vm?.vcpu_count || 0 }} cores</div>
+                        </div>
+                      </div>
+                      <!-- Progress Ring -->
+                      <div class="relative w-16 h-16">
+                        <svg class="w-16 h-16 transform -rotate-90" viewBox="0 0 100 100">
+                          <circle cx="50" cy="50" r="35" stroke="currentColor" stroke-width="6" fill="none" class="text-slate-700"/>
+                          <circle 
+                            cx="50" cy="50" r="35" 
+                            stroke="url(#cpuGradient)" 
+                            stroke-width="6" 
+                            fill="none"
+                            stroke-linecap="round"
+                            :stroke-dasharray="`${2 * Math.PI * 35}`"
+                            :stroke-dashoffset="`${2 * Math.PI * 35 * (1 - cpuValue / 100)}`"
+                            class="transition-all duration-1000 ease-out"
+                          />
+                          <defs>
+                            <linearGradient id="cpuGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                              <stop offset="0%" style="stop-color:#a855f7"/>
+                              <stop offset="100%" style="stop-color:#ec4899"/>
+                            </linearGradient>
+                          </defs>
+                        </svg>
+                        <div class="absolute inset-0 flex items-center justify-center">
+                          <span class="text-sm font-bold text-white">{{ Math.round(cpuValue) }}%</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Memory Metric -->
+                  <div class="bg-slate-900/30 rounded-xl p-4 border border-blue-500/20">
+                    <div class="flex items-center justify-between">
+                      <div class="flex items-center gap-3">
+                        <div class="w-6 h-6 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
+                          <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"/>
+                          </svg>
+                        </div>
+                        <div>
+                          <span class="text-sm font-semibold text-white">Memory</span>
+                          <div class="text-xs text-slate-400">{{ vm ? formatBytes(vm.memory_bytes) : 'N/A' }}</div>
+                        </div>
+                      </div>
+                      <!-- Progress Ring -->
+                      <div class="relative w-16 h-16">
+                        <svg class="w-16 h-16 transform -rotate-90" viewBox="0 0 100 100">
+                          <circle cx="50" cy="50" r="35" stroke="currentColor" stroke-width="6" fill="none" class="text-slate-700"/>
+                          <circle 
+                            cx="50" cy="50" r="35" 
+                            stroke="url(#memoryGradient)" 
+                            stroke-width="6" 
+                            fill="none"
+                            stroke-linecap="round"
+                            :stroke-dasharray="`${2 * Math.PI * 35}`"
+                            :stroke-dashoffset="`${2 * Math.PI * 35 * (1 - (vm && vmStats ? Math.min(100, ((vmStats.memory_mb || 0) / (vm.memory_bytes || 1)) * 100) : 0) / 100)}`"
+                            class="transition-all duration-1000 ease-out"
+                          />
+                          <defs>
+                            <linearGradient id="memoryGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                              <stop offset="0%" style="stop-color:#3b82f7"/>
+                              <stop offset="100%" style="stop-color:#06b6d4"/>
+                            </linearGradient>
+                          </defs>
+                        </svg>
+                        <div class="absolute inset-0 flex items-center justify-center">
+                          <span class="text-sm font-bold text-white">{{ vmStats ? Math.round(((vmStats.memory_mb || 0) / (vm?.memory_bytes ? vm.memory_bytes / (1024 * 1024) : 1)) * 100) : 0 }}%</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- I/O Metrics Grid -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1">
+                  <!-- Storage I/O -->
+                  <div class="bg-slate-900/30 rounded-xl p-4 border border-green-500/20 flex flex-col">
+                    <!-- Header -->
+                    <div class="flex items-center justify-between mb-4">
+                      <div class="flex items-center gap-2">
+                        <div class="w-6 h-6 rounded-lg bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center">
+                          <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"/>
+                          </svg>
+                        </div>
+                        <span class="text-sm font-semibold text-white">Storage I/O</span>
+                      </div>
+                      <div class="text-xs px-2 py-1 bg-green-500/20 text-green-400 rounded-full">KiB/s</div>
+                    </div>
+                    
+                    <!-- I/O Bars -->
+                    <div class="space-y-3 flex-1">
+                      <!-- Read -->
+                      <div>
+                        <div class="flex justify-between items-center mb-1">
+                          <span class="text-xs text-slate-300">Read</span>
+                          <span class="text-xs font-bold text-green-400">{{ vmStats ? (vmStats.disk_read_kib_per_sec || 0).toFixed(1) : '0' }}</span>
+                        </div>
+                        <div class="h-2 bg-slate-700 rounded-full overflow-hidden">
+                          <div
+                            class="h-2 bg-gradient-to-r from-green-500 to-green-400 rounded-full transition-all duration-500"
+                            :style="{ width: vmStats && (vmStats.disk_read_kib_per_sec || 0) > 0 ? '100%' : '0%' }"
+                          ></div>
+                        </div>
+                      </div>
+                      
+                      <!-- Write -->
+                      <div>
+                        <div class="flex justify-between items-center mb-1">
+                          <span class="text-xs text-slate-300">Write</span>
+                          <span class="text-xs font-bold text-emerald-400">{{ vmStats ? (vmStats.disk_write_kib_per_sec || 0).toFixed(1) : '0' }}</span>
+                        </div>
+                        <div class="h-2 bg-slate-700 rounded-full overflow-hidden">
+                          <div
+                            class="h-2 bg-gradient-to-r from-emerald-500 to-emerald-400 rounded-full transition-all duration-500"
+                            :style="{ width: vmStats && (vmStats.disk_write_kib_per_sec || 0) > 0 ? '100%' : '0%' }"
+                          ></div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Network I/O -->
+                  <div class="bg-slate-900/30 rounded-xl p-4 border border-indigo-500/20 flex flex-col">
+                    <!-- Header -->
+                    <div class="flex items-center justify-between mb-4">
+                      <div class="flex items-center gap-2">
+                        <div class="w-6 h-6 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center">
+                          <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.111 16.404a5.5 5.5 0 717.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"/>
+                          </svg>
+                        </div>
+                        <span class="text-sm font-semibold text-white">Network I/O</span>
+                      </div>
+                      <div class="text-xs px-2 py-1 bg-indigo-500/20 text-indigo-400 rounded-full">{{ settings.units.network === 'kb' ? 'KB/s' : 'MB/s' }}</div>
+                    </div>
+                    
+                    <!-- I/O Bars -->
+                    <div class="space-y-3 flex-1">
+                      <!-- RX -->
+                      <div>
+                        <div class="flex justify-between items-center mb-1">
+                          <span class="text-xs text-slate-300">Download</span>
+                          <span class="text-xs font-bold text-indigo-400">{{ vmStats ? (vmStats.network_rx_mbps || vmStats.network_rx_mb || 0).toFixed(2) : '0' }}</span>
+                        </div>
+                        <div class="h-2 bg-slate-700 rounded-full overflow-hidden">
+                          <div
+                            class="h-2 bg-gradient-to-r from-indigo-500 to-indigo-400 rounded-full transition-all duration-500"
+                            :style="{ width: vmStats && (vmStats.network_rx_mbps || vmStats.network_rx_mb || 0) > 0 ? '100%' : '0%' }"
+                          ></div>
+                        </div>
+                      </div>
+                      
+                      <!-- TX -->
+                      <div>
+                        <div class="flex justify-between items-center mb-1">
+                          <span class="text-xs text-slate-300">Upload</span>
+                          <span class="text-xs font-bold text-purple-400">{{ vmStats ? (vmStats.network_tx_mbps || vmStats.network_tx_mb || 0).toFixed(2) : '0' }}</span>
+                        </div>
+                        <div class="h-2 bg-slate-700 rounded-full overflow-hidden">
+                          <div
+                            class="h-2 bg-gradient-to-r from-purple-500 to-purple-400 rounded-full transition-all duration-500"
+                            :style="{ width: vmStats && (vmStats.network_tx_mbps || vmStats.network_tx_mb || 0) > 0 ? '100%' : '0%' }"
+                          ></div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- No Performance Data Available -->
+              <div v-else class="flex-1 flex items-center justify-center">
+                <div class="text-center text-slate-400">
+                  <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-slate-600/20 to-slate-700/20 flex items-center justify-center">
+                    <svg class="w-8 h-8 text-slate-500" fill="currentColor" viewBox="0 0 20 20">
+                      <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+                    </svg>
+                  </div>
+                  <h4 class="text-lg font-semibold text-white mb-2">No Performance Data</h4>
+                  <p class="text-sm">{{ !isHostConnected ? 'Host disconnected' : 'Performance metrics are not available' }}</p>
+                  <div v-if="!vmStats && isHostConnected" class="mt-3">
+                    <div class="w-6 h-6 border-2 border-slate-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+                    <p class="text-xs mt-2">Loading metrics...</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </FCard>
+        </div>
+
+        <!-- Console Card -->
+        <div class="lg:col-span-2">
+          <!-- Show console card if VM has graphics -->
+          <FCard v-if="vm && vm.graphics && (vm.graphics.vnc || vm.graphics.spice)" 
+                 class="card-glow h-full cursor-pointer hover:shadow-lg transition-all duration-300" 
+                 @click="openConsole">
+            <div class="p-6 h-full flex flex-col">
+              <!-- Console Header -->
               <div class="flex items-center justify-between mb-4">
                 <div class="flex items-center gap-3">
-                  <div class="w-8 h-8 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center shadow-xl ring-2 ring-emerald-500/20">
-                    <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                  <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center">
+                    <svg class="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
                       <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm0 4a1 1 0 011-1h12a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1V8zm8 2a1 1 0 100 2h2a1 1 0 100-2h-2z" clip-rule="evenodd" />
                     </svg>
                   </div>
                   <div>
-                    <h4 class="text-base font-bold text-white">Console Preview</h4>
-                    <p class="text-sm text-slate-400">{{ getConsoleStatusText() }}</p>
+                    <span class="font-semibold text-white">Console Access</span>
+                    <div class="text-xs text-slate-400">
+                      {{ vm.graphics.spice ? 'SPICE Console' : 'VNC Console' }} 
+                      {{ vm.state !== 'RUNNING' ? '(VM not running)' : 'Ready' }}
+                    </div>
                   </div>
                 </div>
                 <FButton
@@ -283,50 +426,104 @@
               </div>
 
               <!-- Console Preview Content -->
-              <div class="bg-slate-900/50 rounded-lg border border-slate-700/50 overflow-hidden">
-                <div class="bg-black rounded-lg overflow-hidden relative h-60">
+              <div class="bg-slate-900/50 rounded-lg border border-slate-700/50 overflow-hidden flex-1 hover:bg-slate-900/60 transition-all duration-300">
+                <div class="bg-black rounded-lg overflow-hidden relative h-full min-h-[300px]">
                   <!-- Console Screenshot Preview -->
-                  <div class="absolute inset-0">
-                    <!-- Screenshot Display -->
-                    <div v-if="getConsoleType(vm) && vm" class="w-full h-full relative">
-                      <!-- Current screenshot -->
-                      <img
-                        v-if="consoleSnapshot"
-                        :src="consoleSnapshot"
-                        class="w-full h-full object-contain rounded transition-opacity duration-300"
-                        :class="{ 'opacity-70': isCapturingSnapshot }"
-                        alt="Console Preview"
-                      />
-                      <!-- Loading state -->
-                      <div v-else class="w-full h-full bg-slate-800 flex items-center justify-center">
-                        <div class="text-center text-slate-400">
-                          <div class="w-6 h-6 border-2 border-slate-500 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
-                          <p class="text-xs">Capturing console screenshot...</p>
-                        </div>
-                      </div>
-                      <!-- Refresh indicator -->
-                      <div v-if="isCapturingSnapshot" class="absolute inset-0 flex items-center justify-center bg-black/20 rounded">
-                        <div class="bg-black/60 rounded-full p-3">
-                          <div class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                        </div>
-                      </div>
-                    </div>
-                    <!-- No console available -->
-                    <div v-else class="w-full h-full bg-slate-800 flex items-center justify-center">
-                      <div class="text-center text-slate-400">
-                        <svg class="w-8 h-8 mx-auto mb-2 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div v-if="consoleSnapshot" class="absolute inset-0">
+                    <img
+                      :src="consoleSnapshot"
+                      class="w-full h-full object-contain rounded transition-opacity duration-300"
+                      alt="Console Preview"
+                      @error="() => { consoleSnapshot = null; }"
+                    />
+                  </div>
+                  
+                  <!-- Default/No Preview State -->
+                  <div v-else class="absolute inset-0 flex items-center justify-center">
+                    <div class="text-center text-slate-400">
+                      <div class="w-16 h-16 mx-auto mb-4 rounded-xl bg-gradient-to-br from-emerald-500/20 to-teal-500/20 flex items-center justify-center border border-emerald-500/20">
+                        <svg class="w-8 h-8 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
                         </svg>
-                        <p class="text-xs">No console available</p>
                       </div>
+                      <h4 class="text-sm font-semibold text-white mb-2">Console Preview</h4>
+                      <p class="text-xs text-slate-400 mb-2">Click to open full console</p>
+                      <p class="text-xs text-slate-500">
+                        {{ vm.state !== 'RUNNING' ? 'Start VM to enable preview' : 'Preview will load automatically' }}
+                      </p>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
           </FCard>
+        
+          <!-- No Console Available Card -->
+          <FCard v-else class="card-glow h-full">
+            <div class="p-6 h-full flex flex-col items-center justify-center">
+              <div class="text-center text-slate-400">
+                <div class="w-16 h-16 mx-auto mb-4 rounded-xl bg-gradient-to-br from-slate-600/20 to-slate-700/20 flex items-center justify-center border border-slate-600/20">
+                  <svg class="w-8 h-8 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636m12.728 12.728L5.636 5.636"/>
+                  </svg>
+                </div>
+                <h4 class="text-lg font-semibold text-white mb-2">No Console Available</h4>
+                <p class="text-sm mb-2">Console access is not configured for this virtual machine</p>
+                <div class="text-xs text-slate-500">
+                  <p>VM needs VNC or SPICE graphics configuration</p>
+                  {{ vm ? `Current VM: ${vm.name}` : 'Loading VM data...' }}
+                </div>
+              </div>
+            </div>
+          </FCard>
         </div>
       </div>
+
+      <!-- System Information Card - Always Visible -->
+      <FCard class="card-glow">
+        <div class="p-4">
+          <div v-if="vmStats" class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+            <div>
+              <div class="text-xs text-slate-400 mb-1">Uptime</div>
+              <div class="font-semibold text-cyan-300">{{ vmStats?.uptime || 'N/A' }}</div>
+            </div>
+            <div>
+              <div class="text-xs text-slate-400 mb-1">VM State</div>
+              <div :class="[
+                'font-semibold text-sm',
+                vm?.state === 'RUNNING' ? 'text-green-400' : 
+                vm?.state === 'STOPPED' ? 'text-red-400' : 
+                'text-yellow-400'
+              ]">{{ vm?.state || 'Unknown' }}</div>
+            </div>
+            <div>
+              <div class="text-xs text-slate-400 mb-1">Host</div>
+              <div class="font-semibold text-blue-300 truncate">{{ props.hostId }}</div>
+            </div>
+            <div>
+              <div class="text-xs text-slate-400 mb-1">Last Update</div>
+              <div class="font-semibold text-purple-300">{{ new Date().toLocaleTimeString() }}</div>
+            </div>
+          </div>
+          
+          <!-- No System Data State -->
+          <div v-else class="text-center py-4">
+            <div class="text-slate-400">
+              <div class="w-12 h-12 mx-auto mb-3 rounded-full bg-gradient-to-br from-slate-600/20 to-slate-700/20 flex items-center justify-center">
+                <svg class="w-6 h-6 text-slate-500" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+                </svg>
+              </div>
+              <h4 class="text-sm font-semibold text-white mb-1">No System Information</h4>
+              <p class="text-xs">System information is not available</p>
+              <div class="mt-2">
+                <div class="w-4 h-4 border-2 border-slate-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+                <p class="text-xs mt-1">Loading...</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </FCard>
     </div>
 
     <!-- Fallback for inactive VMs -->
@@ -1122,7 +1319,11 @@ const captureConsoleScreenshot = async () => {
       const wsUrl = `${protocol}//${host}/api/v1/hosts/${props.hostId}/vms/${props.vmName}/console`;
       
       // @ts-ignore
-      connection = new RFB(tempDiv, wsUrl, { credentials: {} });
+      connection = new RFB(tempDiv, wsUrl, { 
+        wsProtocols: ['binary'],
+        shared: true,
+        credentials: {} 
+      });
       connection.viewOnly = true;
       connection.scaleViewport = false;
       

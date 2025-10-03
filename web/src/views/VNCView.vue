@@ -230,9 +230,11 @@ const connect = (): void => {
     const host = window.location.host;
     const wsUrl = `${protocol}//${host}/api/v1/hosts/${props.hostId}/vms/${props.vmName}/console`;
 
-    // Create RFB instance
+    // Create RFB instance with proper WebSocket configuration
     rfb.value = new RFB(screen.value, wsUrl, {
-      credentials: {}, // Add credentials if needed
+      wsProtocols: ['binary'],
+      shared: true,
+      credentials: {},
     });
 
     // Configure RFB
@@ -240,9 +242,7 @@ const connect = (): void => {
     rfb.value.viewOnly = false;
     rfb.value.scaleViewport = false; // We'll handle scaling manually
     rfb.value.resizeSession = false;
-    
-    console.log('RFB created with target canvas:', screen.value);
-    console.log('WebSocket URL:', wsUrl);
+    rfb.value.focusOnClick = true;
 
     // Set up event handlers
     rfb.value.addEventListener('connect', onConnect);
@@ -275,34 +275,33 @@ const onConnect = (): void => {
   connectionStatus.value = 'Connected';
   statusMessage.value = 'Connected successfully';
 
-  console.log('VNC connected, container element:', screen.value);
-  console.log('Container dimensions:', {
-    clientWidth: screen.value?.clientWidth,
-    clientHeight: screen.value?.clientHeight
-  });
-  
-  console.log('RFB after connect:', {
-    fbWidth: rfb.value?._fbWidth,
-    fbHeight: rfb.value?._fbHeight,
-    connected: rfb.value?.connected,
-    canvas: rfb.value?._target
-  });
-
-  // Small delay to ensure framebuffer dimensions are available
-  setTimeout(() => {
-    updateCanvasSize();
-  }, 100);
+  // Check if we have valid framebuffer dimensions
+  if (!rfb.value?._fbWidth || !rfb.value?._fbHeight) {
+    // Set up periodic checks for framebuffer
+    const checkFb = () => {
+      if (rfb.value?._fbWidth && rfb.value?._fbHeight) {
+        updateCanvasSize();
+      } else {
+        setTimeout(checkFb, 500);
+      }
+    };
+    checkFb();
+  } else {
+    // Small delay to ensure framebuffer dimensions are available
+    setTimeout(() => {
+      updateCanvasSize();
+    }, 100);
+  }
 };
 
 const onDisconnect = (e: any): void => {
   connectionStatus.value = 'Disconnected';
-  statusMessage.value = e.detail?.clean ? 'Disconnected' : 'Connection lost';
+  statusMessage.value = e.detail?.clean ? 'Disconnected' : `Connection lost: ${e.detail?.reason || 'Unknown reason'}`;
   rfb.value = null;
 };
 
 const onCredentialsRequired = (e: any): void => {
   // Handle credential requests if needed
-  console.log('Credentials required:', e.detail.types);
   statusMessage.value = 'Authentication required';
 };
 
